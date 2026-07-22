@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cocina - POS Sarita</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .cocina-layout {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      padding: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .comanda-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+      border-top: 4px solid var(--yellow);
+    }
+
+    .comanda-card.urgente {
+      border-top-color: var(--red);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      50% { box-shadow: 0 2px 16px rgba(239,68,68,0.3); }
+    }
+
+    .comanda-header {
+      padding: 12px 16px;
+      background: #F9FAFB;
+      border-bottom: 1px solid #E5E7EB;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .comanda-mesa {
+      font-size: 1.25rem;
+      font-weight: 800;
+    }
+
+    .comanda-time {
+      font-size: 0.75rem;
+      color: var(--gray);
+    }
+
+    .comanda-body {
+      padding: 12px 16px;
+    }
+
+    .comanda-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #F3F4F6;
+    }
+
+    .comanda-item:last-child {
+      border-bottom: none;
+    }
+
+    .comanda-item-qty {
+      font-weight: 700;
+      font-size: 1.1rem;
+      background: var(--gray-light);
+      padding: 2px 10px;
+      border-radius: 6px;
+      margin-right: 12px;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .comanda-item-info {
+      flex: 1;
+    }
+
+    .comanda-item-name {
+      font-weight: 600;
+    }
+
+    .comanda-item-nota {
+      font-size: 0.75rem;
+      color: var(--yellow);
+      font-style: italic;
+    }
+
+    .comanda-item-status {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .comanda-footer {
+      padding: 12px 16px;
+      border-top: 1px solid #E5E7EB;
+      display: flex;
+      gap: 8px;
+    }
+
+    .cocina-header {
+      background: #1f2937;
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .cocina-header h1 {
+      font-size: 1.25rem;
+    }
+
+    .comanda-nota {
+      background: #FEF3C7;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      margin: 8px 0;
+      color: #92400E;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--gray);
+    }
+
+    .empty-state h2 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="cocina-header">
+    <h1>👨‍🍳 COCINA - Pedidos en vivo</h1>
+    <div>
+      <span id="pedidosCount" style="margin-right:16px;">0 pedidos</span>
+      <span id="reloj"></span>
+    </div>
+  </div>
+
+  <div id="comandasContainer" class="cocina-layout">
+    <div class="empty-state">
+      <h2>🎯 Sin pedidos pendientes</h2>
+      <p>Los pedidos nuevos aparecerán aquí automáticamente</p>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    function loadPedidos() {
+      fetch('/api/pedidos/cocina')
+        .then(r => r.json())
+        .then(renderPedidos)
+        .catch(console.error);
+    }
+
+    function renderPedidos(pedidos) {
+      const container = document.getElementById('comandasContainer');
+
+      if (!pedidos || pedidos.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="grid-column:1/-1;">
+            <h2>🎯 Sin pedidos pendientes</h2>
+            <p>Los pedidos nuevos aparecerán aquí automáticamente</p>
+          </div>`;
+        document.getElementById('pedidosCount').textContent = '0 pedidos';
+        return;
+      }
+
+      document.getElementById('pedidosCount').textContent = `${pedidos.length} pedido${pedidos.length > 1 ? 's' : ''}`;
+
+      container.innerHTML = '';
+      for (const pedido of pedidos) {
+        const card = document.createElement('div');
+        const isUrgente = pedido.estado === 'ABIERTO' && Date.now() - new Date(pedido.created_at).getTime() > 600000;
+        card.className = `comanda-card${isUrgente ? ' urgente' : ''}`;
+
+        const tiempo = timeSince(new Date(pedido.created_at + 'Z'));
+
+        card.innerHTML = `
+          <div class="comanda-header">
+            <div>
+              <div class="comanda-mesa">Mesa ${pedido.mesa_numero || pedido.mesa_nombre || 'N/A'}</div>
+              <div style="font-size:0.75rem;color:var(--gray);">
+                Pedido #${pedido.id} ${pedido.mesero_nombre ? '| ' + pedido.mesero_nombre : ''}
+              </div>
+            </div>
+            <div class="comanda-time">${tiempo}</div>
+          </div>
+          <div class="comanda-body">
+            ${pedido.nota ? `<div class="comanda-nota">📝 ${pedido.nota}</div>` : ''}
+            ${(!pedido.items || pedido.items.length === 0) ? '<p style="color:var(--gray);">Sin items</p>' :
+              pedido.items.map(item => `
+                <div class="comanda-item">
+                  <div style="display:flex;align-items:center;flex:1;">
+                    <span class="comanda-item-qty">${item.cantidad}</span>
+                    <div class="comanda-item-info">
+                      <div class="comanda-item-name">${item.producto_nombre}</div>
+                      ${item.notas ? `<div class="comanda-item-nota">${item.notas}</div>` : ''}
+                    </div>
+                  </div>
+                  <span class="comanda-item-status badge-${item.estado === 'PENDIENTE' ? 'yellow' : item.estado === 'COCINANDO' ? 'blue' : 'green'} badge">
+                    ${item.estado}
+                  </span>
+                </div>
+              `).join('')
+            }
+          </div>
+          <div class="comanda-footer">
+            <button class="btn btn-primary btn-sm" onclick="marcarPreparando(${pedido.id})" ${pedido.estado !== 'ABIERTO' ? 'disabled' : ''}>
+              👨‍🍳 Preparando
+            </button>
+            <button class="btn btn-success btn-sm" onclick="marcarListo(${pedido.id})" ${pedido.estado === 'LISTO' || pedido.estado === 'ENTREGADO' || pedido.estado === 'CERRADO' ? 'disabled' : ''}>
+              ✅ Listo
+            </button>
+          </div>
+        `;
+
+        container.appendChild(card);
+      }
+    }
+
+    function marcarPreparando(pedidoId) {
+      fetch(`/api/pedidos/${pedidoId}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'EN_PREPARACION' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
+    }
+
+    function marcarListo(pedidoId) {
+      fetch(`/api/pedidos/${pedidoId}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'LISTO' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
+
+      fetch(`/api/pedidos/${pedidoId}/items/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'LISTO' })
+      }).catch(console.error);
+    }
+
+    function marcarItemListo(itemId) {
+      fetch(`/api/pedidos/items/${itemId}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'LISTO' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
+    }
+
+    function timeSince(date) {
+      const seconds = Math.floor((Date.now() - date) / 1000);
+      if (seconds < 60) return 'hace ' + seconds + 's';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return 'hace ' + minutes + 'min';
+      return 'hace ' + Math.floor(minutes / 60) + 'h ' + (minutes % 60) + 'min';
+    }
+
+    function updateClock() {
+      document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-MX');
+    }
+
+    socket.on('pedido:nuevo', () => {
+      loadPedidos();
+      new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
+    });
+
+    socket.on('pedido:actualizado', () => loadPedidos());
+    socket.on('item:actualizado', () => loadPedidos());
+    socket.on('mesa:updated', () => loadPedidos());
+
+    setInterval(updateClock, 1000);
+    updateClock();
+    loadPedidos();
+  </script>
+</body>
+</html>

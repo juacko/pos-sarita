@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurar Impresoras - POS Sarita</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .config-container {
+      max-width: 700px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .config-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .config-card-header {
+      padding: 16px 20px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      border-bottom: 1px solid #E5E7EB;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .config-card-body {
+      padding: 20px;
+    }
+    .printer-selector {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #D1D5DB;
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-bottom: 12px;
+    }
+    .printer-selector:focus {
+      border-color: var(--blue);
+      outline: none;
+    }
+    .printer-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+    .printer-status.ok {
+      background: #D1FAE5;
+      color: #065F46;
+    }
+    .printer-status.err {
+      background: #FEE2E2;
+      color: #991B1B;
+    }
+    .printer-status.waiting {
+      background: #FEF3C7;
+      color: #92400E;
+    }
+    .badge-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: bold;
+    }
+    .printer-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px;
+      border-radius: 6px;
+    }
+    .printer-option-info {
+      flex: 1;
+    }
+    .printer-option-name {
+      font-weight: 600;
+    }
+    .printer-option-detail {
+      font-size: 0.75rem;
+      color: var(--gray);
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .test-result {
+      margin-top: 8px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .test-result.success { background: #D1FAE5; color: #065F46; }
+    .test-result.error { background: #FEE2E2; color: #991B1B; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🖨️ Configurar Impresoras</h1>
+    <div>
+      <a href="/" class="btn btn-outline btn-sm">← Volver al POS</a>
+    </div>
+  </div>
+
+  <div class="config-container">
+    <div id="loadingMsg" style="text-align:center;padding:40px;color:var(--gray);">
+      Detectando impresoras disponibles...
+    </div>
+
+    <!-- IMPRESORA CAJA -->
+    <div class="config-card" id="cardCaja" style="display:none;">
+      <div class="config-card-header">
+        <span>🧾 Impresora de Caja (Ticket)</span>
+        <span class="badge badge-blue">58mm</span>
+      </div>
+      <div class="config-card-body">
+        <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">
+          Seleccionar impresora para tickets
+        </label>
+        <select id="selectCaja" class="printer-selector"></select>
+        <div id="statusCaja" class="printer-status waiting">⚙️ Sin probar</div>
+        <div class="btn-group">
+          <button class="btn btn-primary btn-sm" onclick="testPrinter('caja')">🖨️ Probar impresión</button>
+          <button class="btn btn-success btn-sm" onclick="guardarConfig()">💾 Guardar configuración</button>
+        </div>
+        <div id="testResultCaja"></div>
+      </div>
+    </div>
+
+    <!-- IMPRESORA COCINA -->
+    <div class="config-card" id="cardCocina" style="display:none;">
+      <div class="config-card-header">
+        <span>👨‍🍳 Impresora de Cocina (Comanda)</span>
+        <span class="badge badge-yellow">80mm</span>
+      </div>
+      <div class="config-card-body">
+        <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">
+          Seleccionar impresora para comandas
+        </label>
+        <select id="selectCocina" class="printer-selector"></select>
+        <div id="statusCocina" class="printer-status waiting">⚙️ Sin probar</div>
+        <div class="btn-group">
+          <button class="btn btn-primary btn-sm" onclick="testPrinter('cocina')">🖨️ Probar impresión</button>
+          <button class="btn btn-success btn-sm" onclick="guardarConfig()">💾 Guardar configuración</button>
+        </div>
+        <div id="testResultCocina"></div>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:16px;">
+      <button class="btn btn-outline" onclick="detectarImpresoras()">🔄 Refrescar impresoras</button>
+    </div>
+  </div>
+
+  <script>
+    let detectedPrinters = [];
+    let configActual = {};
+
+    async function init() {
+      await Promise.all([cargarConfig(), detectarImpresoras()]);
+    }
+
+    async function cargarConfig() {
+      try {
+        const res = await fetch('/api/printers/config');
+        configActual = await res.json();
+      } catch (e) {
+        console.error('Error loading config:', e);
+      }
+    }
+
+    async function detectarImpresoras() {
+      document.getElementById('loadingMsg').style.display = 'block';
+      document.getElementById('cardCaja').style.display = 'none';
+      document.getElementById('cardCocina').style.display = 'none';
+
+      try {
+        const res = await fetch('/api/printers/detect');
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Error del servidor al detectar impresoras');
+        }
+
+        detectedPrinters = await res.json();
+
+        if (!Array.isArray(detectedPrinters)) detectedPrinters = [];
+
+        if (detectedPrinters.length === 0) {
+          document.getElementById('loadingMsg').innerHTML = `
+            <h2>No se detectaron impresoras</h2>
+            <p style="margin-top:8px;">Asegúrate de que las impresoras estén instaladas en Windows</p>
+          `;
+          return;
+        }
+
+        document.getElementById('loadingMsg').style.display = 'none';
+        document.getElementById('cardCaja').style.display = 'block';
+        document.getElementById('cardCocina').style.display = 'block';
+
+        renderSelect('selectCaja', 'caja');
+        renderSelect('selectCocina', 'cocina');
+
+      } catch (e) {
+        document.getElementById('loadingMsg').innerHTML = `
+          <h2>Error al detectar impresoras</h2>
+          <p style="color:var(--red);">${e.message}</p>
+        `;
+      }
+    }
+
+    function renderSelect(selectId, tipo) {
+      const select = document.getElementById(selectId);
+      select.innerHTML = '<option value="">-- Seleccionar impresora --</option>';
+
+      const currentName = configActual[tipo]?.nombre_impresora || '';
+
+      for (const p of detectedPrinters) {
+        if (!p.Name || p.Name.includes('OneNote')) continue;
+        const opt = document.createElement('option');
+        opt.value = p.Name;
+        opt.innerHTML = `${p.Name} <small style="color:var(--gray)">(${p.PortName} · ${p.DriverName})</small>`;
+        if (p.Name === currentName) opt.selected = true;
+        select.appendChild(opt);
+      }
+
+      const statusEl = document.getElementById(`status${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+      if (currentName) {
+        statusEl.className = 'printer-status ok';
+        statusEl.innerHTML = `✅ Configurada: <strong>${currentName}</strong>`;
+      } else {
+        statusEl.className = 'printer-status waiting';
+        statusEl.innerHTML = '⚙️ Sin configurar';
+      }
+    }
+
+    async function testPrinter(tipo) {
+      const select = document.getElementById(`select${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+      const printerName = select.value;
+      const resultEl = document.getElementById(`testResult${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+      const statusEl = document.getElementById(`status${tipo.charAt(0).toUpperCase() + tipo.slice(1)}`);
+
+      if (!printerName) {
+        resultEl.innerHTML = '<div class="test-result error">❌ Selecciona una impresora primero</div>';
+        return;
+      }
+
+      statusEl.className = 'printer-status waiting';
+      statusEl.innerHTML = '⏳ Imprimiendo prueba...';
+      resultEl.innerHTML = '';
+
+      try {
+        const res = await fetch(`/api/printers/test/${tipo}`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.ok) {
+          statusEl.className = 'printer-status ok';
+          statusEl.innerHTML = `✅ <strong>${printerName}</strong> - Imprime correctamente`;
+          resultEl.innerHTML = '<div class="test-result success">✅ Impresión de prueba enviada con éxito</div>';
+        } else {
+          statusEl.className = 'printer-status err';
+          statusEl.innerHTML = `❌ Error: ${data.reason || 'No imprime'}`;
+          resultEl.innerHTML = `<div class="test-result error">❌ Error: ${data.reason}. El archivo se guardó en la carpeta "prints/"</div>`;
+        }
+      } catch (e) {
+        statusEl.className = 'printer-status err';
+        statusEl.innerHTML = '❌ Error de conexión';
+        resultEl.innerHTML = `<div class="test-result error">❌ ${e.message}</div>`;
+      }
+    }
+
+    async function guardarConfig() {
+      const cajaName = document.getElementById('selectCaja').value;
+      const cocinaName = document.getElementById('selectCocina').value;
+
+      if (!cajaName && !cocinaName) {
+        alert('Selecciona al menos una impresora');
+        return;
+      }
+
+      const config = {};
+      if (cajaName) config.caja = { nombre_impresora: cajaName, habilitada: true };
+      if (cocinaName) config.cocina = { nombre_impresora: cocinaName, habilitada: true };
+
+      try {
+        const res = await fetch('/api/printers/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+        if (res.ok) {
+          alert('✅ Configuración guardada correctamente');
+          configActual = await res.json();
+          renderSelect('selectCaja', 'caja');
+          renderSelect('selectCocina', 'cocina');
+        } else {
+          alert('❌ Error al guardar');
+        }
+      } catch (e) {
+        alert('❌ Error de conexión');
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

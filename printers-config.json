@@ -1,0 +1,16 @@
+{
+  "caja": {
+    "nombre": "Impresora Caja",
+    "nombre_impresora": "CAJA",
+    "tipo": "windows",
+    "habilitada": true,
+    "ancho_papel": 58
+  },
+  "cocina": {
+    "nombre": "Impresora Cocina",
+    "nombre_impresora": "COCINA2",
+    "tipo": "windows",
+    "habilitada": true,
+    "ancho_papel": 80
+  }
+}

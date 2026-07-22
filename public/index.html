@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS Sarita</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-box">
+      <h1>🍽️ POS Sarita</h1>
+      <p>Sistema de Restaurante</p>
+      <input id="pinDisplay" class="login-pin-input" type="password" readonly placeholder="PIN" maxlength="4">
+      <div id="loginError" style="color:#EF4444;font-size:0.8rem;margin-bottom:8px;min-height:20px;"></div>
+      <div class="pinpad">
+        <button onclick="pressPin('1')">1</button>
+        <button onclick="pressPin('2')">2</button>
+        <button onclick="pressPin('3')">3</button>
+        <button onclick="pressPin('4')">4</button>
+        <button onclick="pressPin('5')">5</button>
+        <button onclick="pressPin('6')">6</button>
+        <button onclick="pressPin('7')">7</button>
+        <button onclick="pressPin('8')">8</button>
+        <button onclick="pressPin('9')">9</button>
+        <button class="clear-btn" onclick="clearPin()">⌫</button>
+        <button onclick="pressPin('0')">0</button>
+        <button class="enter-btn" onclick="submitPin()">✓</button>
+      </div>
+      <p style="margin-top:16px;font-size:0.75rem;color:#9CA3AF;">
+        Admin: 1234 | Mesero: 1111 | Caja: 2222 | Cocina: 3333
+      </p>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="appContent" style="display:none;">
+    <div class="header">
+      <h1>POS Sarita</h1>
+      <div class="header-info">
+        <span id="userInfo"></span>
+        <a href="/mesero.html" class="btn btn-outline btn-sm">👨‍🍳 Meseros</a>
+        <button class="btn btn-outline btn-sm" onclick="logout()">Salir</button>
+      </div>
+    </div>
+
+    <!-- Mesa Grid View -->
+    <div id="mesasView">
+      <div style="padding:12px 24px 0;display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="font-size:1rem;color:var(--gray-dark);">Selecciona una mesa</h2>
+        <div style="display:flex;gap:6px;">
+          <a href="/impresoras.html" class="btn btn-outline btn-sm">🖨️ Impresoras</a>
+          <button class="btn btn-outline btn-sm" onclick="loadMesas()">🔄 Refrescar</button>
+        </div>
+      </div>
+      <div id="mesasGrid" class="mesas-grid"></div>
+    </div>
+
+    <!-- POS Layout -->
+    <div id="posView" style="display:none;">
+      <div class="header" style="position:static;">
+        <div>
+          <span style="font-weight:700;">Mesa <span id="posMesaNumero"></span></span>
+          <span id="posMesaInfo" style="margin-left:12px;font-size:0.8rem;color:var(--gray);"></span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="showMesasView()">← Volver a mesas</button>
+        </div>
+      </div>
+
+      <div class="pos-layout">
+        <div class="pos-left">
+          <div id="categoriaTabs" class="categoria-tabs"></div>
+          <div id="productosGrid" class="productos-grid"></div>
+        </div>
+
+        <div class="pos-right">
+          <div class="pos-right-header">
+            <h2>Pedido Actual</h2>
+          </div>
+          <div class="pos-right-items" id="pedidoItems">
+            <p style="color:var(--gray);font-size:0.875rem;text-align:center;padding:40px 0;">
+              Agrega productos al pedido
+            </p>
+          </div>
+          <div class="pos-right-total">
+            <div class="total-line">
+              <span>TOTAL</span>
+              <span id="totalPedido">$0.00</span>
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label>Nota del pedido</label>
+              <textarea id="notaPedido" class="form-control" rows="2" placeholder="Nota para cocina..."></textarea>
+            </div>
+            <button class="btn btn-success btn-block" onclick="enviarPedido()">
+              Enviar a Cocina
+            </button>
+            <button class="btn btn-outline btn-block" onclick="cancelarPedido()" style="margin-top:4px;">
+              Cancelar pedido
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL MESA -->
+  <div id="mesaModal" class="modal-overlay" onclick="if(event.target===this)closeMesaModal()">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="mesaModalTitle">Mesa</h2>
+        <button class="modal-close" onclick="closeMesaModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="mesaModalBody"></div>
+      <div class="modal-footer" id="mesaModalFooter">
+        <button class="btn btn-outline" onclick="closeMesaModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmarAccionMesa()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/socket-client.js"></script>
+  <script src="/js/login.js"></script>
+  <script src="/js/mesas.js"></script>
+  <script src="/js/pos.js"></script>
+</body>
+</html>
