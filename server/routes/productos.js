@@ -6,13 +6,22 @@ function createProductosRouter() {
 
   router.get('/', (req, res) => {
     try {
-      res.json(db.prepare(`
+      const productos = db.prepare(`
         SELECT p.*, c.nombre as categoria, c.color as categoria_color
         FROM productos p
         LEFT JOIN categorias c ON c.id = p.categoria_id
         WHERE p.activo = 1
         ORDER BY c.nombre, p.nombre
-      `).all());
+      `).all();
+      for (const p of productos) {
+        p.variantes = db.prepare('SELECT * FROM variantes WHERE producto_id = ? AND activo = 1 ORDER BY precio_adicional').all(p.id);
+        p.modificadores = db.prepare('SELECT * FROM modificadores WHERE producto_id = ? AND activo = 1').all(p.id);
+        for (const m of p.modificadores) {
+          m.opciones = db.prepare('SELECT * FROM opciones_mod WHERE modificador_id = ? AND activo = 1').all(m.id);
+        }
+        p.agregados = db.prepare('SELECT * FROM agregados WHERE producto_id = ? AND activo = 1').all(p.id);
+      }
+      res.json(productos);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

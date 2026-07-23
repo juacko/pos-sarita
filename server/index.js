@@ -8,6 +8,7 @@ const createMesasRouter = require('./routes/mesas');
 const createPedidosRouter = require('./routes/pedidos');
 const createProductosRouter = require('./routes/productos');
 const createUsuariosRouter = require('./routes/usuarios');
+const createAdminRouter = require('./routes/admin');
 const printers = require('./printers');
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api/mesas', createMesasRouter(io));
 app.use('/api/pedidos', createPedidosRouter(io));
 app.use('/api/productos', createProductosRouter());
 app.use('/api/usuarios', createUsuariosRouter());
+app.use('/api/admin', createAdminRouter());
 
 app.get('/api/printers/config', (req, res) => {
   res.json(printers.getConfig());

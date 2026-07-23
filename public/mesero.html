@@ -312,6 +312,7 @@
         <span id="userBadge"></span>
         <a href="/cocina.html" target="_blank" class="btn-icon" title="Pantalla cocina">👨‍🍳</a>
         <a href="/impresoras.html" target="_blank" class="btn-icon" title="Impresoras">🖨️</a>
+        <a href="/admin.html" target="_blank" class="btn-icon" title="Admin">⚙️</a>
         <button class="btn-icon" onclick="logout()" title="Salir">✕</button>
       </div>
     </div>
@@ -383,6 +384,18 @@
       <div class="note-actions">
         <button style="background:#F3F4F6;" onclick="closeNoteModal()">Cancelar</button>
         <button style="background:#1e3a5f;color:white;" onclick="saveNote()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCT CUSTOMIZER MODAL -->
+  <div class="note-modal-overlay" id="customizeModal" onclick="if(event.target===this)closeCustomizeModal()">
+    <div class="note-modal" style="width:380px;max-height:80vh;overflow-y:auto;">
+      <h3 id="customizeTitle">Personalizar producto</h3>
+      <div id="customizeBody"></div>
+      <div class="note-actions" style="margin-top:12px;">
+        <button style="background:#F3F4F6;" onclick="closeCustomizeModal()">Cancelar</button>
+        <button style="background:#059669;color:white;" onclick="confirmCustomize()">Agregar al pedido</button>
       </div>
     </div>
   </div>
@@ -601,14 +614,222 @@
       }
     }
 
-    // ---- CART ----
+    // ---- PRODUCT CUSTOMIZER ----
+    let customizeProduct = null;
+    let customizeCallback = null;
+    let selectedVariante = null;
+    let selectedMods = {};
+    let selectedAgregados = {};
+
     function agregarItem(prod) {
-      const exist = pedidoItems.find(i => i.producto_id === prod.id && !i.notas);
-      if (exist) { exist.cantidad++; }
-      else { pedidoItems.push({ producto_id: prod.id, nombre: prod.nombre, cantidad: 1, precio: prod.precio, notas: '' }); }
-      renderCart();
+      const hasExtras = (prod.variantes && prod.variantes.length) ||
+                        (prod.modificadores && prod.modificadores.length) ||
+                        (prod.agregados && prod.agregados.length);
+      if (hasExtras) {
+        openCustomizeModal(prod, (customized) => {
+          const exist = pedidoItems.find(i =>
+            i.producto_id === customized.producto_id &&
+            i.variante_id === customized.variante_id &&
+            JSON.stringify(i.modificadores) === JSON.stringify(customized.modificadores) &&
+            JSON.stringify(i.agregados) === JSON.stringify(customized.agregados)
+          );
+          if (exist) { exist.cantidad++; }
+          else { pedidoItems.push({ ...customized, cantidad: 1 }); }
+          renderCart();
+        });
+      } else {
+        const exist = pedidoItems.find(i => i.producto_id === prod.id && !i.variante_id && !i.modificadores?.length && !i.agregados?.length);
+        if (exist) { exist.cantidad++; }
+        else {
+          pedidoItems.push({
+            producto_id: prod.id, nombre: prod.nombre, cantidad: 1,
+            precio: prod.precio, precio_adicional: 0,
+            variante_id: null, variante_nombre: null,
+            modificadores: [], agregados: [], detalle: '', notas: ''
+          });
+        }
+        renderCart();
+      }
     }
 
+    function openCustomizeModal(prod, callback) {
+      customizeProduct = prod;
+      customizeCallback = callback;
+      selectedVariante = null;
+      selectedMods = {};
+      selectedAgregados = {};
+
+      document.getElementById('customizeTitle').textContent = prod.nombre;
+      let html = `<p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">$${prod.precio.toFixed(2)} base</p>`;
+
+      // Variantes
+      if (prod.variantes?.length) {
+        html += '<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">Presentación:</strong>';
+        prod.variantes.forEach(v => {
+          html += `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:0.85rem;">
+            <input type="radio" name="variante" value='${JSON.stringify(v).replace(/'/g, "&#39;")}' onchange="selectVariante(this.value)">
+            ${v.nombre} ${v.precio_adicional > 0 ? '<span style="color:#059669;">+$' + v.precio_adicional.toFixed(2) + '</span>' : ''}
+          </label>`;
+        });
+        html += '</div>';
+      }
+
+      // Modificadores
+      if (prod.modificadores?.length) {
+        prod.modificadores.forEach(m => {
+          html += `<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">${m.nombre}${m.requerido ? ' <span style="color:#ef4444;">*</span>' : ''}</strong>`;
+          if (m.tipo === 'text') {
+            html += `<input class="form-control" style="margin-top:4px;" id="mod_text_${m.id}" placeholder="Escribe...">`;
+          } else {
+            m.opciones.forEach(o => {
+              const inputType = m.tipo === 'multi' ? 'checkbox' : 'radio';
+              const name = `mod_${m.id}`;
+              html += `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85rem;">
+                <input type="${inputType}" name="${name}" value="${o.id}" data-mod-id="${m.id}" data-precio="${o.precio_adicional}" onchange="selectOpcion(${m.id}, this)">
+                ${o.nombre} ${o.precio_adicional > 0 ? '<span style="color:#059669;">+$' + o.precio_adicional.toFixed(2) + '</span>' : ''}
+              </label>`;
+            });
+          }
+          html += '</div>';
+        });
+      }
+
+      // Agregados
+      if (prod.agregados?.length) {
+        html += '<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">Agregados:</strong>';
+        prod.agregados.forEach(a => {
+          html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85rem;">
+            <span style="flex:1;">${a.nombre} <span style="color:#059669;">+$${a.precio.toFixed(2)}</span></span>
+            <button class="btn btn-outline btn-sm" onclick="changeAgregado(${a.id}, -1, ${a.precio})">−</button>
+            <span id="agr_qty_${a.id}">0</span>
+            <button class="btn btn-outline btn-sm" onclick="changeAgregado(${a.id}, 1, ${a.precio})">+</button>
+          </div>`;
+        });
+        html += '</div>';
+      }
+
+      html += '<div id="customizeTotal" style="text-align:right;font-size:1.2rem;font-weight:800;color:#059669;border-top:1px solid #e2e8f0;padding-top:8px;">Total: $' + prod.precio.toFixed(2) + '</div>';
+
+      document.getElementById('customizeBody').innerHTML = html;
+      document.getElementById('customizeModal').classList.add('active');
+    }
+
+    function selectVariante(jsonStr) {
+      try { selectedVariante = JSON.parse(jsonStr.replace(/&#39;/g, "'")); } catch(e) { selectedVariante = JSON.parse(jsonStr); }
+      updateCustomizeTotal();
+    }
+
+    function selectOpcion(modId, el) {
+      if (el.type === 'radio') {
+        const checked = document.querySelector(`input[name="mod_${modId}"]:checked`);
+        if (checked) {
+          selectedMods[modId] = parseInt(checked.value);
+        }
+      } else {
+        if (!selectedMods[modId]) selectedMods[modId] = [];
+        const val = parseInt(el.value);
+        if (el.checked) {
+          if (!selectedMods[modId].includes(val)) selectedMods[modId].push(val);
+        } else {
+          selectedMods[modId] = selectedMods[modId].filter(v => v !== val);
+        }
+      }
+      updateCustomizeTotal();
+    }
+
+    let agregadoQtys = {};
+    function changeAgregado(agrId, delta, precio) {
+      if (!agregadoQtys[agrId]) agregadoQtys[agrId] = 0;
+      agregadoQtys[agrId] = Math.max(0, agregadoQtys[agrId] + delta);
+      document.getElementById('agr_qty_' + agrId).textContent = agregadoQtys[agrId];
+      updateCustomizeTotal();
+    }
+
+    function updateCustomizeTotal() {
+      const prod = customizeProduct;
+      if (!prod) return;
+      let adicional = 0;
+      if (selectedVariante) adicional += selectedVariante.precio_adicional || 0;
+      for (const modId of Object.keys(selectedMods)) {
+        const mod = prod.modificadores?.find(m => m.id == modId);
+        if (!mod) continue;
+        const vals = Array.isArray(selectedMods[modId]) ? selectedMods[modId] : [selectedMods[modId]];
+        for (const v of vals) {
+          const opc = mod.opciones?.find(o => o.id == v);
+          if (opc) adicional += opc.precio_adicional || 0;
+        }
+      }
+      for (const agrId of Object.keys(agregadoQtys)) {
+        const qty = agregadoQtys[agrId] || 0;
+        const agr = prod.agregados?.find(a => a.id == agrId);
+        if (agr && qty > 0) adicional += agr.precio * qty;
+      }
+      const total = prod.precio + adicional;
+      document.getElementById('customizeTotal').textContent = 'Total: $' + total.toFixed(2);
+    }
+
+    function closeCustomizeModal() {
+      document.getElementById('customizeModal').classList.remove('active');
+      customizeProduct = null;
+    }
+
+    function confirmCustomize() {
+      const prod = customizeProduct;
+      if (!prod) return;
+
+      const modificadores = prod.modificadores?.map(m => {
+        const vals = selectedMods[m.id];
+        let selected = [];
+        if (m.tipo === 'text') {
+          const txt = document.getElementById('mod_text_' + m.id)?.value || '';
+          if (txt) selected = [{ nombre: txt }];
+        } else if (vals !== undefined) {
+          const arr = Array.isArray(vals) ? vals : [vals];
+          selected = arr.map(v => {
+            const opc = m.opciones?.find(o => o.id == v);
+            return opc ? { id: opc.id, nombre: opc.nombre, precio_adicional: opc.precio_adicional } : null;
+          }).filter(Boolean);
+        }
+        return { id: m.id, nombre: m.nombre, seleccion: selected };
+      }).filter(m => m.seleccion.length) || [];
+
+      const agregados = Object.entries(agregadoQtys)
+        .filter(([k, v]) => v > 0)
+        .map(([k, v]) => {
+          const a = prod.agregados?.find(x => x.id == parseInt(k));
+          return a ? { id: a.id, nombre: a.nombre, precio: a.precio, cantidad: v } : null;
+        }).filter(Boolean);
+
+      let precioAdic = 0;
+      if (selectedVariante) precioAdic += selectedVariante.precio_adicional || 0;
+      modificadores.forEach(m => m.seleccion.forEach(s => precioAdic += s.precio_adicional || 0));
+      agregados.forEach(a => precioAdic += a.precio * a.cantidad);
+
+      const detalle = [];
+      if (selectedVariante) detalle.push(selectedVariante.nombre);
+      modificadores.forEach(m => {
+        if (m.seleccion.length) detalle.push(m.seleccion.map(s => s.nombre).join(', '));
+      });
+      agregados.forEach(a => detalle.push(`${a.nombre} x${a.cantidad}`));
+
+      const item = {
+        producto_id: prod.id,
+        nombre: prod.nombre,
+        precio: prod.precio,
+        precio_adicional: precioAdic,
+        variante_id: selectedVariante?.id || null,
+        variante_nombre: selectedVariante?.nombre || null,
+        modificadores: modificadores,
+        agregados: agregados,
+        detalle: detalle.join(' · '),
+        notas: ''
+      };
+
+      closeCustomizeModal();
+      if (customizeCallback) customizeCallback(item);
+    }
+
+    // ---- CART ----
     function cambiarCantidad(idx, delta) {
       const item = pedidoItems[idx];
       if (!item) return;
@@ -643,7 +864,7 @@
 
     function renderCart() {
       const count = pedidoItems.reduce((s, i) => s + i.cantidad, 0);
-      const total = pedidoItems.reduce((s, i) => s + i.cantidad * i.precio, 0);
+      const total = pedidoItems.reduce((s, i) => s + i.cantidad * (i.precio + (i.precio_adicional || 0)), 0);
       document.getElementById('cartCount').textContent = `${count} producto${count !== 1 ? 's' : ''}`;
       document.getElementById('cartTotal').textContent = `$${total.toFixed(2)}`;
     }
@@ -653,22 +874,24 @@
       if (!pedidoItems.length) {
         body.innerHTML = '<p style="color:#6B7280;text-align:center;padding:24px;">Sin productos</p>';
       } else {
-        body.innerHTML = pedidoItems.map((item, idx) => `
-          <div class="cart-item">
+        body.innerHTML = pedidoItems.map((item, idx) => {
+          const precioTotal = (item.precio + (item.precio_adicional || 0));
+          return `<div class="cart-item">
             <span class="cart-item-qty">${item.cantidad}</span>
             <div class="cart-item-info">
               <div class="cart-item-name">${item.nombre}</div>
+              ${item.detalle ? `<div class="cart-item-nota" style="font-size:0.75rem;color:#64748b;">${item.detalle}</div>` : ''}
               ${item.notas ? `<div class="cart-item-nota">📝 ${item.notas}</div>` : ''}
             </div>
-            <span class="cart-item-price">$${(item.cantidad * item.precio).toFixed(2)}</span>
+            <span class="cart-item-price">$${(item.cantidad * precioTotal).toFixed(2)}</span>
             <div class="cart-item-actions">
               <button onclick="cambiarCantidad(${idx}, -1)">−</button>
               <button onclick="cambiarCantidad(${idx}, 1)">+</button>
               <button onclick="abrirNota(${idx})">📝</button>
               <button class="del" onclick="eliminarItem(${idx})">✕</button>
             </div>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
       }
       document.getElementById('cartModal').classList.add('active');
     }

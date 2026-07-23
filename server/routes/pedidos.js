@@ -58,13 +58,23 @@ function createPedidosRouter(io) {
         let total = 0;
 
         const insertItem = db.prepare(`
-          INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario, notas)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
-          insertItem.run(pedidoId, item.producto_id || null, item.nombre, item.cantidad, item.precio, item.notas || null);
-          total += item.cantidad * item.precio;
+          const precioBase = item.precio || 0;
+          const precioAdic = item.precio_adicional || 0;
+          insertItem.run(
+            pedidoId, item.producto_id || null, item.nombre, item.cantidad, precioBase,
+            precioAdic, item.notas || null,
+            item.variante_id || null, item.variante_nombre || null,
+            JSON.stringify(item.modificadores || []),
+            JSON.stringify(item.agregados || []),
+            item.detalle || ''
+          );
+          total += item.cantidad * (precioBase + precioAdic);
         }
 
         db.prepare('UPDATE pedidos SET total = ? WHERE id = ?').run(total, pedidoId);

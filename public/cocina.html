@@ -210,6 +210,8 @@
                     <span class="comanda-item-qty">${item.cantidad}</span>
                     <div class="comanda-item-info">
                       <div class="comanda-item-name">${item.producto_nombre}</div>
+                      ${item.variante_nombre ? `<div style="font-size:0.75rem;color:#3B82F6;font-weight:600;">${item.variante_nombre}</div>` : ''}
+                      ${item.detalle ? `<div style="font-size:0.75rem;color:#64748b;">${item.detalle}</div>` : ''}
                       ${item.notas ? `<div class="comanda-item-nota">${item.notas}</div>` : ''}
                     </div>
                   </div>

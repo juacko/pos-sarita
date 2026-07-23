@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - POS Sarita</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .admin-layout { display: flex; min-height: calc(100vh - 52px); }
+    .admin-sidebar {
+      width: 220px; background: #1e293b; color: white; flex-shrink: 0;
+      padding: 16px 0;
+    }
+    .admin-sidebar a {
+      display: block; padding: 12px 20px; color: #94a3b8; text-decoration: none;
+      font-size: 0.9rem; cursor: pointer; transition: all 0.15s;
+    }
+    .admin-sidebar a:hover { background: #334155; color: white; }
+    .admin-sidebar a.active { background: #3b82f6; color: white; }
+    .admin-content { flex: 1; padding: 20px; overflow-y: auto; background: #f8fafc; }
+    .admin-content h2 { font-size: 1.3rem; margin-bottom: 16px; }
+
+    .table-wrap {
+      background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .table-wrap table { width: 100%; border-collapse: collapse; }
+    .table-wrap th, .table-wrap td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+    .table-wrap th { background: #f8fafc; font-weight: 600; color: #475569; font-size: 0.8rem; text-transform: uppercase; }
+    .table-wrap tr:hover { background: #f8fafc; }
+
+    .toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+    .search-input { padding: 8px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; min-width: 200px; }
+
+    .badge-color { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+
+    .modal-overlay.admin-modal { display: none; }
+    .modal-overlay.admin-modal.active { display: flex; }
+    .modal-overlay.admin-modal .modal { max-width: 600px; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-row .form-group { margin-bottom: 0; }
+
+    .sub-list { margin: 6px 0; }
+    .sub-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 10px; background: #f8fafc; border-radius: 6px; margin-bottom: 4px;
+      font-size: 0.8rem;
+    }
+    .sub-item .actions { display: flex; gap: 4px; }
+    .sub-item .actions button {
+      background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 2px 6px;
+    }
+    .sub-item .actions .edit { color: #3b82f6; }
+    .sub-item .actions .del { color: #ef4444; }
+
+    .inline-form { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .inline-form input, .inline-form select { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.8rem; }
+    .inline-form button { padding: 6px 12px; border: none; border-radius: 6px; background: #3b82f6; color: white; cursor: pointer; font-size: 0.8rem; }
+
+    .toggle { position: relative; width: 36px; height: 20px; display: inline-block; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider {
+      position: absolute; inset: 0; cursor: pointer; background: #cbd5e1; border-radius: 20px; transition: 0.2s;
+    }
+    .toggle .slider::before {
+      content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+      background: white; top: 2px; left: 2px; transition: 0.2s;
+    }
+    .toggle input:checked + .slider { background: #22c55e; }
+    .toggle input:checked + .slider::before { transform: translateX(16px); }
+
+    .section-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; cursor: pointer;
+    }
+    .section-header h4 { font-size: 0.9rem; margin: 0; color: #334155; }
+
+    .empty-state { text-align: center; padding: 40px; color: #94a3b8; }
+
+    @media (max-width: 768px) {
+      .admin-sidebar { width: 60px; }
+      .admin-sidebar a { padding: 12px 8px; text-align: center; font-size: 0; }
+      .admin-sidebar a::first-letter { font-size: 1rem; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>⚙️ Admin - POS Sarita</h1>
+    <div>
+      <a href="/" class="btn btn-outline btn-sm">← POS</a>
+      <a href="/mesero.html" class="btn btn-outline btn-sm">Meseros</a>
+    </div>
+  </div>
+
+  <div class="admin-layout">
+    <nav class="admin-sidebar">
+      <a class="active" onclick="showSection('productos')">📦 Productos</a>
+      <a onclick="showSection('categorias')">🏷️ Categorías</a>
+      <a onclick="showSection('reportes')">📊 Reportes</a>
+    </nav>
+
+    <div class="admin-content">
+      <!-- PRODUCTOS -->
+      <div id="sec-productos" class="section">
+        <div class="toolbar">
+          <h2 style="margin:0;flex:1;">Productos</h2>
+          <input class="search-input" id="searchProductos" placeholder="Buscar producto..." oninput="renderProductos()">
+          <button class="btn btn-primary btn-sm" onclick="openProductoModal()">+ Nuevo</button>
+        </div>
+        <div class="table-wrap" id="productosWrap"><p class="empty-state">Cargando...</p></div>
+      </div>
+
+      <!-- CATEGORIAS -->
+      <div id="sec-categorias" class="section" style="display:none;">
+        <div class="toolbar">
+          <h2 style="margin:0;flex:1;">Categorías</h2>
+          <button class="btn btn-primary btn-sm" onclick="openCategoriaModal()">+ Nueva</button>
+        </div>
+        <div class="table-wrap" id="categoriasWrap"><p class="empty-state">Cargando...</p></div>
+      </div>
+
+      <!-- REPORTES -->
+      <div id="sec-reportes" class="section" style="display:none;">
+        <h2>📊 Reporte de ventas</h2>
+        <div id="reporteContent"><p class="empty-state">Cargando...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PRODUCTO -->
+  <div class="modal-overlay admin-modal" id="modalProducto" onclick="if(event.target===this)closeModal('modalProducto')">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalProductoTitle">Nuevo producto</h2>
+        <button class="modal-close" onclick="closeModal('modalProducto')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label>Nombre</label><input id="prodNombre" class="form-control" placeholder="Nombre del producto"></div>
+          <div class="form-group"><label>Precio base ($)</label><input id="prodPrecio" type="number" step="0.5" class="form-control"></div>
+        </div>
+        <div class="form-group"><label>Descripción</label><textarea id="prodDesc" class="form-control" rows="2" placeholder="Descripción corta"></textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label>Categoría</label><select id="prodCategoria" class="form-control"></select></div>
+          <div class="form-group"><label><input id="prodParaLlevar" type="checkbox"> Compatible para llevar</label></div>
+        </div>
+
+        <hr style="margin:16px 0;border-color:#e2e8f0;">
+
+        <div class="section-header" onclick="toggleSection('variantesSection')">
+          <h4>📏 Variantes (tallas / presentaciones)</h4>
+          <span id="toggleVariantes">▼</span>
+        </div>
+        <div id="variantesSection">
+          <div id="variantesList"></div>
+          <div class="inline-form">
+            <input id="varNombre" placeholder="Ej: Grande">
+            <input id="varPrecio" type="number" step="1" placeholder="+$ precio" style="width:100px;">
+            <button onclick="addVariante()">+ Agregar</button>
+          </div>
+        </div>
+
+        <hr style="margin:16px 0;border-color:#e2e8f0;">
+
+        <div class="section-header" onclick="toggleSection('modificadoresSection')">
+          <h4>🔧 Modificadores (cocción, ingredientes)</h4>
+          <span id="toggleModificadores">▼</span>
+        </div>
+        <div id="modificadoresSection">
+          <div id="modificadoresList"></div>
+          <div class="inline-form">
+            <input id="modNombre" placeholder="Ej: Término de carne">
+            <select id="modTipo"><option value="select">Seleccionar uno</option><option value="multi">Varios</option><option value="text">Texto libre</option></select>
+            <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;">
+              <input id="modRequerido" type="checkbox"> Requerido
+            </label>
+            <button onclick="openAddModificadorModal()">+ Agregar</button>
+          </div>
+        </div>
+
+        <hr style="margin:16px 0;border-color:#e2e8f0;">
+
+        <div class="section-header" onclick="toggleSection('agregadosSection')">
+          <h4>➕ Agregados (extra opcionales)</h4>
+          <span id="toggleAgregados">▼</span>
+        </div>
+        <div id="agregadosSection">
+          <div id="agregadosList"></div>
+          <div class="inline-form">
+            <input id="agrNombre" placeholder="Ej: Queso extra">
+            <input id="agrPrecio" type="number" step="1" placeholder="$ precio" style="width:100px;">
+            <button onclick="addAgregado()">+ Agregar</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalProducto')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveProducto()">Guardar producto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CATEGORIA -->
+  <div class="modal-overlay admin-modal" id="modalCategoria" onclick="if(event.target===this)closeModal('modalCategoria')">
+    <div class="modal" style="max-width:400px;">
+      <div class="modal-header">
+        <h2 id="modalCategoriaTitle">Nueva categoría</h2>
+        <button class="modal-close" onclick="closeModal('modalCategoria')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group"><label>Nombre</label><input id="catNombre" class="form-control"></div>
+        <div class="form-group"><label>Color</label><input id="catColor" type="color" class="form-control" style="height:44px;padding:4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalCategoria')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveCategoria()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL OPCIONES MOD -->
+  <div class="modal-overlay admin-modal" id="modalModOpciones" onclick="if(event.target===this)closeModal('modalModOpciones')">
+    <div class="modal" style="max-width:500px;">
+      <div class="modal-header">
+        <h2 id="modalModTitle">Opciones del modificador</h2>
+        <button class="modal-close" onclick="closeModal('modalModOpciones')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="modalModDesc" style="font-size:0.85rem;color:#64748b;"></p>
+        <div id="modalOpcionesList"></div>
+        <div class="inline-form">
+          <input id="opcNombre" placeholder="Nombre de la opción">
+          <input id="opcPrecio" type="number" step="1" placeholder="+$ precio" style="width:100px;">
+          <button id="btnAddOpcion" onclick="addOpcion()">+ Agregar</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalModOpciones')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let editingProductoId = null;
+    let editingCategoriaId = null;
+    let editingModificadorId = null;
+    let categorias = [];
+    let productosCompleto = [];
+
+    // ---- NAV ----
+    function showSection(s) {
+      document.querySelectorAll('.section').forEach(el => el.style.display = 'none');
+      document.querySelectorAll('.admin-sidebar a').forEach(el => el.classList.remove('active'));
+      document.getElementById('sec-' + s).style.display = 'block';
+      event.target.classList.add('active');
+      if (s === 'productos') loadProductos();
+      if (s === 'categorias') loadCategorias();
+      if (s === 'reportes') loadReportes();
+    }
+
+    // ---- LOAD ----
+    async function loadCategorias() {
+      const r = await fetch('/api/admin/categorias');
+      categorias = await r.json();
+    }
+
+    async function loadProductos() {
+      const r = await fetch('/api/admin/productos/completo');
+      productosCompleto = await r.json();
+      renderProductos();
+    }
+
+    // ---- CATEGORIAS ----
+    async function renderCategorias() {
+      const w = document.getElementById('categoriasWrap');
+      if (!categorias.length) { w.innerHTML = '<p class="empty-state">Sin categorías</p>'; return; }
+      let h = '<table><thead><tr><th>Color</th><th>Nombre</th><th>Productos</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
+      for (const c of categorias) {
+        const count = productosCompleto.filter(p => p.categoria_id === c.id).length;
+        h += `<tr>
+          <td><span class="badge-color" style="background:${c.color}"></span></td>
+          <td><strong>${c.nombre}</strong></td>
+          <td>${count} productos</td>
+          <td><label class="toggle"><input type="checkbox" ${c.activo ? 'checked' : ''} onchange="toggleCategoria(${c.id},this.checked)"><span class="slider"></span></label></td>
+          <td><button class="btn btn-outline btn-sm" onclick="openCategoriaModal(${c.id})">✏️</button></td>
+        </tr>`;
+      }
+      h += '</tbody></table>';
+      w.innerHTML = h;
+    }
+
+    function openCategoriaModal(id) {
+      editingCategoriaId = id || null;
+      document.getElementById('modalCategoriaTitle').textContent = id ? 'Editar categoría' : 'Nueva categoría';
+      if (id) {
+        const c = categorias.find(x => x.id === id);
+        document.getElementById('catNombre').value = c?.nombre || '';
+        document.getElementById('catColor').value = c?.color || '#6B7280';
+      } else {
+        document.getElementById('catNombre').value = '';
+        document.getElementById('catColor').value = '#3B82F6';
+      }
+      document.getElementById('modalCategoria').classList.add('active');
+    }
+
+    async function saveCategoria() {
+      const data = { nombre: document.getElementById('catNombre').value, color: document.getElementById('catColor').value };
+      if (!data.nombre) return alert('Nombre requerido');
+      try {
+        if (editingCategoriaId) {
+          await fetch('/api/admin/categorias/' + editingCategoriaId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        } else {
+          await fetch('/api/admin/categorias', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        }
+        closeModal('modalCategoria');
+        await loadCategorias(); await loadProductos(); renderCategorias();
+      } catch (e) { alert('Error'); }
+    }
+
+    async function toggleCategoria(id, active) {
+      await fetch('/api/admin/categorias/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ activo: active ? 1 : 0 }) });
+    }
+
+    // ---- PRODUCTOS ----
+    function renderProductos() {
+      const w = document.getElementById('productosWrap');
+      const q = (document.getElementById('searchProductos').value || '').toLowerCase();
+      let list = productosCompleto.filter(p => p.nombre.toLowerCase().includes(q) || (p.categoria_nombre || '').toLowerCase().includes(q));
+      if (!list.length) { w.innerHTML = '<p class="empty-state">Sin productos</p>'; return; }
+      let h = '<table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Variantes</th><th>Mod.</th><th>Agr.</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
+      for (const p of list) {
+        h += `<tr>
+          <td><strong>${p.nombre}</strong><br><small style="color:#94a3b8;">${p.descripcion || ''}</small></td>
+          <td>${p.categoria_nombre || '-'}</td>
+          <td><strong>$${p.precio.toFixed(2)}</strong></td>
+          <td>${p.variantes?.length || 0}</td>
+          <td>${p.modificadores?.length || 0}</td>
+          <td>${p.agregados?.length || 0}</td>
+          <td><label class="toggle"><input type="checkbox" ${p.activo ? 'checked' : ''} onchange="toggleProducto(${p.id},this.checked)"><span class="slider"></span></label></td>
+          <td><button class="btn btn-outline btn-sm" onclick="openProductoModal(${p.id})">✏️</button></td>
+        </tr>`;
+      }
+      h += '</tbody></table>';
+      w.innerHTML = h;
+    }
+
+    async function toggleProducto(id, active) {
+      const p = productosCompleto.find(x => x.id === id);
+      if (!p) return;
+      await fetch('/api/admin/productos/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ...p, activo: active ? 1 : 0 }) });
+    }
+
+    async function openProductoModal(id) {
+      editingProductoId = id || null;
+      document.getElementById('modalProductoTitle').textContent = id ? 'Editar producto' : 'Nuevo producto';
+
+      let p = { nombre: '', descripcion: '', precio: '', categoria_id: '', para_llevar: 0, variantes: [], modificadores: [], agregados: [] };
+      if (id) p = productosCompleto.find(x => x.id === id) || p;
+
+      document.getElementById('prodNombre').value = p.nombre;
+      document.getElementById('prodPrecio').value = p.precio;
+      document.getElementById('prodDesc').value = p.descripcion || '';
+      document.getElementById('prodParaLlevar').checked = !!p.para_llevar;
+
+      const sel = document.getElementById('prodCategoria');
+      sel.innerHTML = '<option value="">Sin categoría</option>';
+      for (const c of categorias) {
+        sel.innerHTML += `<option value="${c.id}" ${c.id === p.categoria_id ? 'selected' : ''}>${c.nombre}</option>`;
+      }
+
+      renderVariantes(p.variantes || []);
+      renderModificadores(p.modificadores || []);
+      renderAgregados(p.agregados || []);
+
+      document.getElementById('modalProducto').classList.add('active');
+    }
+
+    async function saveProducto() {
+      const data = {
+        nombre: document.getElementById('prodNombre').value,
+        descripcion: document.getElementById('prodDesc').value,
+        precio: parseFloat(document.getElementById('prodPrecio').value),
+        categoria_id: parseInt(document.getElementById('prodCategoria').value) || null,
+        para_llevar: document.getElementById('prodParaLlevar').checked ? 1 : 0
+      };
+      if (!data.nombre || !data.precio) return alert('Nombre y precio requeridos');
+      try {
+        if (editingProductoId) {
+          await fetch('/api/admin/productos/' + editingProductoId, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        } else {
+          await fetch('/api/admin/productos', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+        }
+        closeModal('modalProducto');
+        await loadProductos();
+      } catch (e) { alert('Error'); }
+    }
+
+    // ---- VARIANTES ----
+    function renderVariantes(variantes) {
+      const el = document.getElementById('variantesList');
+      if (!variantes.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin variantes</p>'; return; }
+      el.innerHTML = variantes.map(v => `
+        <div class="sub-item">
+          <span><strong>${v.nombre}</strong> ${v.precio_adicional > 0 ? '+$' + v.precio_adicional.toFixed(2) : ''}</span>
+          <div class="actions">
+            <button class="del" onclick="deleteVariante(${v.id})">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addVariante() {
+      if (!editingProductoId) return alert('Guarda el producto primero');
+      const nombre = document.getElementById('varNombre').value;
+      const precio = parseFloat(document.getElementById('varPrecio').value) || 0;
+      if (!nombre) return;
+      await fetch('/api/admin/variantes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ producto_id: editingProductoId, nombre, precio_adicional: precio }) });
+      document.getElementById('varNombre').value = '';
+      document.getElementById('varPrecio').value = '';
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      if (p) renderVariantes(p.variantes || []);
+    }
+
+    async function deleteVariante(id) {
+      await fetch('/api/admin/variantes/' + id, { method: 'DELETE' });
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      if (p) renderVariantes(p.variantes || []);
+    }
+
+    // ---- MODIFICADORES ----
+    function renderModificadores(mods) {
+      const el = document.getElementById('modificadoresList');
+      if (!mods.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin modificadores</p>'; return; }
+      el.innerHTML = mods.map(m => `
+        <div class="sub-item">
+          <span>
+            <strong>${m.nombre}</strong>
+            <small style="color:#64748b;">(${m.tipo}${m.requerido ? ', requerido' : ''})</small>
+            ${m.opciones?.length ? '<br><small style="color:#94a3b8;">' + m.opciones.map(o => o.nombre + (o.precio_adicional > 0 ? ' +$' + o.precio_adicional : '')).join(', ') + '</small>' : ''}
+          </span>
+          <div class="actions">
+            <button class="edit" onclick="openModOpcionesModal(${m.id})">📋</button>
+            <button class="del" onclick="deleteModificador(${m.id})">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function deleteModificador(id) {
+      if (!confirm('¿Eliminar modificador y todas sus opciones?')) return;
+      await fetch('/api/admin/modificadores/' + id, { method: 'DELETE' });
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      if (p) renderModificadores(p.modificadores || []);
+    }
+
+    async function openAddModificadorModal() {
+      if (!editingProductoId) return alert('Guarda el producto primero');
+      const nombre = document.getElementById('modNombre').value;
+      const tipo = document.getElementById('modTipo').value;
+      const requerido = document.getElementById('modRequerido').checked ? 1 : 0;
+      if (!nombre) return alert('Nombre del modificador requerido');
+      const r = await fetch('/api/admin/modificadores', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ producto_id: editingProductoId, nombre, tipo, requerido }) });
+      const mod = await r.json();
+      document.getElementById('modNombre').value = '';
+      document.getElementById('modRequerido').checked = false;
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      if (p) renderModificadores(p.modificadores || []);
+      openModOpcionesModal(mod.id);
+    }
+
+    function openModOpcionesModal(modId) {
+      editingModificadorId = modId;
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      const mod = p?.modificadores?.find(m => m.id === modId);
+      if (!mod) return;
+      document.getElementById('modalModTitle').textContent = 'Opciones: ' + mod.nombre;
+      document.getElementById('modalModDesc').textContent = 'Agrega opciones para este modificador';
+      renderOpciones(mod.opciones || []);
+      document.getElementById('modalModOpciones').classList.add('active');
+    }
+
+    function renderOpciones(opcs) {
+      const el = document.getElementById('modalOpcionesList');
+      if (!opcs.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin opciones</p>'; return; }
+      el.innerHTML = opcs.map(o => `
+        <div class="sub-item">
+          <span><strong>${o.nombre}</strong> ${o.precio_adicional > 0 ? '+$' + o.precio_adicional.toFixed(2) : ''}</span>
+          <div class="actions">
+            <button class="del" onclick="deleteOpcion(${o.id})">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addOpcion() {
+      if (!editingModificadorId) return;
+      const nombre = document.getElementById('opcNombre').value;
+      const precio = parseFloat(document.getElementById('opcPrecio').value) || 0;
+      if (!nombre) return;
+      await fetch('/api/admin/opciones-mod', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ modificador_id: editingModificadorId, nombre, precio_adicional: precio }) });
+      document.getElementById('opcNombre').value = '';
+      document.getElementById('opcPrecio').value = '';
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      const mod = p?.modificadores?.find(m => m.id === editingModificadorId);
+      if (mod) renderOpciones(mod.opciones || []);
+    }
+
+    async function deleteOpcion(id) {
+      await fetch('/api/admin/opciones-mod/' + id, { method: 'DELETE' });
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      const mod = p?.modificadores?.find(m => m.id === editingModificadorId);
+      if (mod) renderOpciones(mod.opciones || []);
+    }
+
+    // ---- AGREGADOS ----
+    function renderAgregados(agrs) {
+      const el = document.getElementById('agregadosList');
+      if (!agrs.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin agregados</p>'; return; }
+      el.innerHTML = agrs.map(a => `
+        <div class="sub-item">
+          <span><strong>${a.nombre}</strong> — $${a.precio.toFixed(2)} (máx: ${a.maximo})</span>
+          <div class="actions">
+            <button class="del" onclick="deleteAgregado(${a.id})">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addAgregado() {
+      if (!editingProductoId) return alert('Guarda el producto primero');
+      const nombre = document.getElementById('agrNombre').value;
+      const precio = parseFloat(document.getElementById('agrPrecio').value);
+      if (!nombre || !precio) return;
+      await fetch('/api/admin/agregados', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ producto_id: editingProductoId, nombre, precio }) });
+      document.getElementById('agrNombre').value = '';
+      document.getElementById('agrPrecio').value = '';
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      if (p) renderAgregados(p.agregados || []);
+    }
+
+    async function deleteAgregado(id) {
+      await fetch('/api/admin/agregados/' + id, { method: 'DELETE' });
+      await loadProductos();
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      if (p) renderAgregados(p.agregados || []);
+    }
+
+    // ---- REPORTES ----
+    async function loadReportes() {
+      const el = document.getElementById('reporteContent');
+      try {
+        const r1 = await fetch('/api/admin/pedidos/reporte');
+        const data = await r1.json();
+        const r2 = await fetch('/api/admin/pedidos/reporte/detalle');
+        const detalle = await r2.json();
+        let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+            <div style="font-size:0.8rem;color:#64748b;">Ventas hoy</div>
+            <div style="font-size:1.8rem;font-weight:800;color:#059669;">$${(data.totalVentas || 0).toFixed(2)}</div>
+          </div>
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+            <div style="font-size:0.8rem;color:#64748b;">Pedidos hoy</div>
+            <div style="font-size:1.8rem;font-weight:800;">${data.cantidad || 0}</div>
+          </div>
+        </div>`;
+        if (detalle.length) {
+          h += '<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>';
+          for (const d of detalle) {
+            h += `<tr><td>${d.producto_nombre}</td><td>${d.total_vendido}</td><td>$${(d.total_ingresos || 0).toFixed(2)}</td></tr>`;
+          }
+          h += '</tbody></table></div>';
+        } else {
+          h += '<p class="empty-state">Sin ventas hoy</p>';
+        }
+        el.innerHTML = h;
+      } catch (e) { el.innerHTML = '<p class="empty-state">Error al cargar reportes</p>'; }
+    }
+
+    // ---- HELPERS ----
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    function toggleSection(id) {
+      const el = document.getElementById(id);
+      const toggle = document.getElementById('toggle' + id.charAt(0).toUpperCase() + id.slice(1));
+      if (el.style.display === 'none') { el.style.display = 'block'; toggle.textContent = '▼'; }
+      else { el.style.display = 'none'; toggle.textContent = '▶'; }
+    }
+    function closeAllModals() {
+      document.querySelectorAll('.modal-overlay.admin-modal').forEach(m => m.classList.remove('active'));
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAllModals();
+    });
+
+    // ---- INIT ----
+    (async function() {
+      await loadCategorias();
+      await loadProductos();
+      renderCategorias();
+    })();
+  </script>
+</body>
+</html>
