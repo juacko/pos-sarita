@@ -23,11 +23,22 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS areas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'SALON' CHECK(tipo IN ('SALON','DELIVERY','PARA_LLEVAR')),
+    orden INTEGER DEFAULT 0,
+    activo INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS mesas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     numero INTEGER NOT NULL UNIQUE,
     nombre TEXT,
     capacidad INTEGER DEFAULT 4,
+    area_id INTEGER,
+    es_virtual INTEGER DEFAULT 0,
     estado TEXT NOT NULL DEFAULT 'LIBRE'
       CHECK(estado IN ('LIBRE','OCUPADO','RESERVADO','CERRANDO','INACTIVO')),
     mesero_id INTEGER,
@@ -36,7 +47,8 @@ db.exec(`
     ocupado_desde DATETIME,
     version INTEGER DEFAULT 1,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (mesero_id) REFERENCES usuarios(id)
+    FOREIGN KEY (mesero_id) REFERENCES usuarios(id),
+    FOREIGN KEY (area_id) REFERENCES areas(id)
   );
 
   CREATE TABLE IF NOT EXISTS categorias (
@@ -108,6 +120,10 @@ db.exec(`
       CHECK(estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO','CERRADO','CANCELADO')),
     total REAL DEFAULT 0,
     nota TEXT,
+    cliente_nombre TEXT,
+    cliente_telefono TEXT,
+    cliente_direccion TEXT,
+    hora_recogida TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (mesa_id) REFERENCES mesas(id),
@@ -138,9 +154,62 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pedido_id INTEGER NOT NULL,
     monto REAL NOT NULL,
-    metodo TEXT NOT NULL CHECK(metodo IN ('efectivo','tarjeta','transferencia','otros')),
+    metodo TEXT NOT NULL CHECK(metodo IN ('efectivo','tarjeta','transferencia','otros','regalo','vale')),
+    propina REAL DEFAULT 0,
+    referencia TEXT,
+    notas TEXT,
+    usuario_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS descuentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id INTEGER NOT NULL,
+    tipo TEXT NOT NULL CHECK(tipo IN ('porcentaje','monto_fijo')),
+    valor REAL NOT NULL,
+    motivo TEXT NOT NULL,
+    usuario_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS vales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    codigo TEXT UNIQUE NOT NULL,
+    monto_inicial REAL NOT NULL,
+    monto_restante REAL NOT NULL,
+    cliente_nombre TEXT,
+    activo INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS caja_sesiones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    fondo_inicial REAL NOT NULL DEFAULT 0,
+    efectivo_contado REAL,
+    estado TEXT NOT NULL DEFAULT 'ABIERTA' CHECK(estado IN ('ABIERTA','CERRADA')),
+    notas_apertura TEXT,
+    notas_cierre TEXT,
+    opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS caja_movimientos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo TEXT NOT NULL CHECK(tipo IN ('INGRESO','EGRESO')),
+    concepto TEXT NOT NULL,
+    monto REAL NOT NULL,
+    metodo_pago TEXT NOT NULL CHECK(metodo_pago IN ('efectivo','yape','plin','tarjeta','transferencia')),
+    persona TEXT,
+    usuario_id INTEGER,
+    notas TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
   );
 
   CREATE TABLE IF NOT EXISTS logs_mesas (
@@ -168,6 +237,21 @@ function migrateColumns() {
   const cCols = db.prepare("SELECT name FROM pragma_table_info('categorias')").all().map(c => c.name);
   if (!cCols.includes('activo')) db.exec("ALTER TABLE categorias ADD COLUMN activo INTEGER DEFAULT 1");
   if (!cCols.includes('created_at')) db.exec("ALTER TABLE categorias ADD COLUMN created_at DATETIME");
+
+  const pgCols = db.prepare("SELECT name FROM pragma_table_info('pagos')").all().map(c => c.name);
+  if (!pgCols.includes('propina')) db.exec("ALTER TABLE pagos ADD COLUMN propina REAL DEFAULT 0");
+  if (!pgCols.includes('referencia')) db.exec("ALTER TABLE pagos ADD COLUMN referencia TEXT");
+  if (!pgCols.includes('notas')) db.exec("ALTER TABLE pagos ADD COLUMN notas TEXT");
+  if (!pgCols.includes('usuario_id')) db.exec("ALTER TABLE pagos ADD COLUMN usuario_id INTEGER");
+
+  const mCols = db.prepare("SELECT name FROM pragma_table_info('mesas')").all().map(c => c.name);
+  if (!mCols.includes('area_id')) db.exec("ALTER TABLE mesas ADD COLUMN area_id INTEGER");
+  if (!mCols.includes('es_virtual')) db.exec("ALTER TABLE mesas ADD COLUMN es_virtual INTEGER DEFAULT 0");
+  const pedCols = db.prepare("SELECT name FROM pragma_table_info('pedidos')").all().map(c => c.name);
+  if (!pedCols.includes('cliente_nombre')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_nombre TEXT");
+  if (!pedCols.includes('cliente_telefono')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_telefono TEXT");
+  if (!pedCols.includes('cliente_direccion')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_direccion TEXT");
+  if (!pedCols.includes('hora_recogida')) db.exec("ALTER TABLE pedidos ADD COLUMN hora_recogida TEXT");
 }
 migrateColumns();
 
@@ -192,104 +276,54 @@ const insertInitialData = db.transaction(() => {
     for (const m of mesas) insert.run(...m);
   }
 
+  // Áreas (Salón / Terraza configurables + canales Delivery / Para Llevar)
+  const areaCount = db.prepare('SELECT COUNT(*) as c FROM areas').get();
+  if (areaCount.c === 0) {
+    const insertArea = db.prepare('INSERT INTO areas (nombre, tipo, orden) VALUES (?, ?, ?)');
+    insertArea.run('Salón Principal', 'SALON', 1);
+    insertArea.run('Terraza', 'SALON', 2);
+    insertArea.run('Delivery', 'DELIVERY', 3);
+    insertArea.run('Para Llevar', 'PARA_LLEVAR', 4);
+  }
+
+  // Asignar mesas sin área al primer Salón
+  const salonArea = db.prepare("SELECT id FROM areas WHERE tipo = 'SALON' ORDER BY orden ASC LIMIT 1").get();
+  if (salonArea) {
+    db.prepare('UPDATE mesas SET area_id = ? WHERE area_id IS NULL AND es_virtual = 0').run(salonArea.id);
+  }
+
+  // Asegurar una mesa virtual por canal
+  function ensureVirtualMesa(tipo, nombre, baseNum) {
+    const area = db.prepare('SELECT id FROM areas WHERE tipo = ?').get(tipo);
+    if (!area) return;
+    const existe = db.prepare('SELECT id FROM mesas WHERE es_virtual = 1 AND area_id = ?').get(area.id);
+    if (existe) return;
+    const maxNum = db.prepare('SELECT COALESCE(MAX(numero), ?) as n FROM mesas WHERE es_virtual = 1').get(baseNum);
+    db.prepare("INSERT INTO mesas (numero, nombre, estado, es_virtual, area_id) VALUES (?, ?, 'LIBRE', 1, ?)")
+      .run(maxNum.n + 1, nombre, area.id);
+  }
+  ensureVirtualMesa('DELIVERY', 'Delivery', 899);
+  ensureVirtualMesa('PARA_LLEVAR', 'Para Llevar', 949);
+
   const insertCat = (nombre, color) => {
     if (!db.prepare('SELECT id FROM categorias WHERE nombre = ?').get(nombre)) {
       db.prepare('INSERT INTO categorias (nombre, color) VALUES (?, ?)').run(nombre, color);
     }
   };
-  insertCat('Bebidas', '#3B82F6');
-  insertCat('Platillos', '#10B981');
-  insertCat('Postres', '#F59E0B');
-  insertCat('Botanas', '#EF4444');
-  insertCat('Cafetería', '#8B5CF6');
-  insertCat('Cervezas', '#F97316');
 
   function getId(table, nameCol, nameVal) {
     const r = db.prepare(`SELECT id FROM ${table} WHERE ${nameCol} = ?`).get(nameVal);
     return r ? r.id : null;
   }
 
-  const prodCount = db.prepare('SELECT COUNT(*) as c FROM productos').get();
-  if (prodCount.c === 0) {
-    const cat = (n) => getId('categorias', 'nombre', n);
-    const ins = db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id) VALUES (?, ?, ?, ?)');
-    ins.run('Hamburguesa Clásica', 'Carne 150g, lechuga, tomate, cebolla, aderezo', 89, cat('Platillos'));
-    ins.run('Hamburguesa Doble', 'Doble carne 300g, queso, tocino, lechuga, tomate', 129, cat('Platillos'));
-    ins.run('Alitas BBQ', '6 piezas con salsa BBQ ahumada', 99, cat('Botanas'));
-    ins.run('Papas Fritas', 'Papas crujientes con sal de mar', 49, cat('Botanas'));
-    ins.run('Refresco de Cola', 'Refresco de cola 355ml', 25, cat('Bebidas'));
-    ins.run('Limonada Natural', 'Limonada fresca con hierbabuena', 35, cat('Bebidas'));
-    ins.run('Pay de Queso', 'Rebanada de pay de queso con caramelo', 55, cat('Postres'));
-    ins.run('Brownie con Helado', 'Brownie de chocolate con helado de vainilla', 65, cat('Postres'));
-    ins.run('Café Americano', 'Café americano recién hecho', 30, cat('Cafetería'));
-    ins.run('Café Latte', 'Café latte con leche vaporizada', 40, cat('Cafetería'));
-    ins.run('Cerveza Clara', 'Cerveza clara 355ml', 40, cat('Cervezas'));
-    ins.run('Cerveza Oscura', 'Cerveza oscura artesanal 355ml', 50, cat('Cervezas'));
-  }
+  // Seed de productos desactivado — usar seed-carta.js
 
-  const varCount = db.prepare('SELECT COUNT(*) as c FROM variantes').get();
-  if (varCount.c === 0) {
-    const ins = db.prepare('INSERT INTO variantes (producto_id, nombre, precio_adicional) VALUES (?, ?, ?)');
-    const p1 = getId('productos', 'nombre', 'Hamburguesa Clásica');
-    const p2 = getId('productos', 'nombre', 'Hamburguesa Doble');
-    const p5 = getId('productos', 'nombre', 'Refresco de Cola');
-    const p6 = getId('productos', 'nombre', 'Limonada Natural');
-    const p11 = getId('productos', 'nombre', 'Cerveza Clara');
-    if (p1) { ins.run(p1, 'Sencilla', 0); ins.run(p1, 'Con Queso', 15); ins.run(p1, 'Con Tocino', 20); }
-    if (p2) { ins.run(p2, 'Sencilla', 0); ins.run(p2, 'Con Queso', 15); }
-    if (p5) { ins.run(p5, 'Vaso Chico', 0); ins.run(p5, 'Vaso Grande', 10); }
-    if (p6) { ins.run(p6, 'Vaso Chico', 0); ins.run(p6, 'Vaso Grande', 10); }
-    if (p11) { ins.run(p11, 'Botella', 0); ins.run(p11, 'Caguama', 20); }
-  }
-
-  const modCount = db.prepare('SELECT COUNT(*) as c FROM modificadores').get();
-  if (modCount.c === 0) {
-    const ins = db.prepare('INSERT INTO modificadores (producto_id, nombre, tipo, requerido, max_opciones) VALUES (?, ?, ?, ?, ?)');
-    const p1 = getId('productos', 'nombre', 'Hamburguesa Clásica');
-    const p2 = getId('productos', 'nombre', 'Hamburguesa Doble');
-    const p6 = getId('productos', 'nombre', 'Limonada Natural');
-    const p3 = getId('productos', 'nombre', 'Alitas BBQ');
-    if (p1) { ins.run(p1, 'Término de la carne', 'select', 1, 1); ins.run(p1, 'Ingredientes extra', 'multi', 0, 3); }
-    if (p2) ins.run(p2, 'Término de la carne', 'select', 1, 1);
-    if (p6) ins.run(p6, 'Tipo de endulzante', 'select', 0, 1);
-    if (p3) ins.run(p3, 'Tipo de salsa', 'select', 1, 1);
-  }
-
-  const opcCount = db.prepare('SELECT COUNT(*) as c FROM opciones_mod').get();
-  if (opcCount.c === 0) {
-    const ins = db.prepare('INSERT INTO opciones_mod (modificador_id, nombre, precio_adicional) VALUES (?, ?, ?)');
-    const modTermino = db.prepare("SELECT id FROM modificadores WHERE nombre = 'Término de la carne' LIMIT 1").get();
-    const modIngredientes = db.prepare("SELECT id FROM modificadores WHERE nombre = 'Ingredientes extra' LIMIT 1").get();
-    const modEndulzante = db.prepare("SELECT id FROM modificadores WHERE nombre = 'Tipo de endulzante' LIMIT 1").get();
-    const modSalsa = db.prepare("SELECT id FROM modificadores WHERE nombre = 'Tipo de salsa' LIMIT 1").get();
-    if (modTermino) {
-      ins.run(modTermino.id, 'Término medio', 0); ins.run(modTermino.id, 'Tres cuartos', 0); ins.run(modTermino.id, 'Bien cocido', 0);
-    }
-    if (modIngredientes) {
-      ins.run(modIngredientes.id, 'Queso extra', 15); ins.run(modIngredientes.id, 'Tocino', 20);
-      ins.run(modIngredientes.id, 'Aguacate', 18); ins.run(modIngredientes.id, 'Huevo', 10);
-    }
-    if (modEndulzante) {
-      ins.run(modEndulzante.id, 'Azúcar', 0); ins.run(modEndulzante.id, 'Splenda', 0); ins.run(modEndulzante.id, 'Miel', 5);
-    }
-    if (modSalsa) {
-      ins.run(modSalsa.id, 'BBQ', 0); ins.run(modSalsa.id, 'Buffalo', 0); ins.run(modSalsa.id, 'Mango Habanero', 0);
-    }
-  }
-
-  const agrCount = db.prepare('SELECT COUNT(*) as c FROM agregados').get();
-  if (agrCount.c === 0) {
-    const ins = db.prepare('INSERT INTO agregados (producto_id, nombre, precio, maximo) VALUES (?, ?, ?, ?)');
-    const p3 = getId('productos', 'nombre', 'Alitas BBQ');
-    const p4 = getId('productos', 'nombre', 'Papas Fritas');
-    const p7 = getId('productos', 'nombre', 'Pay de Queso');
-    const p8 = getId('productos', 'nombre', 'Brownie con Helado');
-    const p9 = getId('productos', 'nombre', 'Café Americano');
-    if (p3) ins.run(p3, 'Aderezo extra', 10, 3);
-    if (p4) { ins.run(p4, 'Queso derretido', 15, 2); ins.run(p4, 'Chile en polvo', 0, 2); }
-    if (p7) ins.run(p7, 'Crema extra', 10, 2);
-    if (p8) ins.run(p8, 'Helado extra', 20, 2);
-    if (p9) ins.run(p9, 'Leche de almendras', 10, 1);
+  const valeCount = db.prepare('SELECT COUNT(*) as c FROM vales').get();
+  if (valeCount.c === 0) {
+    const ins = db.prepare('INSERT INTO vales (codigo, monto_inicial, monto_restante, cliente_nombre) VALUES (?, ?, ?, ?)');
+    ins.run('VALE-001', 500, 500, 'Cliente Frecuente');
+    ins.run('VALE-002', 250, 250, 'Empleado Sarita');
+    ins.run('VALE-TEST', 100, 100, 'Prueba');
   }
 });
 

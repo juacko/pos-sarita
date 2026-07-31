@@ -263,6 +263,62 @@
     .mesa-options .opt-btn.primary { background: #1e3a5f; color: white; border-color: #1e3a5f; }
     .mesa-options .opt-btn.danger { color: #DC2626; border-color: #FECACA; }
 
+    /* === CHANNEL CARDS (DELIVERY / PARA LLEVAR) === */
+    .canales-row-mesero {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px; padding: 12px 16px 0; max-width: 1000px; margin: 0 auto;
+    }
+    .canal-card-mesero {
+      background: white; border-radius: 16px; padding: 16px 12px;
+      text-align: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border: 2px solid #E5E7EB; border-top: 4px solid var(--canal, #3B82F6);
+      transition: all 0.15s;
+    }
+    .canal-card-mesero:active { transform: scale(0.96); }
+    .canal-card-mesero .icon { font-size: 2rem; }
+    .canal-card-mesero .label { font-weight: 700; font-size: 0.95rem; margin-top: 2px; }
+    .canal-card-mesero .badge {
+      display: inline-block; margin-top: 6px; padding: 2px 12px; border-radius: 12px;
+      font-size: 0.7rem; font-weight: 700; background: var(--canal, #3B82F6); color: white;
+    }
+    .canal-card-mesero .sub { font-size: 0.68rem; color: #6B7280; margin-top: 6px; }
+
+    /* === AREA FILTER === */
+    .area-filter-mesero {
+      display: flex; gap: 8px; padding: 12px 16px 0; max-width: 1000px;
+      margin: 0 auto; overflow-x: auto; flex-wrap: wrap;
+    }
+    .area-chip-mesero {
+      padding: 6px 16px; border-radius: 20px; border: 1.5px solid #D1D5DB;
+      background: white; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+      white-space: nowrap; transition: all 0.15s;
+    }
+    .area-chip-mesero.active { background: #1e3a5f; color: white; border-color: #1e3a5f; }
+
+    .area-header-mesero {
+      grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; font-weight: 800; color: #374151; text-transform: uppercase;
+      letter-spacing: 0.03em; padding: 8px 4px 0; margin-top: 8px;
+    }
+    .area-header-mesero::after { content: ''; flex: 1; height: 1px; background: #E5E7EB; }
+    .area-header-mesero .count {
+      background: #F3F4F6; color: #6B7280; border-radius: 10px; padding: 0 8px; font-size: 0.68rem;
+    }
+
+    .canal-pedido-mesero {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+      border: 1px solid #E5E7EB; border-radius: 12px; margin-bottom: 8px;
+      cursor: pointer; background: white; font-size: 0.85rem;
+    }
+    .canal-pedido-mesero:active { background: #F3F4F6; }
+    .canal-pedido-mesero .det { font-size: 0.72rem; color: #6B7280; }
+
+    /* Cliente bar en POS */
+    .pos-cliente-bar {
+      background: #EFF6FF; border-bottom: 1px solid #BFDBFE;
+      padding: 8px 16px; font-size: 0.8rem; color: #1E40AF;
+    }
+
     /* Responsive */
     @media (max-width: 600px) {
       .mesas-grid-mesero { grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; }
@@ -325,6 +381,8 @@
         </span>
         <button class="btn btn-outline btn-sm" onclick="loadMesas()">🔄</button>
       </div>
+      <div id="canalesRow" class="canales-row-mesero"></div>
+      <div id="areaFilter" class="area-filter-mesero"></div>
       <div id="mesasGrid" class="mesas-grid-mesero"></div>
     </div>
 
@@ -338,6 +396,7 @@
         </div>
         <div style="width:40px;"></div>
       </div>
+      <div id="posClienteBar" class="pos-cliente-bar" style="display:none;"></div>
       <div class="pos-scroll">
         <div id="mesaOptions" class="mesa-options"></div>
         <div id="orderSection" style="display:none;">
@@ -400,6 +459,42 @@
     </div>
   </div>
 
+  <!-- CANAL MODAL (DELIVERY / PARA LLEVAR) -->
+  <div class="note-modal-overlay" id="canalModal" onclick="if(event.target===this)closeCanalModal()">
+    <div class="note-modal" style="width:360px;max-height:80vh;overflow-y:auto;">
+      <h3 id="canalModalTitle">🛵 Delivery</h3>
+      <div id="canalPedidosActivos" style="margin-bottom:12px;"></div>
+      <button class="opt-btn primary" onclick="abrirClienteFormNuevo()">🆕 Nuevo pedido</button>
+    </div>
+  </div>
+
+  <!-- CLIENTE MODAL -->
+  <div class="note-modal-overlay" id="clienteModal" onclick="if(event.target===this)closeClienteModal()">
+    <div class="note-modal">
+      <h3 id="clienteModalTitle">Datos del cliente</h3>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:0.8rem;font-weight:600;">Nombre del cliente *</label>
+        <input id="cliNombre" class="form-control" placeholder="Nombre">
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:0.8rem;font-weight:600;">Teléfono</label>
+        <input id="cliTelefono" class="form-control" placeholder="Ej: 987 654 321">
+      </div>
+      <div id="cliDireccionGroup" class="form-group" style="margin-bottom:10px;display:none;">
+        <label style="font-size:0.8rem;font-weight:600;">Dirección de entrega</label>
+        <input id="cliDireccion" class="form-control" placeholder="Calle, Nro, Referencia">
+      </div>
+      <div id="cliHoraGroup" class="form-group" style="margin-bottom:10px;display:none;">
+        <label style="font-size:0.8rem;font-weight:600;">Hora de recogida (opcional)</label>
+        <input id="cliHora" type="time" class="form-control">
+      </div>
+      <div class="note-actions" style="margin-top:8px;">
+        <button style="background:#F3F4F6;" onclick="closeClienteModal()">Cancelar</button>
+        <button style="background:#059669;color:white;" onclick="guardarCliente()">✅ Crear pedido</button>
+      </div>
+    </div>
+  </div>
+
   <!-- SUCCESS OVERLAY -->
   <div class="success-overlay" id="successOverlay">
     <div class="success-box">
@@ -421,6 +516,13 @@
     let categoriaActiva = null;
     let noteItemIndex = -1;
     let pinBuffer = '';
+    let allMesas = [];
+    let areasGlobal = [];
+    let areaFilter = null;
+    let pedidoCliente = null;
+    let canalModalTipo = null;
+    let clienteModalTipo = null;
+    let clienteModalAccion = null;
 
     // ---- SOCKET ----
     const socket = io();
@@ -465,17 +567,273 @@
 
     // ---- APP ----
     async function initApp() {
-      await Promise.all([loadMesas(), loadCategorias(), loadProductos()]);
+      await Promise.all([loadMesas(), loadCategorias(), loadProductos(), loadAreas()]);
     }
 
     async function loadMesas() {
       try {
         const res = await fetch('/api/mesas');
-        const mesas = await res.json();
-        renderMesas(mesas);
-        document.getElementById('mesasCount').textContent = mesas.length;
-        document.getElementById('ocupadasCount').textContent = mesas.filter(m => m.estado === 'OCUPADO' || m.estado === 'CERRANDO').length;
+        allMesas = await res.json();
+        renderCanales(allMesas);
+        renderMesas(allMesas);
+        document.getElementById('mesasCount').textContent = allMesas.filter(m => !m.es_virtual).length;
+        document.getElementById('ocupadasCount').textContent = allMesas.filter(m => (m.estado === 'OCUPADO' || m.estado === 'CERRANDO') && !m.es_virtual).length;
       } catch (e) { console.error(e); }
+    }
+
+    async function loadAreas() {
+      try {
+        const r = await fetch('/api/mesas/areas');
+        areasGlobal = await r.json();
+        renderAreaFilter();
+      } catch (e) { console.error(e); }
+    }
+
+    function renderAreaFilter() {
+      const el = document.getElementById('areaFilter');
+      if (!el) return;
+      const salones = areasGlobal.filter(a => a.tipo === 'SALON' && a.activo);
+      const chip = (label, id) => {
+        const b = document.createElement('button');
+        b.className = `area-chip-mesero${areaFilter === id ? ' active' : ''}`;
+        b.textContent = label;
+        b.onclick = () => { areaFilter = id; renderAreaFilter(); renderMesas(allMesas); };
+        return b;
+      };
+      el.innerHTML = '';
+      el.appendChild(chip('Todas', null));
+      for (const a of salones) el.appendChild(chip(a.nombre, a.id));
+    }
+
+    function renderCanales(mesas) {
+      const el = document.getElementById('canalesRow');
+      if (!el) return;
+      const tipos = [
+        { tipo: 'DELIVERY', icono: '🛵', label: 'Delivery', color: '#3B82F6', sub: 'A domicilio' },
+        { tipo: 'PARA_LLEVAR', icono: '🥡', label: 'Para Llevar', color: '#F59E0B', sub: 'Para recoger' }
+      ];
+      el.innerHTML = '';
+      for (const t of tipos) {
+        const hayArea = areasGlobal.some(a => a.tipo === t.tipo && a.activo);
+        if (!hayArea) continue;
+        const activas = mesas.filter(m => m.es_virtual && m.area_tipo === t.tipo && m.pedido_activo_id).length;
+        const card = document.createElement('div');
+        card.className = 'canal-card-mesero';
+        card.style.setProperty('--canal', t.color);
+        card.innerHTML = `
+          <div class="icon">${t.icono}</div>
+          <div class="label">${t.label}</div>
+          <div class="badge">${activas} activo${activas !== 1 ? 's' : ''}</div>
+          <div class="sub">Nuevo pedido ${t.sub}</div>
+        `;
+        card.onclick = () => openCanalModal(t.tipo);
+        el.appendChild(card);
+      }
+    }
+
+    function renderMesas(mesas) {
+      const grid = document.getElementById('mesasGrid');
+      grid.innerHTML = '';
+
+      const fisicas = mesas.filter(m => !m.es_virtual);
+      let filtered = areaFilter ? fisicas.filter(m => m.area_id === areaFilter) : fisicas;
+
+      if (!filtered.length) {
+        grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;padding:24px;color:#6B7280;">No hay mesas en esta área</p>';
+        return;
+      }
+
+      const grupos = {};
+      for (const m of filtered) {
+        const key = m.area_id || 'sin';
+        if (!grupos[key]) grupos[key] = { nombre: m.area_nombre || 'Sin área', mesas: [] };
+        grupos[key].mesas.push(m);
+      }
+
+      for (const key of Object.keys(grupos)) {
+        const g = grupos[key];
+        const header = document.createElement('div');
+        header.className = 'area-header-mesero';
+        header.innerHTML = `${g.nombre} <span class="count">${g.mesas.length}</span>`;
+        grid.appendChild(header);
+
+        for (const m of g.mesas) {
+          const card = document.createElement('div');
+          card.className = `mesa-card-mesero ${m.estado}`;
+          card.dataset.id = m.id;
+          card.innerHTML = `
+            <div class="num">${m.numero}</div>
+            <div class="status">${m.estado}</div>
+            ${m.mesero_nombre ? `<div class="mesero-name">${m.mesero_nombre}</div>` : ''}
+          `;
+          card.addEventListener('click', () => abrirPOS(m));
+          grid.appendChild(card);
+        }
+      }
+    }
+
+    // ---- CANALES / CLIENTE ----
+    async function openCanalModal(tipo) {
+      canalModalTipo = tipo;
+      const esDelivery = tipo === 'DELIVERY';
+      document.getElementById('canalModalTitle').textContent = esDelivery ? '🛵 Delivery' : '🥡 Para Llevar';
+      document.getElementById('canalPedidosActivos').innerHTML = '<p style="color:#6B7280;font-size:0.8rem;">Cargando pedidos...</p>';
+      document.getElementById('canalModal').classList.add('active');
+
+      try {
+        const res = await fetch(`/api/pedidos/activos?tipo=${tipo}`);
+        const pedidos = await res.json();
+        renderPedidosActivos(pedidos);
+      } catch (e) {
+        document.getElementById('canalPedidosActivos').innerHTML = '<p style="color:#DC2626;font-size:0.8rem;">Error al cargar</p>';
+      }
+    }
+
+    function renderPedidosActivos(pedidos) {
+      const el = document.getElementById('canalPedidosActivos');
+      if (!pedidos || !pedidos.length) { el.innerHTML = ''; return; }
+      el.innerHTML = `
+        <p style="font-size:0.85rem;font-weight:700;margin-bottom:8px;">📋 Pedidos activos (${pedidos.length})</p>
+        ${pedidos.map(p => {
+          const total = (p.items || []).reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+          const itemsCount = (p.items || []).reduce((s, i) => s + i.cantidad, 0);
+          return `<div class="canal-pedido-mesero" onclick="abrirPedidoActivo(${p.mesa_id})">
+            <div style="flex:1;">
+              <div>#${p.id} — <strong>${p.cliente_nombre || 'Cliente'}</strong> <span style="font-size:0.65rem;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:10px;">${p.estado}</span></div>
+              <div class="det">${itemsCount} item(s) · $${total.toFixed(2)}${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}</div>
+            </div>
+            <span>Abrir →</span>
+          </div>`;
+        }).join('')}
+      `;
+    }
+
+    async function abrirPedidoActivo(mesaId) {
+      closeCanalModal();
+      try {
+        const res = await fetch(`/api/mesas/${mesaId}`);
+        const mesa = await res.json();
+        if (mesa.es_virtual && mesa.pedido_activo_id) {
+          const pr = await fetch(`/api/pedidos/${mesa.pedido_activo_id}`);
+          const pedido = await pr.json();
+          pedidoCliente = {
+            nombre: pedido.cliente_nombre || '', telefono: pedido.cliente_telefono || '',
+            direccion: pedido.cliente_direccion || '', hora: pedido.hora_recogida || '',
+            tipo: mesa.area_tipo
+          };
+        }
+        abrirPOS(mesa);
+        loadMesas();
+      } catch (e) { alert('Error'); }
+    }
+
+    function closeCanalModal() {
+      document.getElementById('canalModal').classList.remove('active');
+      canalModalTipo = null;
+    }
+
+    function abrirClienteFormNuevo() {
+      closeCanalModal();
+      abrirClienteForm(canalModalTipo, 'nuevo', null);
+    }
+
+    function abrirClienteForm(tipo, accion, data) {
+      clienteModalTipo = tipo;
+      clienteModalAccion = accion;
+      const esDelivery = tipo === 'DELIVERY';
+      document.getElementById('clienteModalTitle').textContent =
+        accion === 'editar' ? '✏️ Editar datos del cliente'
+        : esDelivery ? '🛵 Nuevo pedido Delivery' : '🥡 Nuevo pedido Para Llevar';
+      document.getElementById('cliDireccionGroup').style.display = esDelivery ? 'block' : 'none';
+      document.getElementById('cliHoraGroup').style.display = esDelivery ? 'none' : 'block';
+      document.getElementById('cliNombre').value = data?.nombre || '';
+      document.getElementById('cliTelefono').value = data?.telefono || '';
+      document.getElementById('cliDireccion').value = data?.direccion || '';
+      document.getElementById('cliHora').value = data?.hora || '';
+      document.getElementById('clienteModal').classList.add('active');
+    }
+
+    async function guardarCliente() {
+      const nombre = document.getElementById('cliNombre').value.trim();
+      if (!nombre) { alert('Ingresa el nombre del cliente'); return; }
+      const telefono = document.getElementById('cliTelefono').value.trim();
+      const direccion = document.getElementById('cliDireccion').value.trim();
+      const hora = document.getElementById('cliHora').value;
+
+      if (clienteModalAccion === 'nuevo') {
+        let mesa = allMesas.find(m => m.es_virtual && m.area_tipo === clienteModalTipo && m.estado === 'LIBRE' && !m.pedido_activo_id);
+        if (!mesa) {
+          try {
+            const res = await fetch('/api/mesas/virtual', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tipo: clienteModalTipo })
+            });
+            if (!res.ok) { alert('Error al crear mesa virtual'); return; }
+            mesa = await res.json();
+          } catch (e) { alert('Error de conexión'); return; }
+        }
+
+        pedidoCliente = {
+          nombre, telefono,
+          direccion: clienteModalTipo === 'DELIVERY' ? direccion : '',
+          hora: clienteModalTipo === 'PARA_LLEVAR' ? hora : '',
+          tipo: clienteModalTipo
+        };
+
+        closeClienteModal();
+        abrirPOS(mesa);
+      } else {
+        pedidoCliente = {
+          nombre, telefono,
+          direccion: clienteModalTipo === 'DELIVERY' ? direccion : '',
+          hora: clienteModalTipo === 'PARA_LLEVAR' ? hora : '',
+          tipo: clienteModalTipo
+        };
+        const pedidoId = posMesaData?.pedido_activo_id;
+        if (pedidoId) {
+          try {
+            await fetch(`/api/pedidos/${pedidoId}/cliente`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cliente_nombre: nombre, cliente_telefono: telefono,
+                cliente_direccion: clienteModalTipo === 'DELIVERY' ? direccion : '',
+                hora_recogida: clienteModalTipo === 'PARA_LLEVAR' ? hora : ''
+              })
+            });
+          } catch (e) { console.error(e); }
+        }
+        closeClienteModal();
+        renderPosClienteBar();
+      }
+    }
+
+    function closeClienteModal() {
+      document.getElementById('clienteModal').classList.remove('active');
+      clienteModalTipo = null;
+      clienteModalAccion = null;
+    }
+
+    function renderPosClienteBar() {
+      const bar = document.getElementById('posClienteBar');
+      if (!bar) return;
+      const isVirtual = posMesaData && posMesaData.es_virtual;
+      if (!isVirtual) { bar.style.display = 'none'; return; }
+      bar.style.display = 'block';
+      if (pedidoCliente && pedidoCliente.nombre) {
+        const tipo = pedidoCliente.tipo === 'DELIVERY' ? '🛵 Delivery' : '🥡 Para Llevar';
+        let txt = `${tipo} · <strong>${pedidoCliente.nombre}</strong>`;
+        if (pedidoCliente.telefono) txt += ` · 📞 ${pedidoCliente.telefono}`;
+        if (pedidoCliente.direccion) txt += ` · 📍 ${pedidoCliente.direccion}`;
+        if (pedidoCliente.hora) txt += ` · 🕐 ${pedidoCliente.hora}`;
+        bar.innerHTML = txt + ` <button style="border:1px solid #93C5FD;background:white;color:#1E40AF;border-radius:8px;padding:2px 8px;font-size:0.75rem;cursor:pointer;" onclick="editarCliente()">✏️ Editar</button>`;
+      } else {
+        bar.innerHTML = '🧑‍🤝‍🧑 Sin datos de cliente <button style="border:1px solid #93C5FD;background:white;color:#1E40AF;border-radius:8px;padding:2px 8px;font-size:0.75rem;cursor:pointer;" onclick="editarCliente()">✏️ Ingresar</button>';
+      }
+    }
+
+    function editarCliente() {
+      const tipo = posMesaData?.area_tipo === 'DELIVERY' ? 'DELIVERY' : 'PARA_LLEVAR';
+      abrirClienteForm(tipo, 'editar', pedidoCliente);
     }
 
     async function loadCategorias() {
@@ -484,23 +842,6 @@
 
     async function loadProductos() {
       try { const r = await fetch('/api/productos'); productos = await r.json(); } catch (e) {}
-    }
-
-    function renderMesas(mesas) {
-      const grid = document.getElementById('mesasGrid');
-      grid.innerHTML = '';
-      for (const m of mesas) {
-        const card = document.createElement('div');
-        card.className = `mesa-card-mesero ${m.estado}`;
-        card.dataset.id = m.id;
-        card.innerHTML = `
-          <div class="num">${m.numero}</div>
-          <div class="status">${m.estado}</div>
-          ${m.mesero_nombre ? `<div class="mesero-name">${m.mesero_nombre}</div>` : ''}
-        `;
-        card.addEventListener('click', () => abrirPOS(m));
-        grid.appendChild(card);
-      }
     }
 
     // ---- POS FLOW ----
@@ -512,6 +853,7 @@
       document.getElementById('posView').style.display = 'flex';
       document.getElementById('posTableName').textContent = mesa.nombre || `Mesa ${mesa.numero}`;
       document.getElementById('posTableStatus').textContent = mesa.estado + (mesa.mesero_nombre ? ` · ${mesa.mesero_nombre}` : '');
+      renderPosClienteBar();
 
       const optionsEl = document.getElementById('mesaOptions');
       const orderSection = document.getElementById('orderSection');
@@ -575,6 +917,7 @@
       document.getElementById('orderSection').style.display = 'none';
       document.getElementById('cartBar').style.display = 'none';
       pedidoItems = [];
+      pedidoCliente = null;
       closeCartModal();
       loadMesas();
     }
@@ -915,7 +1258,11 @@
             mesa_id: posMesaId,
             mesero_id: currentUser?.id || null,
             items: pedidoItems,
-            nota: null
+            nota: null,
+            cliente_nombre: pedidoCliente?.nombre || null,
+            cliente_telefono: pedidoCliente?.telefono || null,
+            cliente_direccion: (pedidoCliente?.tipo === 'DELIVERY' ? pedidoCliente?.direccion : null) || null,
+            hora_recogida: (pedidoCliente?.tipo === 'PARA_LLEVAR' ? pedidoCliente?.hora : null) || null
           })
         });
 

@@ -8,11 +8,148 @@ function createMesasRouter(io) {
   router.get('/', (req, res) => {
     try {
       const mesas = db.prepare(`
-        SELECT m.*, 
-          (SELECT COUNT(*) FROM pedidos WHERE mesa_id = m.id AND estado IN ('ABIERTO','EN_PREPARACION','LISTO')) as tiene_pedido_activo
-        FROM mesas m ORDER BY m.numero
+    SELECT m.*, a.nombre as area_nombre, a.tipo as area_tipo, a.orden as area_orden,
+          (SELECT COUNT(*) FROM pedidos WHERE mesa_id = m.id AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')) as tiene_pedido_activo,
+          CASE WHEN EXISTS (
+            SELECT 1 FROM pedidos p
+            WHERE p.mesa_id = m.id AND p.estado = 'CERRADO'
+            AND (SELECT COALESCE(SUM(pg.monto), 0) FROM pagos pg WHERE pg.pedido_id = p.id) >= p.total - 0.01
+            AND p.id = m.pedido_activo_id
+          ) THEN 1 ELSE 0 END as pedido_pagado,
+          (SELECT CASE 
+            WHEN EXISTS (
+              SELECT 1 FROM pedidos p
+              WHERE p.mesa_id = m.id AND p.estado = 'CERRADO'
+              AND (SELECT COALESCE(SUM(pg.monto), 0) FROM pagos pg WHERE pg.pedido_id = p.id) >= p.total - 0.01
+            ) THEN 'PAGADO'
+            ELSE m.estado
+          END) as estado_ejefe
+          FROM mesas m LEFT JOIN areas a ON a.id = m.area_id
+          ORDER BY COALESCE(a.orden, 99), a.id, m.numero
       `).all();
       res.json(mesas);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── ÁREAS ───
+  router.get('/areas', (req, res) => {
+    try {
+      const areas = db.prepare(`
+        SELECT a.*,
+          (SELECT COUNT(*) FROM mesas m WHERE m.area_id = a.id AND m.es_virtual = 0) as mesas_total,
+          (SELECT COUNT(*) FROM mesas m WHERE m.area_id = a.id AND m.es_virtual = 1) as virtuales_total
+        FROM areas a ORDER BY a.orden ASC
+      `).all();
+      res.json(areas);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/areas', (req, res) => {
+    try {
+      const { nombre, tipo, orden } = req.body;
+      const tiposValidos = ['SALON', 'DELIVERY', 'PARA_LLEVAR'];
+      if (!nombre || !nombre.trim()) return res.status(400).json({ error: 'Nombre del área es requerido' });
+      if (!tiposValidos.includes(tipo)) return res.status(400).json({ error: 'Tipo inválido' });
+
+      const ordenF = orden != null ? orden : db.prepare('SELECT COALESCE(MAX(orden), 0) + 1 as n FROM areas').get().n;
+      const r = db.prepare('INSERT INTO areas (nombre, tipo, orden) VALUES (?, ?, ?)').run(nombre.trim(), tipo, ordenF);
+      res.status(201).json(db.prepare('SELECT * FROM areas WHERE id = ?').get(r.lastInsertRowid));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/areas/:id', (req, res) => {
+    try {
+      const { nombre, tipo, orden, activo } = req.body;
+      const area = db.prepare('SELECT * FROM areas WHERE id = ?').get(req.params.id);
+      if (!area) return res.status(404).json({ error: 'Área no encontrada' });
+
+      const tiposValidos = ['SALON', 'DELIVERY', 'PARA_LLEVAR'];
+      if (nombre !== undefined && !nombre.trim()) return res.status(400).json({ error: 'Nombre del área es requerido' });
+      if (tipo !== undefined && !tiposValidos.includes(tipo)) return res.status(400).json({ error: 'Tipo inválido' });
+      if (activo !== undefined && area.tipo === 'SALON' && !activo) {
+        const otrosSalones = db.prepare("SELECT COUNT(*) as c FROM areas WHERE tipo = 'SALON' AND id != ? AND activo = 1").get(area.id).c;
+        if (otrosSalones === 0) return res.status(409).json({ error: 'Debe existir al menos un área de Salón activa' });
+      }
+
+      db.prepare('UPDATE areas SET nombre = ?, tipo = ?, orden = ?, activo = ? WHERE id = ?')
+        .run(
+          nombre?.trim() || area.nombre,
+          tipo || area.tipo,
+          orden != null ? orden : area.orden,
+          activo !== undefined ? (activo ? 1 : 0) : area.activo,
+          area.id
+        );
+      res.json(db.prepare('SELECT * FROM areas WHERE id = ?').get(area.id));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/areas/:id', (req, res) => {
+    try {
+      const area = db.prepare('SELECT * FROM areas WHERE id = ?').get(req.params.id);
+      if (!area) return res.status(404).json({ error: 'Área no encontrada' });
+
+      const otrosSalones = db.prepare("SELECT COUNT(*) as c FROM areas WHERE tipo = 'SALON' AND id != ?").get(area.id).c;
+      if (area.tipo === 'SALON' && otrosSalones === 0) {
+        return res.status(409).json({ error: 'Debe existir al menos un área de Salón' });
+      }
+
+      // Reasignar mesas a otro salón
+      const destino = db.prepare("SELECT id FROM areas WHERE id != ? AND tipo = 'SALON' ORDER BY orden ASC LIMIT 1").get(area.id);
+      if (destino) {
+        db.prepare('UPDATE mesas SET area_id = ? WHERE area_id = ?').run(destino.id, area.id);
+      } else {
+        db.prepare('UPDATE mesas SET area_id = NULL WHERE area_id = ?').run(area.id);
+      }
+
+      db.prepare('DELETE FROM areas WHERE id = ?').run(area.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/virtual', (req, res) => {
+    try {
+      const { tipo } = req.body;
+      if (!['DELIVERY', 'PARA_LLEVAR'].includes(tipo)) {
+        return res.status(400).json({ error: 'Tipo inválido (DELIVERY o PARA_LLEVAR)' });
+      }
+      const area = db.prepare('SELECT id FROM areas WHERE tipo = ?').get(tipo);
+      if (!area) return res.status(404).json({ error: `No existe área de tipo ${tipo}` });
+
+      const base = tipo === 'DELIVERY' ? 899 : 949;
+      const maxNum = db.prepare('SELECT COALESCE(MAX(numero), ?) as n FROM mesas WHERE es_virtual = 1').get(base);
+      const nombre = tipo === 'DELIVERY' ? 'Delivery' : 'Para Llevar';
+      const r = db.prepare("INSERT INTO mesas (numero, nombre, estado, es_virtual, area_id) VALUES (?, ?, 'LIBRE', 1, ?)")
+        .run(maxNum.n + 1, nombre, area.id);
+      res.status(201).json(db.prepare('SELECT * FROM mesas WHERE id = ?').get(r.lastInsertRowid));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/:id/area', (req, res) => {
+    try {
+      const { area_id } = req.body;
+      const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(req.params.id);
+      if (!mesa) return res.status(404).json({ error: 'Mesa no encontrada' });
+      if (mesa.es_virtual) return res.status(409).json({ error: 'Las mesas virtuales no cambian de área' });
+
+      const area = db.prepare("SELECT * FROM areas WHERE id = ? AND tipo = 'SALON'").get(area_id);
+      if (!area) return res.status(400).json({ error: 'Área de salón inválida' });
+
+      db.prepare('UPDATE mesas SET area_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(area_id, mesa.id);
+      const mesaUpdated = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesa.id);
+      io.emit('mesa:updated', mesaUpdated);
+      res.json(mesaUpdated);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

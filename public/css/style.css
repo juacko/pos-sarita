@@ -130,6 +130,22 @@ body {
   color: white;
 }
 
+.mesa-card.PAGADO {
+  border-color: #8B5CF6;
+}
+
+.mesa-card.PAGADO .mesa-status {
+  background: #8B5CF6;
+  color: white;
+}
+
+.mesa-pagado-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 0.9rem;
+}
+
 .mesa-card.INACTIVO {
   opacity: 0.5;
   border-color: var(--gray);
@@ -160,6 +176,158 @@ body {
   font-size: 0.65rem;
   color: var(--gray);
   margin-top: 4px;
+}
+
+/* CANALES (DELIVERY / PARA LLEVAR) */
+.canales-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 16px 24px 0;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.canal-card {
+  background: linear-gradient(135deg, var(--white) 0%, #F8FAFC 100%);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  border: 2px solid var(--gray-light);
+  border-top: 4px solid var(--canal, var(--blue));
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.canal-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.canal-card:active {
+  transform: translateY(0);
+}
+
+.canal-icon {
+  font-size: 2.2rem;
+  margin-bottom: 4px;
+}
+
+.canal-label {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--gray-dark);
+}
+
+.canal-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--canal, var(--blue));
+  color: white;
+}
+
+.canal-sub {
+  font-size: 0.72rem;
+  color: var(--gray);
+  margin-top: 6px;
+}
+
+.canal-pedido {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: white;
+  transition: background 0.15s;
+}
+
+.canal-pedido:hover {
+  background: #F1F5F9;
+}
+
+.canal-pedido .cliente {
+  font-size: 0.85rem;
+}
+
+.canal-pedido .detalle {
+  font-size: 0.72rem;
+  color: var(--gray);
+}
+
+/* FILTRO DE ÁREAS */
+.area-filter {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px 0;
+  max-width: 1400px;
+  margin: 0 auto;
+  overflow-x: auto;
+  flex-wrap: wrap;
+}
+
+.area-chip {
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1.5px solid var(--gray-light);
+  background: var(--white);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gray-dark);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.area-chip:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.area-chip.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: white;
+}
+
+/* ENCABEZADO DE ÁREA EN LA GRILLA */
+.area-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--gray-dark);
+  padding: 8px 4px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 8px;
+}
+
+.area-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray-light);
+}
+
+.area-header .area-count {
+  background: var(--gray-light);
+  color: var(--gray);
+  border-radius: 10px;
+  padding: 0 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 
 /* MODAL */

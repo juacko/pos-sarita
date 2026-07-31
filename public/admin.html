@@ -83,6 +83,50 @@
       .admin-sidebar a::first-letter { font-size: 1rem; }
       .form-row { grid-template-columns: 1fr; }
     }
+    .caja-tab {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #64748b;
+      transition: all 0.2s;
+    }
+    .caja-tab:hover { background: rgba(255,255,255,0.5); }
+    .caja-tab-active {
+      background: white !important;
+      color: #1E293B;
+      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .caja-timeline-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 16px;
+      background: white;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      align-items: flex-start;
+      transition: transform 0.1s;
+    }
+    .caja-timeline-item:hover { transform: translateX(2px); }
+    .caja-timeline-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+      font-weight: 700;
+    }
+    .caja-timeline-body { flex: 1; min-width: 0; }
+    .caja-timeline-meta { font-size: 0.75rem; color: #94A3B8; }
   </style>
 </head>
 <body>
@@ -99,6 +143,8 @@
       <a class="active" onclick="showSection('productos')">📦 Productos</a>
       <a onclick="showSection('categorias')">🏷️ Categorías</a>
       <a onclick="showSection('reportes')">📊 Reportes</a>
+      <a onclick="showSection('caja')">💰 Caja</a>
+      <a onclick="showSection('areas')">🗺️ Áreas y Mesas</a>
     </nav>
 
     <div class="admin-content">
@@ -125,6 +171,108 @@
       <div id="sec-reportes" class="section" style="display:none;">
         <h2>📊 Reporte de ventas</h2>
         <div id="reporteContent"><p class="empty-state">Cargando...</p></div>
+      </div>
+
+      <!-- CAJA -->
+      <div id="sec-caja" class="section" style="display:none;">
+        <div class="toolbar">
+          <h2 style="margin:0;flex:1;">💰 Caja</h2>
+          <input type="date" id="cajaFecha" class="search-input" onchange="loadCaja()">
+          <button class="btn btn-outline btn-sm" onclick="loadCaja()">🔄 Actualizar</button>
+          <button class="btn btn-outline btn-sm" onclick="imprimirMovimientos()">🖨️ Imprimir movimientos</button>
+        </div>
+
+        <!-- Sub-tabs -->
+        <div style="display:flex;gap:4px;margin-bottom:16px;background:#F1F5F9;border-radius:10px;padding:4px;">
+          <button id="cajaTabFlujo" class="caja-tab caja-tab-active" onclick="switchCajaTab('flujo')">📊 Flujo de Caja</button>
+          <button id="cajaTabMovimientos" class="caja-tab" onclick="switchCajaTab('movimientos')">🔄 Movimientos</button>
+          <button id="cajaTabCierre" class="caja-tab" onclick="switchCajaTab('cierre')">🔒 Cierre</button>
+        </div>
+
+        <!-- TAB: FLUJO -->
+        <div id="cajaFlujo" class="caja-panel">
+          <div id="cajaSesionBarFlujo"></div>
+          <div id="cajaFlujoResumen" style="margin-bottom:16px;"></div>
+          <div id="cajaFlujoDesglose" style="margin-bottom:16px;"></div>
+          <div id="cajaFlujoTimeline"></div>
+        </div>
+
+        <!-- TAB: MOVIMIENTOS -->
+        <div id="cajaMovimientos" class="caja-panel" style="display:none;">
+          <div id="movResumen" style="margin-bottom:16px;"></div>
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <h3 style="font-size:0.95rem;margin-bottom:12px;color:#334155;">Registrar movimiento</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div class="form-group">
+                <label>Tipo</label>
+                <select id="movTipo" class="form-control">
+                  <option value="INGRESO">➕ Ingreso</option>
+                  <option value="EGRESO">➖ Egreso</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Método de pago</label>
+                <select id="movMetodo" class="form-control">
+                  <option value="efectivo">💵 Efectivo</option>
+                  <option value="yape">📱 Yape</option>
+                  <option value="plin">📱 Plin</option>
+                  <option value="tarjeta">💳 Tarjeta</option>
+                  <option value="transferencia">🏦 Transferencia</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Monto ($)</label>
+                <input id="movMonto" type="number" step="0.01" min="0.01" class="form-control" placeholder="0.00">
+              </div>
+              <div class="form-group">
+                <label>De quién / Para quién</label>
+                <input id="movPersona" class="form-control" placeholder="Nombre de la persona">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Concepto / Motivo (requerido)</label>
+              <input id="movConcepto" class="form-control" placeholder="Ej: Pago a proveedor, Compra de insumos, Cobro extra...">
+            </div>
+            <div class="form-group">
+              <label>Notas adicionales</label>
+              <input id="movNotas" class="form-control" placeholder="Opcional">
+            </div>
+            <div style="margin-top:12px;">
+              <button class="btn btn-primary" onclick="registrarMovimiento()">💾 Registrar movimiento</button>
+            </div>
+          </div>
+          <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden;">
+            <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;">
+              <h3 style="font-size:0.95rem;margin:0;color:#334155;">Historial de movimientos</h3>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-outline btn-sm" onclick="filtrarMovimientos('')" id="movFiltroTodos" style="font-weight:700;">Todos</button>
+                <button class="btn btn-outline btn-sm" onclick="filtrarMovimientos('INGRESO')" id="movFiltroIngresos">Ingresos</button>
+                <button class="btn btn-outline btn-sm" onclick="filtrarMovimientos('EGRESO')" id="movFiltroEgresos">Egresos</button>
+              </div>
+            </div>
+            <div id="movHistorial"><p class="empty-state">Cargando...</p></div>
+          </div>
+        </div>
+
+        <!-- TAB: CIERRE -->
+        <div id="cajaCierre" class="caja-panel" style="display:none;">
+          <div id="corteSesionBar"></div>
+          <div id="corteContent"><p class="empty-state">Cargando...</p></div>
+        </div>
+      </div>
+
+      <!-- AREAS Y MESAS -->
+      <div id="sec-areas" class="section" style="display:none;">
+        <div class="toolbar">
+          <h2 style="margin:0;flex:1;">🗺️ Áreas y Mesas</h2>
+          <button class="btn btn-primary btn-sm" onclick="openAreaModal()">+ Nueva área</button>
+        </div>
+
+        <div style="margin-bottom:16px;padding:12px 16px;background:#FFF7ED;border:1px solid #FDBA74;border-radius:10px;font-size:0.85rem;color:#9A3412;">
+          💡 Las áreas tipo <strong>Salón</strong> agrupan mesas físicas. Las áreas tipo <strong>Delivery</strong> y <strong>Para Llevar</strong> crean tarjetas de canal en la pantalla de mesas y mesas virtuales automáticas.
+        </div>
+
+        <div id="areasWrap"><p class="empty-state">Cargando...</p></div>
       </div>
     </div>
   </div>
@@ -242,12 +390,64 @@
     </div>
   </div>
 
+  <!-- MODAL CIERRE DE CAJA -->
+  <div class="modal-overlay admin-modal" id="modalCierreCaja" onclick="if(event.target===this)closeModal('modalCierreCaja')">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h2>💰 Cierre de Caja</h2>
+        <button class="modal-close" onclick="closeModal('modalCierreCaja')">&times;</button>
+      </div>
+      <div class="modal-body" id="cierreCajaBody">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalCierreCaja')">Cerrar</button>
+        <button class="btn btn-success" onclick="confirmarCierreCaja()">✅ Confirmar cierre</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL AREA -->
+  <div class="modal-overlay admin-modal" id="modalArea" onclick="if(event.target===this)closeModal('modalArea')">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h2 id="modalAreaTitle">Nueva área</h2>
+        <button class="modal-close" onclick="closeModal('modalArea')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group"><label>Nombre</label><input id="areaNombre" class="form-control" placeholder="Ej: Salón Principal, Terraza"></div>
+        <div class="form-group"><label>Tipo</label>
+          <select id="areaTipo" class="form-control">
+            <option value="SALON">🪑 Salón</option>
+            <option value="DELIVERY">🛵 Delivery</option>
+            <option value="PARA_LLEVAR">🥡 Para Llevar</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Orden</label><input id="areaOrden" type="number" class="form-control" placeholder="Auto" style="width:120px;"></div>
+        <p id="areaError" style="color:#DC2626;font-size:0.8rem;margin:8px 0 0;display:none;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalArea')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveArea()">Guardar área</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let editingProductoId = null;
     let editingCategoriaId = null;
     let editingModificadorId = null;
+    let editingAreaId = null;
     let categorias = [];
     let productosCompleto = [];
+    let areasData = [];
+    let mesasData = [];
+    let currentUser = null;
+
+    // Load user from localStorage
+    try {
+      const saved = localStorage.getItem('posUser');
+      if (saved) currentUser = JSON.parse(saved);
+    } catch (e) {}
 
     // ---- NAV ----
     function showSection(s) {
@@ -258,9 +458,180 @@
       if (s === 'productos') loadProductos();
       if (s === 'categorias') loadCategorias();
       if (s === 'reportes') loadReportes();
+      if (s === 'caja') loadCaja();
+      if (s === 'areas') loadAreasAdmin();
     }
 
-    // ---- LOAD ----
+    // ---- CAJA SUB-TABS ----
+    let cajaTabActual = 'flujo';
+    function switchCajaTab(tab) {
+      cajaTabActual = tab;
+      document.querySelectorAll('.caja-tab').forEach(el => el.classList.remove('caja-tab-active'));
+      document.querySelectorAll('.caja-panel').forEach(el => el.style.display = 'none');
+      document.getElementById('cajaTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('caja-tab-active');
+      const panelId = tab === 'flujo' ? 'cajaFlujo' : tab === 'movimientos' ? 'cajaMovimientos' : 'cajaCierre';
+      document.getElementById(panelId).style.display = 'block';
+    }
+
+    async function loadCaja() {
+      const fecha = document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+      if (cajaTabActual === 'flujo') {
+        loadCajaFlujo(fecha);
+      } else if (cajaTabActual === 'movimientos') {
+        loadMovimientos(fecha);
+      } else {
+        loadCorteCaja(fecha);
+      }
+    }
+
+    async function loadCajaFlujo(fecha) {
+      fecha = fecha || document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+      try {
+        const res = await fetch('/api/admin/caja/flujo?fecha=' + fecha);
+        const data = await res.json();
+        renderCajaFlujoBar(data.sesion);
+        renderCajaFlujoResumen(data);
+        renderCajaFlujoDesglose(data);
+        renderCajaFlujoTimeline(data);
+      } catch (e) {
+        document.getElementById('cajaFlujoTimeline').innerHTML = '<p class="empty-state">Error al cargar flujo de caja</p>';
+      }
+    }
+
+    function renderCajaFlujoBar(sesion) {
+      const el = document.getElementById('cajaSesionBarFlujo');
+      if (sesion) {
+        const apertura = new Date(sesion.opened_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        el.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:1.2rem;">✅</span>
+            <div>
+              <div style="font-weight:700;color:#059669;font-size:0.95rem;">Caja abierta</div>
+              <div style="font-size:0.8rem;color:#64748b;">Fondo: $${(sesion.fondo_inicial || 0).toFixed(2)} — ${sesion.usuario_nombre || 'N/A'} — ${apertura}</div>
+            </div>
+          </div>
+          <button class="btn btn-sm" style="background:#DC2626;color:white;" onclick="cerrarCaja()">Cerrar caja</button>
+        </div>`;
+      } else {
+        el.innerHTML = `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:1.2rem;">⚠️</span>
+            <span style="font-weight:600;color:#92400E;">No hay sesión de caja abierta</span>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="abrirCaja()">Abrir caja</button>
+        </div>`;
+      }
+    }
+
+    function renderCajaFlujoResumen(data) {
+      const el = document.getElementById('cajaFlujoResumen');
+      const sesion = data.sesion;
+      const fondo = sesion ? (sesion.fondo_inicial || 0) : 0;
+      const pagosTotal = data.desglose ? Object.values(data.desglose).reduce((s, d) => s + (d.total || 0), 0) : 0;
+      const propina = data.total_propina || 0;
+      const movIng = data.movimientos_totales?.ingresos || 0;
+      const movEgr = data.movimientos_totales?.egresos || 0;
+      const saldoMov = movIng - movEgr;
+      const totalGeneral = data.total_general || 0;
+
+      const cards = [
+        { label: 'Fondo inicial', value: `$${fondo.toFixed(2)}`, color: '#64748B', icon: '🏦' },
+        { label: 'Total cobrado', value: `$${totalGeneral.toFixed(2)}`, color: '#059669', icon: '💰' },
+      ];
+      if (propina > 0) cards.push({ label: 'Propinas', value: `$${propina.toFixed(2)}`, color: '#F97316', icon: '💡' });
+      cards.push({ label: 'Movimientos', value: `${movIng >= 0 ? '+' : ''}$${movIng.toFixed(2)} / -${movEgr.toFixed(2)}`, color: '#3B82F6', icon: '🔄' });
+      if (data.descuentos?.total > 0) cards.push({ label: 'Descuentos', value: `${data.descuentos.total}`, color: '#DC2626', icon: '🏷️' });
+      if (data.vales_usados?.total > 0) cards.push({ label: 'Vales usados', value: `${data.vales_usados.total}`, color: '#F59E0B', icon: '🎫' });
+      if (data.regalos?.total > 0) cards.push({ label: 'Regalos', value: `${data.regalos.total}`, color: '#EC4899', icon: '🎁' });
+
+      let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">';
+      for (const c of cards) {
+        h += `<div style="background:white;padding:14px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${c.color};">
+          <div style="font-size:0.7rem;color:#94A3B8;display:flex;align-items:center;gap:4px;">${c.icon} ${c.label}</div>
+          <div style="font-size:1.2rem;font-weight:800;color:${c.color};margin-top:2px;">${c.value}</div>
+        </div>`;
+      }
+      h += '</div>';
+      el.innerHTML = h;
+    }
+
+    function renderCajaFlujoDesglose(data) {
+      const el = document.getElementById('cajaFlujoDesglose');
+      const metodos = [
+        { key: 'efectivo', label: '💵 Efectivo', color: '#059669' },
+        { key: 'tarjeta', label: '💳 Tarjeta', color: '#3B82F6' },
+        { key: 'transferencia', label: '📱 Transferencia', color: '#8B5CF6' },
+        { key: 'yape', label: '📱 Yape', color: '#7C3AED' },
+        { key: 'plin', label: '📱 Plin', color: '#2563EB' },
+        { key: 'otros', label: '📋 Otros', color: '#6B7280' },
+        { key: 'vale', label: '🎫 Vales', color: '#F59E0B' },
+        { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
+      ];
+      let hasData = false;
+      let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">';
+      for (const m of metodos) {
+        const d = data.desglose?.[m.key];
+        if (!d || d.cantidad === 0) continue;
+        hasData = true;
+        h += `<div style="background:white;padding:10px 14px;border-radius:8px;border-left:3px solid ${m.color};font-size:0.85rem;">
+          <div style="font-weight:600;color:${m.color};">${m.label}</div>
+          <div style="font-size:1.05rem;font-weight:800;">$${d.total.toFixed(2)}</div>
+          <div style="font-size:0.7rem;color:#94A3B8;">${d.cantidad} pago(s)</div>
+        </div>`;
+      }
+      h += '</div>';
+      el.innerHTML = hasData ? h : '';
+    }
+
+    function renderCajaFlujoTimeline(data) {
+      const el = document.getElementById('cajaFlujoTimeline');
+      const eventos = data.eventos || [];
+      if (!eventos.length) {
+        el.innerHTML = '<p class="empty-state">Sin actividad de caja hoy</p>';
+        return;
+      }
+      const tipoConfig = {
+        APERTURA: { icon: '🏦', color: '#64748B', bg: '#F1F5F9', label: 'Apertura' },
+        PAGO: { icon: '💵', color: '#059669', bg: '#ECFDF5', label: 'Pago' },
+        INGRESO: { icon: '📈', color: '#059669', bg: '#ECFDF5', label: 'Ingreso' },
+        EGRESO: { icon: '📉', color: '#DC2626', bg: '#FEF2F2', label: 'Egreso' },
+        CIERRE: { icon: '🔒', color: '#64748B', bg: '#F1F5F9', label: 'Cierre' }
+      };
+      const metodoIcons = { efectivo: '💵', tarjeta: '💳', transferencia: '🏦', yape: '📱', plin: '📱', otros: '📋', vale: '🎫', regalo: '🎁' };
+
+      let h = `<div style="font-size:0.8rem;font-weight:600;color:#64748b;margin-bottom:8px;padding-left:4px;">Timeline de actividad — ${eventos.length} evento(s)</div>`;
+      for (const ev of eventos) {
+        const cfg = tipoConfig[ev.tipo] || tipoConfig.PAGO;
+        const hora = new Date(ev.hora).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const montoColor = ev.tipo === 'EGRESO' ? '#DC2626' : '#059669';
+        const montoPrefix = ev.tipo === 'EGRESO' ? '-' : '+';
+        const metodoIcon = metodoIcons[ev.metodo] || '📋';
+        let extra = '';
+        if (ev.propina > 0) extra += `<span style="color:#F97316;font-size:0.7rem;margin-left:4px;">+propina $${ev.propina.toFixed(2)}</span>`;
+        if (ev.referencia) extra += `<span style="color:#94A3B8;font-size:0.7rem;margin-left:4px;">Ref: ${ev.referencia}</span>`;
+        if (ev.notas) extra += `<span style="color:#94A3B8;font-size:0.7rem;margin-left:4px;">📝 ${ev.notas}</span>`;
+
+        h += `<div class="caja-timeline-item">
+          <div class="caja-timeline-icon" style="background:${cfg.bg};color:${cfg.color};">${cfg.icon}</div>
+          <div class="caja-timeline-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <span style="font-weight:600;font-size:0.85rem;">${cfg.label}</span>
+                <span style="font-size:0.8rem;color:#64748b;margin-left:6px;">${ev.concepto}</span>
+                ${extra}
+              </div>
+              <div style="text-align:right;">
+                <div style="font-weight:800;color:${montoColor};font-size:0.95rem;">${ev.tipo !== 'APERTURA' && ev.tipo !== 'CIERRE' ? montoPrefix + '$' + ev.monto.toFixed(2) : '$' + ev.monto.toFixed(2)}</div>
+                <div class="caja-timeline-meta">${hora} — ${metodoIcon} ${ev.metodo} — ${ev.persona || ''}</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }
+      el.innerHTML = h;
+    }
+
+    // ---- CORTE DE CAJA (Cierre tab) ----
     async function loadCategorias() {
       const r = await fetch('/api/admin/categorias');
       categorias = await r.json();
@@ -558,31 +929,620 @@
     async function loadReportes() {
       const el = document.getElementById('reporteContent');
       try {
-        const r1 = await fetch('/api/admin/pedidos/reporte');
+        const fecha = document.getElementById('corteFecha')?.value || new Date().toISOString().split('T')[0];
+        const r1 = await fetch('/api/admin/pedidos/reporte?fecha=' + fecha);
         const data = await r1.json();
-        const r2 = await fetch('/api/admin/pedidos/reporte/detalle');
+        const r2 = await fetch('/api/admin/pedidos/reporte/detalle?fecha=' + fecha);
         const detalle = await r2.json();
         let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-            <div style="font-size:0.8rem;color:#64748b;">Ventas hoy</div>
+            <div style="font-size:0.8rem;color:#64748b;">Ventas</div>
             <div style="font-size:1.8rem;font-weight:800;color:#059669;">$${(data.totalVentas || 0).toFixed(2)}</div>
           </div>
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-            <div style="font-size:0.8rem;color:#64748b;">Pedidos hoy</div>
+            <div style="font-size:0.8rem;color:#64748b;">Pedidos</div>
             <div style="font-size:1.8rem;font-weight:800;">${data.cantidad || 0}</div>
           </div>
         </div>`;
+        if (data.pedidos && data.pedidos.length) {
+          h += '<div class="table-wrap"><table><thead><tr><th>#</th><th>Mesa</th><th>Hora</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead><tbody>';
+          for (const p of data.pedidos) {
+            const badgeClass = p.estado === 'CERRADO' ? 'badge-green' : p.estado === 'CANCELADO' ? 'badge-red' : 'badge-blue';
+            h += `<tr>
+              <td>${p.id}</td>
+              <td>${p.mesa_nombre}</td>
+              <td>${new Date(p.created_at + 'Z').toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'})}</td>
+              <td><strong>$${(p.total || 0).toFixed(2)}</strong></td>
+              <td><span class="badge ${badgeClass}">${p.estado}</span></td>
+              <td><button class="btn btn-outline btn-sm" onclick="reimprimirPedidoAdmin(${p.id})">🖨️</button></td>
+            </tr>`;
+          }
+          h += '</tbody></table></div>';
+        } else {
+          h += '<p class="empty-state">Sin pedidos en esta fecha</p>';
+        }
         if (detalle.length) {
+          h += '<h3 style="margin:24px 0 12px;font-size:1rem;">Detalle por producto</h3>';
           h += '<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>';
           for (const d of detalle) {
             h += `<tr><td>${d.producto_nombre}</td><td>${d.total_vendido}</td><td>$${(d.total_ingresos || 0).toFixed(2)}</td></tr>`;
           }
           h += '</tbody></table></div>';
-        } else {
-          h += '<p class="empty-state">Sin ventas hoy</p>';
         }
         el.innerHTML = h;
       } catch (e) { el.innerHTML = '<p class="empty-state">Error al cargar reportes</p>'; }
+    }
+
+    async function reimprimirPedidoAdmin(pedidoId) {
+      try {
+        const res = await fetch('/api/pedidos/' + pedidoId + '/reimprimir', { method: 'POST' });
+        const data = await res.json();
+        alert(data.ok ? 'Ticket reimpreso' : 'Error al reimprimir: ' + (data.reason || ''));
+      } catch (e) { alert('Error de conexión'); }
+    }
+
+    // ---- CORTE DE CAJA (Cierre tab) ----
+    async function loadCorteCaja(fecha) {
+      fecha = fecha || document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+      const el = document.getElementById('corteContent');
+      const barEl = document.getElementById('corteSesionBar');
+      try {
+        const res = await fetch('/api/admin/corte-caja?fecha=' + fecha);
+        const data = await res.json();
+
+        // Sesion bar
+        if (data.sesion) {
+          const s = data.sesion;
+          const apertura = new Date(s.opened_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+          barEl.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <span style="font-weight:600;color:#059669;">✅ Caja abierta</span>
+              <span style="font-size:0.8rem;color:#6B7280;margin-left:12px;">Fondo: $${(s.fondo_inicial || 0).toFixed(2)} — Abierta por: ${s.usuario_nombre || 'N/A'} a las ${apertura}</span>
+            </div>
+            <button class="btn btn-sm" style="background:#DC2626;color:white;" onclick="cerrarCaja()">Cerrar caja</button>
+          </div>`;
+        } else {
+          barEl.innerHTML = `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:600;color:#92400E;">⚠️ No hay sesión de caja abierta</span>
+            <button class="btn btn-sm btn-primary" onclick="abrirCaja()">Abrir caja</button>
+          </div>`;
+        }
+
+        const metodos = [
+          { key: 'efectivo', label: '💵 Efectivo', color: '#059669' },
+          { key: 'tarjeta', label: '💳 Tarjeta', color: '#3B82F6' },
+          { key: 'transferencia', label: '📱 Transferencia', color: '#8B5CF6' },
+          { key: 'otros', label: '📋 Otros', color: '#6B7280' },
+          { key: 'vale', label: '🎫 Vales', color: '#F59E0B' },
+          { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
+        ];
+
+        let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;">`;
+        for (const m of metodos) {
+          const d = data.desglose[m.key] || { cantidad: 0, total: 0 };
+          if (d.cantidad === 0) continue;
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid ${m.color};">
+            <div style="font-size:0.75rem;color:#64748b;">${m.label}</div>
+            <div style="font-size:1.4rem;font-weight:800;color:${m.color};">$${d.total.toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">${d.cantidad} pago(s)</div>
+          </div>`;
+        }
+        h += `</div>`;
+
+        // Propina total
+        if (data.total_propina > 0) {
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;border-left:4px solid #F97316;">
+            <div style="font-size:0.75rem;color:#64748b;">💡 Propinas totales</div>
+            <div style="font-size:1.4rem;font-weight:800;color:#F97316;">$${data.total_propina.toFixed(2)}</div>
+          </div>`;
+        }
+
+        h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
+            <div style="font-size:0.8rem;color:#64748b;">TOTAL COBRADO</div>
+            <div style="font-size:2rem;font-weight:800;color:#059669;">$${data.total_general.toFixed(2)}</div>
+          </div>
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
+            <div style="font-size:0.8rem;color:#64748b;">PEDIDOS CERRADOS</div>
+            <div style="font-size:2rem;font-weight:800;">${data.total_pedidos}</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">Suma pedidos: $${data.suma_pedidos.toFixed(2)}</div>
+          </div>
+        </div>`;
+
+        // Descuentos y vales
+        if (data.descuentos && data.descuentos.total > 0) {
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🏷️ Descuentos aplicados</div>
+            <div style="display:flex;gap:16px;font-size:0.85rem;">
+              <span>Total descuentos: <strong style="color:#DC2626;">${data.descuentos.total}</strong></span>
+              <span>Monto fijo: <strong>$${(data.descuentos.monto_fijo || 0).toFixed(2)}</strong></span>
+            </div>
+          </div>`;
+        }
+        if (data.vales_usados && data.vales_usados.total > 0) {
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🎫 Vales utilizados</div>
+            <div style="font-size:0.85rem;">${data.vales_usados.total} vale(s) — Total: <strong>$${data.vales_usados.suma.toFixed(2)}</strong></div>
+          </div>`;
+        }
+        if (data.regalos && data.regalos.total > 0) {
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🎁 Regalos/Obsequios</div>
+            <div style="font-size:0.85rem;">${data.regalos.total} regalo(s) — Total: <strong>$${data.regalos.suma.toFixed(2)}</strong></div>
+          </div>`;
+        }
+
+        const diff = data.suma_pedidos - data.total_general;
+        if (Math.abs(diff) > 0.01) {
+          h += `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.85rem;">
+            ⚠️ Diferencia: $${diff.toFixed(2)} (suma pedidos vs suma pagos)
+          </div>`;
+        }
+
+        el.innerHTML = h;
+      } catch (e) {
+        el.innerHTML = '<p class="empty-state">Error al cargar corte de caja</p>';
+      }
+    }
+
+    async function abrirCaja() {
+      const fondo = prompt('Fondo inicial de caja ($):', '500');
+      if (fondo === null) return;
+      try {
+        const res = await fetch('/api/admin/caja/abrir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario_id: 1, fondo_inicial: parseFloat(fondo) || 0 })
+        });
+        if (res.ok) {
+          showToast('Caja abierta', 'success');
+          loadCaja();
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function cerrarCaja() {
+      try {
+        const fecha = document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+        const res = await fetch('/api/admin/corte-caja?fecha=' + fecha);
+        const data = await res.json();
+        const sesion = data.sesion;
+        if (!sesion) return showToast('No hay sesión de caja abierta', 'warning');
+
+        const fondo = sesion.fondo_inicial || 0;
+        const pagosEfectivo = data.desglose.efectivo?.total || 0;
+        let ingresosEfectivo = 0, egresosEfectivo = 0;
+        const movimientos = data.movimientos || [];
+        const movsEfectivo = movimientos.filter(m => m.metodo_pago === 'efectivo');
+        for (const mv of movsEfectivo) {
+          if (mv.tipo === 'INGRESO') ingresosEfectivo += mv.monto;
+          else egresosEfectivo += mv.monto;
+        }
+        const esperado = fondo + pagosEfectivo + ingresosEfectivo - egresosEfectivo;
+
+        const body = document.getElementById('cierreCajaBody');
+
+        let html = `
+          <div style="text-align:center;margin-bottom:20px;">
+            <div style="font-size:0.8rem;color:#64748b;">Efectivo esperado en caja</div>
+            <div style="font-size:2.2rem;font-weight:800;color:#059669;">$${esperado.toFixed(2)}</div>
+          </div>
+
+          <div style="background:#F0FDF4;border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:0.8rem;font-weight:600;color:#059669;margin-bottom:10px;">📐 Fórmula de cálculo</div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
+              <span>Fondo inicial</span><span style="font-weight:600;">$${fondo.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
+              <span style="color:#059669;">+ Pagos en efectivo</span><span style="font-weight:600;color:#059669;">$${pagosEfectivo.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
+              <span style="color:#059669;">+ Ingresos (movimientos)</span><span style="font-weight:600;color:#059669;">$${ingresosEfectivo.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
+              <span style="color:#DC2626;">- Egresos (movimientos)</span><span style="font-weight:600;color:#DC2626;">$${egresosEfectivo.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:0.95rem;font-weight:700;">
+              <span>= Efectivo esperado</span><span>$${esperado.toFixed(2)}</span>
+            </div>
+          </div>`;
+
+        if (movsEfectivo.length > 0) {
+          html += `<div style="margin-bottom:16px;">
+            <div style="font-size:0.8rem;font-weight:600;color:#64748b;margin-bottom:8px;">🔄 Movimientos de efectivo del día</div>`;
+          for (const mv of movsEfectivo) {
+            const hora = new Date(mv.created_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+            const color = mv.tipo === 'INGRESO' ? '#059669' : '#DC2626';
+            const prefix = mv.tipo === 'INGRESO' ? '+' : '-';
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:white;border-radius:6px;margin-bottom:4px;font-size:0.85rem;">
+              <div>
+                <span style="color:${color};font-weight:600;">${prefix}$${mv.monto.toFixed(2)}</span>
+                <span style="color:#64748b;margin-left:6px;">${mv.concepto}</span>
+                <span style="color:#9CA3AF;margin-left:4px;font-size:0.75rem;">${hora}</span>
+              </div>
+              <span style="color:#9CA3AF;font-size:0.75rem;">${mv.persona || ''}</span>
+            </div>`;
+          }
+          html += `</div>`;
+        }
+
+        html += `
+          <div class="form-group" style="margin-bottom:12px;">
+            <label style="font-weight:600;">Efectivo contado fisicamente</label>
+            <input id="cierreContado" type="number" step="0.01" min="0" class="form-control" placeholder="Ingresa el monto contado" style="font-size:1.2rem;text-align:center;font-weight:700;">
+          </div>
+          <div id="cierreResultado" style="text-align:center;padding:12px;border-radius:8px;display:none;"></div>`;
+
+        body.innerHTML = html;
+
+        // Guardar esperado para el cálculo en tiempo real
+        body.dataset.esperado = esperado;
+
+        document.getElementById('cierreContado').addEventListener('input', function() {
+          const contado = parseFloat(this.value) || 0;
+          const diff = contado - esperado;
+          const el = document.getElementById('cierreResultado');
+          if (this.value === '') { el.style.display = 'none'; return; }
+          el.style.display = 'block';
+          if (Math.abs(diff) < 0.01) {
+            el.style.background = '#ECFDF5';
+            el.style.color = '#059669';
+            el.innerHTML = `<div style="font-size:1.1rem;font-weight:700;">✅ Caja cuadrada</div>`;
+          } else {
+            el.style.background = '#FEF2F2';
+            el.style.color = '#DC2626';
+            const label = diff > 0 ? 'SOBRANTE' : 'FALTANTE';
+            el.innerHTML = `<div style="font-size:1.1rem;font-weight:700;">⚠️ ${label}: $${Math.abs(diff).toFixed(2)}</div>
+              <div style="font-size:0.8rem;margin-top:4px;">Esperado: $${esperado.toFixed(2)} | Contado: $${contado.toFixed(2)}</div>`;
+          }
+        });
+
+        document.getElementById('modalCierreCaja').classList.add('active');
+      } catch (e) {
+        showToast('Error al cargar datos de cierre', 'error');
+      }
+    }
+
+    async function confirmarCierreCaja() {
+      const contado = document.getElementById('cierreContado').value;
+      if (contado === '' || parseFloat(contado) < 0) return showToast('Ingresa el efectivo contado', 'warning');
+
+      try {
+        const res = await fetch('/api/admin/caja/cerrar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ efectivo_contado: parseFloat(contado) })
+        });
+        if (res.ok) {
+          const d = await res.json();
+          closeModal('modalCierreCaja');
+          let msg = `Caja cerrada. Esperado: $${d.efectivo_esperado.toFixed(2)} | Contado: $${d.efectivo_contado.toFixed(2)}`;
+          if (Math.abs(d.sobrante_faltante) > 0.01) {
+            msg += ` | ${d.sobrante_faltante > 0 ? 'SOBRANTE' : 'FALTANTE'}: $${Math.abs(d.sobrante_faltante).toFixed(2)}`;
+          } else {
+            msg += ' | Cuadrada ✅';
+          }
+          showToast(msg, Math.abs(d.sobrante_faltante) > 0.01 ? 'warning' : 'success');
+          loadCaja();
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    // ---- MOVIMIENTOS DE CAJA ----
+    let movimientosFilter = '';
+    let movimientosData = [];
+
+    async function loadMovimientos(fecha) {
+      fecha = fecha || document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+      try {
+        const res = await fetch('/api/admin/caja/movimientos?fecha=' + fecha);
+        movimientosData = await res.json();
+        renderMovimientosResumen();
+        renderMovimientosHistorial();
+      } catch (e) {
+        document.getElementById('movHistorial').innerHTML = '<p class="empty-state">Error al cargar movimientos</p>';
+      }
+    }
+
+    function renderMovimientosResumen() {
+      const el = document.getElementById('movResumen');
+      let totalIngresos = 0, totalEgresos = 0;
+      const porMetodo = {};
+      const metodosLabel = { efectivo: '💵 Efectivo', yape: '📱 Yape', plin: '📱 Plin', tarjeta: '💳 Tarjeta', transferencia: '🏦 Transferencia' };
+
+      for (const mv of movimientosData) {
+        if (mv.tipo === 'INGRESO') totalIngresos += mv.monto;
+        else totalEgresos += mv.monto;
+        if (!porMetodo[mv.metodo_pago]) porMetodo[mv.metodo_pago] = { ingresos: 0, egresos: 0 };
+        porMetodo[mv.metodo_pago][mv.tipo === 'INGRESO' ? 'ingresos' : 'egresos'] += mv.monto;
+      }
+      const saldo = totalIngresos - totalEgresos;
+
+      let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:12px;">
+        <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #059669;">
+          <div style="font-size:0.75rem;color:#64748b;">Total Ingresos</div>
+          <div style="font-size:1.4rem;font-weight:800;color:#059669;">+$${totalIngresos.toFixed(2)}</div>
+        </div>
+        <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #DC2626;">
+          <div style="font-size:0.75rem;color:#64748b;">Total Egresos</div>
+          <div style="font-size:1.4rem;font-weight:800;color:#DC2626;">-$${totalEgresos.toFixed(2)}</div>
+        </div>
+        <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid ${saldo >= 0 ? '#3B82F6' : '#EF4444'};">
+          <div style="font-size:0.75rem;color:#64748b;">Saldo del día</div>
+          <div style="font-size:1.4rem;font-weight:800;color:${saldo >= 0 ? '#3B82F6' : '#EF4444'};">$${saldo.toFixed(2)}</div>
+        </div>
+      </div>`;
+
+      if (Object.keys(porMetodo).length > 0) {
+        h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">`;
+        for (const [met, val] of Object.entries(porMetodo)) {
+          h += `<div style="background:white;padding:8px 12px;border-radius:8px;font-size:0.8rem;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+            <strong>${metodosLabel[met] || met}</strong>: <span style="color:#059669;">+$${val.ingresos.toFixed(2)}</span> / <span style="color:#DC2626;">-$${val.egresos.toFixed(2)}</span>
+          </div>`;
+        }
+        h += `</div>`;
+      }
+      el.innerHTML = h;
+    }
+
+    function renderMovimientosHistorial() {
+      const el = document.getElementById('movHistorial');
+      const metodosLabel = { efectivo: '💵', yape: '📱 Yape', plin: '📱 Plin', tarjeta: '💳', transferencia: '🏦' };
+
+      let filtered = movimientosData;
+      if (movimientosFilter) filtered = movimientosData.filter(m => m.tipo === movimientosFilter);
+
+      if (!filtered.length) {
+        el.innerHTML = '<p class="empty-state">Sin movimientos registrados</p>';
+        return;
+      }
+
+      let h = '<table><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Método</th><th>Persona</th><th>Registró</th><th></th></tr></thead><tbody>';
+      for (const mv of filtered) {
+        const hora = new Date(mv.created_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const tipoBadge = mv.tipo === 'INGRESO'
+          ? '<span class="badge badge-green">INGRESO</span>'
+          : '<span class="badge badge-red">EGRESO</span>';
+        const montoColor = mv.tipo === 'INGRESO' ? '#059669' : '#DC2626';
+        const montoPrefix = mv.tipo === 'INGRESO' ? '+' : '-';
+        h += `<tr>
+          <td>${hora}</td>
+          <td>${tipoBadge}</td>
+          <td>${mv.concepto}${mv.notas ? '<br><small style="color:#94a3b8;">' + mv.notas + '</small>' : ''}</td>
+          <td style="font-weight:700;color:${montoColor};">${montoPrefix}$${mv.monto.toFixed(2)}</td>
+          <td>${metodosLabel[mv.metodo_pago] || mv.metodo_pago}</td>
+          <td>${mv.persona || '-'}</td>
+          <td style="font-size:0.8rem;color:#64748b;">${mv.usuario_nombre || '-'}</td>
+          <td><button class="btn btn-outline btn-sm" style="color:#DC2626;font-size:0.75rem;" onclick="eliminarMovimiento(${mv.id})">✕</button></td>
+        </tr>`;
+      }
+      h += '</tbody></table>';
+      el.innerHTML = h;
+    }
+
+    function filtrarMovimientos(tipo) {
+      movimientosFilter = tipo;
+      document.getElementById('movFiltroTodos').style.fontWeight = tipo === '' ? '700' : '';
+      document.getElementById('movFiltroIngresos').style.fontWeight = tipo === 'INGRESO' ? '700' : '';
+      document.getElementById('movFiltroEgresos').style.fontWeight = tipo === 'EGRESO' ? '700' : '';
+      renderMovimientosHistorial();
+    }
+
+    async function registrarMovimiento() {
+      const tipo = document.getElementById('movTipo').value;
+      const metodo_pago = document.getElementById('movMetodo').value;
+      const monto = parseFloat(document.getElementById('movMonto').value);
+      const persona = document.getElementById('movPersona').value.trim();
+      const concepto = document.getElementById('movConcepto').value.trim();
+      const notas = document.getElementById('movNotas').value.trim();
+
+      if (!concepto) return showToast('El concepto es requerido', 'warning');
+      if (!monto || monto <= 0) return showToast('Ingresa un monto válido', 'warning');
+
+      try {
+        const res = await fetch('/api/admin/caja/movimientos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tipo, concepto, monto, metodo_pago, persona: persona || null, usuario_id: currentUser?.id || 1, notas: notas || null })
+        });
+        if (res.ok) {
+          showToast(`${tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'} registrado`, 'success');
+          document.getElementById('movMonto').value = '';
+          document.getElementById('movPersona').value = '';
+          document.getElementById('movConcepto').value = '';
+          document.getElementById('movNotas').value = '';
+          await loadMovimientos();
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function eliminarMovimiento(id) {
+      if (!confirm('¿Eliminar este movimiento?')) return;
+      try {
+        await fetch('/api/admin/caja/movimientos/' + id, { method: 'DELETE' });
+        showToast('Movimiento eliminado', 'success');
+        await loadMovimientos();
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function imprimirMovimientos() {
+      const fecha = document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+      try {
+        const res = await fetch('/api/admin/caja/movimientos/imprimir?fecha=' + fecha);
+        const data = await res.json();
+        showToast(data.ok ? 'Resumen impreso' : 'Error al imprimir', data.ok ? 'success' : 'warning');
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    // ---- AREAS Y MESAS ----
+    async function loadAreasAdmin() {
+      try {
+        const [areasRes, mesasRes] = await Promise.all([
+          fetch('/api/mesas/areas'),
+          fetch('/api/mesas')
+        ]);
+        areasData = await areasRes.json();
+        mesasData = await mesasRes.json();
+        renderAreasAdmin();
+      } catch (e) {
+        document.getElementById('areasWrap').innerHTML = '<p class="empty-state">Error al cargar áreas</p>';
+      }
+    }
+
+    function areaBadge(tipo) {
+      if (tipo === 'SALON') return '<span class="badge" style="background:#DBEAFE;color:#1D4ED8;">🪑 Salón</span>';
+      if (tipo === 'DELIVERY') return '<span class="badge" style="background:#E0F2FE;color:#0369A1;">🛵 Delivery</span>';
+      return '<span class="badge" style="background:#FEF3C7;color:#92400E;">🥡 Para Llevar</span>';
+    }
+
+    function renderAreasAdmin() {
+      const el = document.getElementById('areasWrap');
+      const salones = areasData.filter(a => a.tipo === 'SALON');
+      const sinArea = mesasData.filter(m => !m.es_virtual && !m.area_id);
+
+      let h = '';
+      for (const a of areasData) {
+        const mesasDeArea = mesasData.filter(m => m.area_id === a.id && !m.es_virtual);
+        const virtuales = mesasData.filter(m => m.area_id === a.id && m.es_virtual);
+
+        let chips = mesasDeArea.length
+          ? mesasDeArea.map(m => `<span style="display:inline-flex;align-items:center;gap:4px;background:#F1F5F9;border-radius:8px;padding:4px 10px;font-size:0.8rem;font-weight:600;">
+              ${m.nombre || 'Mesa ' + m.numero}
+              ${!m.tiene_pedido_activo ? `<button onclick="asignarMesa(${m.id}, ${a.id})" style="border:none;background:transparent;color:#94A3B8;cursor:pointer;font-size:0.85rem;" title="Quitar del área">✕</button>` : ''}
+            </span>`).join('')
+          : '<span style="color:#94A3B8;font-size:0.8rem;">Sin mesas</span>';
+
+        h += `<div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:18px;margin-bottom:14px;${a.activo ? '' : 'opacity:0.55;'}">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">${a.nombre} ${areaBadge(a.tipo)}</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:4px;">Orden ${a.orden} · ${mesasDeArea.length} mesas físicas · ${virtuales.length} virtuales ${a.activo ? '' : '· OCULTA'}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button class="btn btn-outline btn-sm" onclick="toggleAreaActivo(${a.id}, ${a.activo ? 0 : 1})">${a.activo ? '🙈 Ocultar' : '👁️ Mostrar'}</button>
+              <button class="btn btn-outline btn-sm" onclick="openAreaModal(${a.id})">✏️ Editar</button>
+              <button class="btn btn-outline btn-sm" style="color:#DC2626;" onclick="deleteArea(${a.id})">🗑️</button>
+            </div>
+          </div>
+          ${a.tipo === 'SALON' ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;">
+            ${chips}
+            <select class="form-control" style="width:auto;font-size:0.8rem;padding:4px 8px;height:32px;" onchange="if(this.value)asignarMesa(this.value, ${a.id});this.value='';">
+              <option value="">+ Mover mesa aquí</option>
+              ${mesasData.filter(m => !m.es_virtual && (m.area_id !== a.id)).map(m => `<option value="${m.id}">${m.nombre || 'Mesa ' + m.numero}${m.area_nombre ? ' (' + m.area_nombre + ')' : ' (sin área)'}</option>`).join('')}
+            </select>
+          </div>` : ''}
+        </div>`;
+      }
+
+      if (sinArea.length) {
+        h += `<div style="background:#FEF2F2;border:1px dashed #FCA5A5;border-radius:12px;padding:18px;margin-bottom:14px;">
+          <div style="font-weight:700;color:#991B1B;font-size:0.9rem;margin-bottom:8px;">⚠️ ${sinArea.length} mesa(s) sin área asignada</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            ${sinArea.map(m => `<span style="display:inline-flex;align-items:center;gap:4px;background:white;border:1px solid #FECACA;border-radius:8px;padding:4px 10px;font-size:0.8rem;font-weight:600;">${m.nombre || 'Mesa ' + m.numero}</span>`).join('')}
+          </div>
+        </div>`;
+      }
+
+      if (!salones.length) {
+        h = '<p class="empty-state">No hay áreas. Crea al menos un Salón.</p>' + h;
+      }
+      el.innerHTML = h;
+    }
+
+    function openAreaModal(id) {
+      editingAreaId = id || null;
+      const area = id ? areasData.find(a => a.id === id) : null;
+      document.getElementById('modalAreaTitle').textContent = area ? 'Editar área' : 'Nueva área';
+      document.getElementById('areaNombre').value = area ? area.nombre : '';
+      document.getElementById('areaTipo').value = area ? area.tipo : 'SALON';
+      document.getElementById('areaTipo').disabled = !!area && area.tipo !== 'SALON';
+      document.getElementById('areaOrden').value = area ? area.orden : '';
+      document.getElementById('areaError').style.display = 'none';
+      closeAllModals();
+      document.getElementById('modalArea').classList.add('active');
+    }
+
+    async function saveArea() {
+      const nombre = document.getElementById('areaNombre').value.trim();
+      const tipo = document.getElementById('areaTipo').value;
+      const orden = document.getElementById('areaOrden').value;
+      const errEl = document.getElementById('areaError');
+      if (!nombre) { errEl.textContent = 'El nombre es requerido'; errEl.style.display = 'block'; return; }
+
+      const body = { nombre, tipo, orden: orden ? parseInt(orden) : null };
+      try {
+        const res = await fetch(editingAreaId ? `/api/mesas/areas/${editingAreaId}` : '/api/mesas/areas', {
+          method: editingAreaId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (res.ok) {
+          showToast(editingAreaId ? 'Área actualizada' : 'Área creada', 'success');
+          closeModal('modalArea');
+          await loadAreasAdmin();
+        } else {
+          const e = await res.json();
+          errEl.textContent = e.error || 'Error';
+          errEl.style.display = 'block';
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function deleteArea(id) {
+      if (!confirm('¿Eliminar esta área? Las mesas se moverán a otro salón.')) return;
+      try {
+        const res = await fetch(`/api/mesas/areas/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Área eliminada', 'success');
+          await loadAreasAdmin();
+        } else {
+          const e = await res.json();
+          showToast(e.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function toggleAreaActivo(id, activo) {
+      try {
+        const res = await fetch(`/api/mesas/areas/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activo })
+        });
+        if (res.ok) {
+          showToast(activo ? 'Área visible' : 'Área oculta', 'success');
+          await loadAreasAdmin();
+        } else {
+          const e = await res.json();
+          showToast(e.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function asignarMesa(mesaId, areaId) {
+      try {
+        const res = await fetch(`/api/mesas/${mesaId}/area`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ area_id: areaId })
+        });
+        if (res.ok) {
+          showToast('Mesa asignada', 'success');
+          await loadAreasAdmin();
+        } else {
+          const e = await res.json();
+          showToast(e.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     // ---- HELPERS ----
@@ -607,6 +1567,20 @@
       await loadProductos();
       renderCategorias();
     })();
+
+    function showToast(message, type = 'success') {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
   </script>
 </body>
 </html>

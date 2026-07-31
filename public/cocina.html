@@ -129,6 +129,24 @@
       color: #92400E;
     }
 
+    .comanda-tipo {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .comanda-tipo.delivery { background: #DBEAFE; color: #1D4ED8; }
+    .comanda-tipo.llevar { background: #FEF3C7; color: #92400E; }
+    .comanda-tipo.salon { background: #D1FAE5; color: #065F46; }
+
+    .comanda-cliente {
+      font-size: 0.78rem;
+      color: #374151;
+      margin-top: 4px;
+    }
+
     .empty-state {
       text-align: center;
       padding: 80px 20px;
@@ -194,10 +212,21 @@
         card.innerHTML = `
           <div class="comanda-header">
             <div>
-              <div class="comanda-mesa">Mesa ${pedido.mesa_numero || pedido.mesa_nombre || 'N/A'}</div>
+              <div class="comanda-mesa">
+                ${pedido.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🛵 DELIVERY</span> ' :
+                  pedido.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🥡 PARA LLEVAR</span> ' : ''}
+                ${pedido.area_tipo === 'SALON' || !pedido.area_tipo ? `Mesa ${pedido.mesa_numero || pedido.mesa_nombre || 'N/A'}` : (pedido.mesa_nombre || 'Delivery')}
+              </div>
               <div style="font-size:0.75rem;color:var(--gray);">
                 Pedido #${pedido.id} ${pedido.mesero_nombre ? '| ' + pedido.mesero_nombre : ''}
               </div>
+              ${(pedido.cliente_nombre || pedido.cliente_telefono || pedido.cliente_direccion || pedido.hora_recogida) ? `
+              <div class="comanda-cliente">
+                ${pedido.cliente_nombre ? `👤 ${pedido.cliente_nombre}` : ''}
+                ${pedido.cliente_telefono ? ` · 📞 ${pedido.cliente_telefono}` : ''}
+                ${pedido.cliente_direccion ? `<br>📍 ${pedido.cliente_direccion}` : ''}
+                ${pedido.hora_recogida ? `<br>🕐 Recoger: ${pedido.hora_recogida}` : ''}
+              </div>` : ''}
             </div>
             <div class="comanda-time">${tiempo}</div>
           </div>
