@@ -187,15 +187,19 @@ function createMesaCard(mesa) {
   const puedeLiberar = sinPedido && (currentUser?.rol === 'admin' || currentUser?.id === mesa.mesero_id);
 
   card.innerHTML = `
-    ${extraInfo}
-    <div class="mesa-numero">${mesa.numero}</div>
-    <div class="mesa-nombre">${mesa.nombre || `Mesa ${mesa.numero}`}</div>
-    <div class="mesa-status">${statusText}</div>
-    <div class="mesa-mesero">${mesa.mesero_nombre ? `Mesero: ${mesa.mesero_nombre}` : ''}</div>
-    ${ocupadoInfo}
-    ${sinPedidoInfo}
-    ${infoFooter}
-    ${puedeLiberar ? `<button class="btn-liberar-rapido" onclick="event.stopPropagation(); liberarMesaRapida(${mesa.id})">Liberar</button>` : ''}
+    <div class="info-top">${extraInfo}</div>
+    <div class="info-mid">
+      <div class="mesa-numero">${mesa.numero}</div>
+      <div class="mesa-nombre">${mesa.nombre || `Mesa ${mesa.numero}`}</div>
+      <div class="mesa-status">${statusText}</div>
+      <div class="mesa-mesero">${mesa.mesero_nombre ? `Mesero: ${mesa.mesero_nombre}` : ''}</div>
+      ${ocupadoInfo}
+    </div>
+    <div class="info-bot">
+      ${sinPedidoInfo}
+      ${infoFooter}
+      ${puedeLiberar ? `<button class="btn-liberar-rapido" onclick="event.stopPropagation(); liberarMesaRapida(${mesa.id})">Liberar</button>` : ''}
+    </div>
   `;
 
   if (mesa.estado === 'OCUPADO') {
@@ -284,6 +288,9 @@ function openMesaModal(mesa) {
 
   body.innerHTML = html;
   modal.classList.add('active');
+
+  const footer = modal.querySelector('.modal-footer');
+  if (footer) footer.style.display = mesa.estado === 'LIBRE' ? '' : 'none';
 
   if (mesa.estado === 'LIBRE') {
     const accionSelect = document.getElementById('accionMesa');

@@ -75,7 +75,7 @@ body {
 .mesa-card {
   background: var(--white);
   border-radius: var(--radius);
-  padding: 16px 12px;
+  padding: 14px 12px 12px;
   text-align: center;
   cursor: pointer;
   box-shadow: var(--shadow);
@@ -83,6 +83,38 @@ body {
   border: 2px solid transparent;
   user-select: none;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 172px;
+  box-sizing: border-box;
+}
+
+.mesa-card .info-top {
+  min-height: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.mesa-card .info-mid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.mesa-card .info-bot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
 }
 
 .mesa-card:hover {
@@ -154,7 +186,8 @@ body {
 .mesa-numero {
   font-size: 1.75rem;
   font-weight: 800;
-  margin-bottom: 4px;
+  margin-top: 2px;
+  line-height: 1.1;
 }
 
 .mesa-nombre {
@@ -176,14 +209,17 @@ body {
   font-size: 0.65rem;
   color: var(--gray);
   margin-top: 4px;
+  min-height: 14px;
+  display: flex;
+  align-items: center;
 }
 
 .mesa-total {
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 800;
   color: var(--gray-dark);
-  margin-bottom: 6px;
   letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .mesa-card.OCUPADO .mesa-total,
@@ -214,9 +250,7 @@ body {
 }
 
 .btn-liberar-rapido {
-  display: block;
   width: 100%;
-  margin-top: 8px;
   padding: 5px 0;
   font-size: 0.72rem;
   font-weight: 700;
@@ -234,9 +268,6 @@ body {
 }
 
 .mesa-pendiente {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--gray-light);
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--red);

@@ -64,17 +64,31 @@
       gap: 12px; padding: 16px; max-width: 1000px; margin: 0 auto;
     }
     .mesa-card-mesero {
-      background: white; border-radius: 16px; padding: 20px 12px;
+      background: white; border-radius: 16px; padding: 14px 10px 12px;
       text-align: center; cursor: pointer; user-select: none;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: all 0.15s;
       border: 3px solid transparent; position: relative;
+      display: flex; flex-direction: column; align-items: center;
+      min-height: 178px; box-sizing: border-box;
     }
     .mesa-card-mesero:active { transform: scale(0.96); }
     .mesa-card-mesero.LIBRE { border-color: #10B981; }
     .mesa-card-mesero.OCUPADO { border-color: #EF4444; }
     .mesa-card-mesero.RESERVADO { border-color: #F59E0B; }
     .mesa-card-mesero.INACTIVO { opacity: 0.5; border-color: #9CA3AF; }
-    .mesa-card-mesero .num { font-size: 2rem; font-weight: 800; }
+    .mesa-card-mesero .info-top {
+      min-height: 26px; display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-end; width: 100%;
+    }
+    .mesa-card-mesero .info-mid {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start; width: 100%;
+    }
+    .mesa-card-mesero .info-bot {
+      margin-top: auto; display: flex; flex-direction: column;
+      align-items: center; width: 100%; gap: 4px;
+    }
+    .mesa-card-mesero .num { font-size: 1.9rem; font-weight: 800; line-height: 1.1; margin-top: 2px; }
     .mesa-card-mesero .status {
       display: inline-block; padding: 3px 12px; border-radius: 20px;
       font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-top: 4px;
@@ -85,27 +99,28 @@
     .mesa-card-mesero.INACTIVO .status { background: #F3F4F6; color: #6B7280; }
     .mesa-card-mesero .mesero-name {
       font-size: 0.7rem; color: #6B7280; margin-top: 4px;
+      min-height: 15px; display: flex; align-items: center;
     }
     .mesa-card-mesero .total {
-      font-size: 1rem; font-weight: 800; margin-top: 4px; color: #111827;
+      font-size: 0.95rem; font-weight: 800; color: #111827;
+      line-height: 1.1;
     }
     .mesa-card-mesero.OCUPADO .total,
     .mesa-card-mesero.CERRANDO .total { color: #DC2626; }
     .mesa-card-mesero .tiempo {
-      display: inline-block; font-size: 0.68rem; color: #6B7280;
-      background: #F3F4F6; border-radius: 10px; padding: 1px 8px; margin-top: 5px;
+      display: inline-block; font-size: 0.66rem; color: #6B7280;
+      background: #F3F4F6; border-radius: 10px; padding: 1px 8px; margin-top: 4px;
     }
     .mesa-card-mesero .pendiente {
-      margin-top: 5px; padding-top: 5px; border-top: 1px dashed #E5E7EB;
-      font-size: 0.72rem; font-weight: 700; color: #DC2626;
+      font-size: 0.7rem; font-weight: 700; color: #DC2626;
     }
     .mesa-card-mesero .tiempo.sinpedido {
       color: #DC2626; background: #FEE2E2; border: 1px solid #FCA5A5;
       font-weight: 700;
     }
     .mesa-card-mesero .liberar-rapido {
-      display: block; width: 100%; margin-top: 6px; padding: 5px 0;
-      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      width: 100%; padding: 4px 0;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
       color: #DC2626; background: transparent;
       border: 1px solid #FCA5A5; border-radius: 8px; cursor: pointer;
     }
@@ -724,13 +739,17 @@
           }
 
           card.innerHTML = `
-            ${totalHtml}
-            <div class="num">${m.numero}</div>
-            <div class="status">${estadoEfectivo}</div>
-            ${m.mesero_nombre ? `<div class="mesero-name">${m.mesero_nombre}</div>` : ''}
-            ${tiempoHtml}
-            ${sinPedidoHtml}
-            ${pendienteHtml}
+            <div class="info-top">${totalHtml}</div>
+            <div class="info-mid">
+              <div class="num">${m.numero}</div>
+              <div class="status">${estadoEfectivo}</div>
+              <div class="mesero-name">${m.mesero_nombre || ''}</div>
+              ${tiempoHtml}
+            </div>
+            <div class="info-bot">
+              ${sinPedidoHtml}
+              ${pendienteHtml}
+            </div>
           `;
           card.addEventListener('click', () => abrirPOS(m));
           grid.appendChild(card);

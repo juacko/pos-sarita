@@ -716,9 +716,9 @@ async function liberarMesaDesdePedido() {
 // ─── MODAL DE COBRO ───
 
 let cobroMetodo = 'efectivo';
+let cobroPagos = [];
 let cobroPedidoRef = null;
 let cobroValeData = null;
-let cobroDividirPersonas = [];
 let posConfig = null;
 
 async function loadPosConfig() {
@@ -744,18 +744,90 @@ function metodosVisibles() {
   return COBRO_METODOS_DEF.filter(m => lista.includes(m.key));
 }
 
-function renderMetodosCobro() {
-  const grid = document.getElementById('cobroMetodosGrid');
-  if (!grid) return;
+function renderPagosCobro() {
+  const list = document.getElementById('cobroPagosList');
+  if (!list) return;
   const visibles = metodosVisibles();
-  grid.innerHTML = visibles.map(m => `
-    <button class="btn btn-outline cobro-metodo ${cobroMetodo === m.key ? 'active' : ''}" data-metodo="${m.key}" onclick="selectMetodo('${m.key}')">${m.label} ${m.texto}</button>
+
+  list.innerHTML = cobroPagos.map((p, i) => `
+    <div style="display:flex;gap:6px;align-items:center;background:white;border-radius:8px;padding:4px 6px;">
+      <select id="cobroPagoMetodo-${i}" class="form-control" style="flex:1;font-size:0.85rem;padding:6px;" onchange="cambioFilaPagoMetodo(${i}, this.value)">
+        ${visibles.map(m => `<option value="${m.key}" ${p.metodo === m.key ? 'selected' : ''}>${m.label} ${m.texto}</option>`).join('')}
+      </select>
+      <input id="cobroPagoMonto-${i}" type="number" step="0.01" min="0" value="${(p.monto || 0).toFixed(2)}" class="form-control" style="width:110px;font-weight:700;font-size:0.9rem;text-align:right;" oninput="cambioFilaPagoMonto(${i}, this.value)">
+      ${cobroPagos.length > 1 ? `<button class="btn btn-outline" style="padding:3px 9px;color:#DC2626;font-size:0.8rem;" onclick="quitarFilaPago(${i})">✕</button>` : ''}
+    </div>
   `).join('');
-  const activo = grid.querySelector('.cobro-metodo[data-metodo="' + cobroMetodo + '"]');
-  if (activo) {
-    activo.style.background = 'var(--blue)';
-    activo.style.color = 'white';
-    activo.style.borderColor = 'var(--blue)';
+
+  actualizarResumenCobro();
+}
+
+function ajustarUltimaFila() {
+  if (!cobroPagos.length) return;
+  const pendiente = calcularPendienteCobro();
+  const idxUltima = cobroPagos.length - 1;
+  const sumaResto = cobroPagos.slice(0, idxUltima).reduce((s, p) => s + (p.monto || 0), 0);
+  const nuevo = Math.round(Math.max(0, pendiente - sumaResto) * 100) / 100;
+  cobroPagos[idxUltima].monto = nuevo;
+  const input = document.getElementById(`cobroPagoMonto-${idxUltima}`);
+  if (input) input.value = nuevo.toFixed(2);
+  actualizarResumenCobro();
+}
+
+function actualizarResumenCobro() {
+  if (!cobroPagos.length) return;
+  const pendiente = calcularPendienteCobro();
+  const suma = cobroPagos.reduce((s, p) => s + (p.monto || 0), 0);
+  document.getElementById('cobroSumaPagos').textContent = `$${suma.toFixed(2)}`;
+  const dif = Math.round((suma - pendiente) * 100) / 100;
+  const faltaEl = document.getElementById('cobroFaltaCambioValor');
+  const ultima = cobroPagos[cobroPagos.length - 1];
+  if (dif > 0.004) {
+    faltaEl.textContent = ultima?.metodo === 'efectivo' ? `Cambio: $${dif.toFixed(2)}` : `Sobrante: $${dif.toFixed(2)}`;
+    faltaEl.style.color = 'var(--green)';
+  } else if (dif < -0.004) {
+    faltaEl.textContent = `Falta: $${Math.abs(dif).toFixed(2)}`;
+    faltaEl.style.color = 'var(--red)';
+  } else {
+    faltaEl.textContent = 'Completo ✓';
+    faltaEl.style.color = 'var(--green)';
+  }
+}
+
+function agregarFilaPago() {
+  const visibles = metodosVisibles();
+  if (!cobroPagos.length) return;
+  const pendiente = calcularPendienteCobro();
+  const suma = cobroPagos.reduce((s, p) => s + (p.monto || 0), 0);
+  const usados = cobroPagos.map(p => p.metodo);
+  const metodo = visibles.find(m => !usados.includes(m.key)) || visibles[0];
+  cobroPagos.push({ metodo: metodo.key, monto: Math.round(Math.max(0, pendiente - suma) * 100) / 100 });
+  renderPagosCobro();
+  const input = document.getElementById(`cobroPagoMonto-${cobroPagos.length - 1}`);
+  if (input) { input.focus(); input.select(); }
+}
+
+function quitarFilaPago(idx) {
+  if (cobroPagos.length <= 1) return;
+  cobroPagos.splice(idx, 1);
+  renderPagosCobro();
+  const input = document.getElementById(`cobroPagoMonto-${cobroPagos.length - 1}`);
+  if (input) { input.focus(); input.select(); }
+}
+
+function cambioFilaPagoMetodo(idx, metodo) {
+  cobroPagos[idx].metodo = metodo;
+  const sel = document.getElementById(`cobroPagoMetodo-${idx}`);
+  if (sel) sel.value = metodo;
+  actualizarResumenCobro();
+}
+
+function cambioFilaPagoMonto(idx, valor) {
+  cobroPagos[idx].monto = Math.max(0, parseFloat(valor) || 0);
+  if (idx !== cobroPagos.length - 1) {
+    ajustarUltimaFila();
+  } else {
+    actualizarResumenCobro();
   }
 }
 
@@ -766,8 +838,7 @@ function aplicarVisibilidadCobro() {
     vale: 'cobroValeSection',
     propina: 'cobroPropinaSection',
     notas: 'cobroNotasSection',
-    regalo: 'cobroRegaloSection',
-    dividir: 'cobroDividirSection'
+    regalo: 'cobroRegaloSection'
   };
   for (const [clave, id] of Object.entries(secciones)) {
     const el = document.getElementById(id);
@@ -831,14 +902,8 @@ function abrirModalCobro() {
 
   const visibles = metodosVisibles();
   cobroMetodo = visibles[0]?.key || 'efectivo';
-  renderMetodosCobro();
-  selectMetodo(cobroMetodo);
-  document.getElementById('cobroMonto').value = pendiente.toFixed(2);
-  calcularCambio();
-
-  document.getElementById('cobroDividirCheck').checked = false;
-  document.getElementById('cobroDividirFields').style.display = 'none';
-  document.getElementById('cobroNumPartes').value = 2;
+  cobroPagos = [{ metodo: cobroMetodo, monto: Math.round(pendiente * 100) / 100 }];
+  renderPagosCobro();
 
   document.getElementById('cobroValeCodigo').value = '';
   document.getElementById('cobroValeInfo').style.display = 'none';
@@ -853,33 +918,6 @@ function abrirModalCobro() {
 
 function closeCobroModal() {
   document.getElementById('cobroModal').classList.remove('active');
-}
-
-function selectMetodo(metodo) {
-  cobroMetodo = metodo;
-  document.querySelectorAll('.cobro-metodo').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.metodo === metodo);
-    if (btn.dataset.metodo === metodo) {
-      btn.style.background = 'var(--blue)';
-      btn.style.color = 'white';
-      btn.style.borderColor = 'var(--blue)';
-    } else {
-      btn.style.background = '';
-      btn.style.color = '';
-      btn.style.borderColor = '';
-    }
-  });
-  calcularCambio();
-}
-
-function calcularCambio() {
-  if (!cobroPedidoRef) return;
-  const pendiente = calcularPendienteCobro();
-  const monto = parseFloat(document.getElementById('cobroMonto').value) || 0;
-  const cambio = Math.max(0, monto - pendiente);
-  const el = document.getElementById('cobroCambio');
-  el.textContent = `$${cambio.toFixed(2)}`;
-  el.style.color = monto >= pendiente ? 'var(--green)' : 'var(--red)';
 }
 
 function toggleCobroSection(section) {
@@ -958,8 +996,7 @@ function refreshCobroMontos() {
   const pagado = (cobroPedidoRef?.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pendiente = Math.max(0, total - pagado);
   document.getElementById('cobroTotal').textContent = `$${pendiente.toFixed(2)}`;
-  document.getElementById('cobroMonto').value = pendiente.toFixed(2);
-  calcularCambio();
+  ajustarUltimaFila();
 }
 
 // ─── VALE ───
@@ -1008,88 +1045,6 @@ function updatePropinaPreview() {
   document.getElementById('cobroPropinaPreview').textContent = propina > 0 ? `Propina: $${propina.toFixed(2)} (${(propina / total * 100).toFixed(1)}% del total)` : '';
 }
 
-// ─── DIVIDIR CUENTA ───
-function toggleDividir() {
-  const checked = document.getElementById('cobroDividirCheck').checked;
-  document.getElementById('cobroDividirFields').style.display = checked ? 'block' : 'none';
-  if (checked) updateDividirPreview();
-}
-
-function updateDividirFields() {
-  const tipo = document.getElementById('cobroDividirTipo').value;
-  document.getElementById('cobroDividirPartes').style.display = tipo === 'partes' ? 'block' : 'none';
-  document.getElementById('cobroDividirMonto').style.display = tipo === 'monto' ? 'block' : 'none';
-  updateDividirPreview();
-}
-
-function updateDividirPreview() {
-  if (!cobroPedidoRef) return;
-  const pendiente = calcularPendienteCobro();
-  const tipo = document.getElementById('cobroDividirTipo').value;
-  const container = document.getElementById('cobroDividirPreview');
-  const personasContainer = document.getElementById('cobroDividirPersonas');
-
-  let partes = [];
-
-  if (tipo === 'partes') {
-    const n = parseInt(document.getElementById('cobroNumPartes').value) || 2;
-    const parte = pendiente / n;
-    for (let i = 0; i < n; i++) {
-      partes.push(i === n - 1 ? pendiente - parte * (n - 1) : Math.round(parte * 100) / 100);
-    }
-  } else {
-    const montoParte = parseFloat(document.getElementById('cobroMontoParte').value) || 0;
-    if (montoParte > 0) {
-      const numPartes = Math.ceil(pendiente / montoParte);
-      for (let i = 0; i < numPartes; i++) {
-        partes.push(i === numPartes - 1 ? pendiente - montoParte * (numPartes - 1) : montoParte);
-      }
-    }
-  }
-
-  // Ensure cobroDividirPersonas array is correct length
-  while (cobroDividirPersonas.length < partes.length) cobroDividirPersonas.push('efectivo');
-  cobroDividirPersonas = cobroDividirPersonas.slice(0, partes.length);
-
-  const metodos = [
-    { key: 'efectivo', label: '💵' },
-    { key: 'tarjeta', label: '💳' },
-    { key: 'transferencia', label: '📱' }
-  ];
-
-  if (partes.length > 0) {
-    personasContainer.style.display = 'block';
-    personasContainer.innerHTML = '<div style="font-size:0.8rem;font-weight:600;margin-bottom:6px;">Método por persona:</div>' +
-      partes.map((monto, i) => `
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:6px 8px;background:white;border:1px solid #E5E7EB;border-radius:6px;">
-          <span style="font-size:0.8rem;min-width:60px;">Parte ${i + 1}:</span>
-          <span style="font-weight:600;min-width:70px;">$${monto.toFixed(2)}</span>
-          <div style="display:flex;gap:4px;flex:1;">
-            ${metodos.map(m => `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.75rem;${cobroDividirPersonas[i] === m.key ? 'background:var(--blue);color:white;border-color:var(--blue);' : ''}" onclick="setDividirPersona(${i},'${m.key}')">${m.label}</button>`).join('')}
-          </div>
-        </div>
-      `).join('');
-  } else {
-    personasContainer.style.display = 'none';
-  }
-
-  if (partes.length > 0) {
-    let html = '';
-    for (let i = 0; i < partes.length; i++) {
-      const ml = metodos.find(m => m.key === cobroDividirPersonas[i]);
-      html += `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.85rem;"><span>Parte ${i + 1} ${ml?.label || ''}:</span><span style="font-weight:600;">$${partes[i].toFixed(2)}</span></div>`;
-    }
-    container.innerHTML = html;
-  } else {
-    container.innerHTML = '<div style="font-size:0.8rem;color:var(--gray);text-align:center;">Configura la división</div>';
-  }
-}
-
-function setDividirPersona(index, metodo) {
-  cobroDividirPersonas[index] = metodo;
-  updateDividirPreview();
-}
-
 // ─── REGALO ───
 async function procesarRegalo() {
   if (!cobroPedidoRef) return;
@@ -1119,8 +1074,6 @@ async function procesarRegalo() {
 async function procesarPago() {
   if (!cobroPedidoRef) return;
 
-  const pendiente = calcularPendienteCobro();
-  const dividido = document.getElementById('cobroDividirCheck').checked;
   const propina = parseFloat(document.getElementById('cobroPropinaMonto').value) || 0;
   const referencia = document.getElementById('cobroReferencia').value.trim();
   const notas = document.getElementById('cobroNotasPago').value.trim();
@@ -1155,6 +1108,7 @@ async function procesarPago() {
   }
 
   const pendientePostVale = calcularPendienteCobro();
+  ajustarUltimaFila();
 
   if (pendientePostVale <= 0.01) {
     closeCobroModal();
@@ -1163,87 +1117,67 @@ async function procesarPago() {
     return;
   }
 
-  if (dividido) {
-    const tipo = document.getElementById('cobroDividirTipo').value;
-    let partes = [];
+  if (!cobroPagos.length) return showToast('Agrega al menos un método de pago', 'warning');
 
-    if (tipo === 'partes') {
-      const n = parseInt(document.getElementById('cobroNumPartes').value) || 2;
-      const parte = pendientePostVale / n;
-      for (let i = 0; i < n; i++) {
-        partes.push(i === n - 1 ? pendientePostVale - parte * (n - 1) : Math.round(parte * 100) / 100);
-      }
-    } else {
-      const montoParte = parseFloat(document.getElementById('cobroMontoParte').value) || 0;
-      if (montoParte <= 0) return showToast('Ingresa un monto válido por parte', 'warning');
-      const numPartes = Math.ceil(pendientePostVale / montoParte);
-      for (let i = 0; i < numPartes; i++) {
-        partes.push(i === numPartes - 1 ? pendientePostVale - montoParte * (numPartes - 1) : montoParte);
-      }
+  const pagos = cobroPagos.map(p => ({
+    metodo: p.metodo,
+    monto: Math.round((p.monto || 0) * 100) / 100
+  }));
+  let suma = pagos.reduce((s, p) => s + p.monto, 0);
+
+  if (suma < pendientePostVale - 0.01) {
+    return showToast(`Falta: $${(pendientePostVale - suma).toFixed(2)}`, 'warning');
+  }
+
+  // El sobrante solo se acepta en efectivo (cambio); en otros métodos se recorta
+  const ultimo = pagos[pagos.length - 1];
+  if (ultimo.metodo !== 'efectivo' && suma > pendientePostVale + 0.01) {
+    ultimo.monto = Math.max(0, Math.round((ultimo.monto - (suma - pendientePostVale)) * 100) / 100);
+    suma = pagos.reduce((s, p) => s + p.monto, 0);
+    if (suma < pendientePostVale - 0.01) {
+      return showToast(`Falta: $${(pendientePostVale - suma).toFixed(2)}`, 'warning');
     }
+  }
 
-    const propinaParte = propina / partes.length;
-    let successCount = 0;
-    for (let i = 0; i < partes.length; i++) {
-      const metodo = cobroDividirPersonas[i] || cobroMetodo;
-      try {
-        const res = await fetch(`/api/pedidos/${cobroPedidoRef.id}/pagar`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            metodo,
-            monto: Math.round(partes[i] * 100) / 100,
-            propina: i === partes.length - 1 ? Math.round(propinaParte * (partes.length - 1 - i) > 0 ? propina - Math.round(propinaParte * 100) / 100 * (partes.length - 1) : propina) : Math.round(propinaParte * 100) / 100,
-            usuario_id: currentUser?.id || null,
-            referencia: referencia || null,
-            notas: notas || null
-          })
-        });
-        if (res.ok) successCount++;
-      } catch (e) {}
-    }
-
-    showToast(`${successCount} de ${partes.length} pagos registrados`, successCount === partes.length ? 'success' : 'warning');
-  } else {
-    let monto;
-    if (cobroMetodo === 'regalo') {
-      monto = pendientePostVale;
-    } else if (cobroMetodo === 'vale') {
-      return showToast('Selecciona un vale en la sección de vales', 'warning');
-    } else {
-      monto = parseFloat(document.getElementById('cobroMonto').value) || 0;
-    }
-
-    if (monto <= 0) return showToast('Ingresa un monto válido', 'warning');
-
+  let pagosOk = 0;
+  let cambio = 0;
+  for (let i = 0; i < pagos.length; i++) {
+    const p = pagos[i];
+    const esUltimo = i === pagos.length - 1;
     try {
       const res = await fetch(`/api/pedidos/${cobroPedidoRef.id}/pagar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          metodo: cobroMetodo,
-          monto: Math.round(monto * 100) / 100,
-          propina: Math.round(propina * 100) / 100,
+          metodo: p.metodo,
+          monto: Math.round(p.monto * 100) / 100,
+          propina: esUltimo ? Math.round(propina * 100) / 100 : 0,
           usuario_id: currentUser?.id || null,
-          referencia: referencia || null,
-          notas: notas || null
+          referencia: esUltimo ? (referencia || null) : null,
+          notas: esUltimo ? (notas || null) : null
         })
       });
-
       if (res.ok) {
         const data = await res.json();
-        let msg = 'Pago registrado';
-        if (data.completado) msg = cobroMetodo === 'efectivo' && data.cambio > 0 ? `Cambio: $${data.cambio.toFixed(2)}` : 'Pedido cobrado';
-        showToast(msg, 'success');
+        pagosOk++;
+        if (data.cambio > 0) cambio = data.cambio;
       } else {
         const err = await res.json();
         showToast(err.error || 'Error al cobrar', 'error');
-        return;
+        break;
       }
     } catch (err) {
       showToast('Error de conexión', 'error');
-      return;
+      break;
     }
+  }
+
+  if (pagosOk === pagos.length) {
+    let msg = pagos.length > 1 ? `${pagos.length} pagos registrados` : 'Pago registrado';
+    if (cambio > 0) msg = `Cambio: $${cambio.toFixed(2)}`;
+    showToast(msg, 'success');
+  } else {
+    showToast(`Se registraron ${pagosOk} de ${pagos.length} pagos`, 'warning');
   }
 
   closeCobroModal();

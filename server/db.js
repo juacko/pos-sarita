@@ -349,7 +349,6 @@ const insertInitialData = db.transaction(() => {
       mostrar_propina: true,
       mostrar_notas: true,
       mostrar_regalo: true,
-      mostrar_dividir: true,
       metodos: ['efectivo', 'tarjeta', 'transferencia', 'otros']
     })
   };
