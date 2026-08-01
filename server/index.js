@@ -31,6 +31,12 @@ app.get('/api/printers/config', (req, res) => {
   res.json(printers.getConfig());
 });
 
+app.get('/api/configuracion/:clave', (req, res) => {
+  const fila = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(req.params.clave);
+  if (!fila) return res.status(404).json({ error: 'Clave no encontrada' });
+  try { res.json(JSON.parse(fila.valor)); } catch { res.json(fila.valor); }
+});
+
 app.post('/api/printers/config', (req, res) => {
   res.json(printers.updateConfig(req.body));
 });

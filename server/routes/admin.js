@@ -5,6 +5,36 @@ const printers = require('../printers');
 function createAdminRouter() {
   const router = Router();
 
+  // ─── CONFIGURACION ───
+  router.get('/configuracion', (req, res) => {
+    try {
+      const filas = db.prepare('SELECT clave, valor FROM configuracion ORDER BY clave').all();
+      const out = {};
+      for (const f of filas) {
+        try { out[f.clave] = JSON.parse(f.valor); } catch { out[f.clave] = f.valor; }
+      }
+      res.json(out);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.put('/configuracion/:clave', (req, res) => {
+    try {
+      const { clave } = req.params;
+      const { valor } = req.body;
+      if (valor === undefined) return res.status(400).json({ error: 'valor requerido' });
+      let valorStr = valor;
+      if (typeof valor === 'object') valorStr = JSON.stringify(valor);
+      else {
+        try { JSON.parse(valor); valorStr = JSON.stringify(JSON.parse(valor)); } catch { /* texto plano */ }
+      }
+      db.prepare(`
+        INSERT INTO configuracion (clave, valor, updated_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, updated_at = datetime('now')
+      `).run(clave, valorStr);
+      res.json({ ok: true, clave });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ─── CATEGORIAS ───
   router.get('/categorias', (req, res) => {
     try {
@@ -250,74 +280,115 @@ function createAdminRouter() {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─── HELPERS CAJA ───
+  function desgloseVacio() {
+    return {
+      efectivo: { cantidad: 0, total: 0, total_propina: 0 },
+      tarjeta: { cantidad: 0, total: 0, total_propina: 0 },
+      transferencia: { cantidad: 0, total: 0, total_propina: 0 },
+      yape: { cantidad: 0, total: 0, total_propina: 0 },
+      plin: { cantidad: 0, total: 0, total_propina: 0 },
+      otros: { cantidad: 0, total: 0, total_propina: 0 },
+      regalo: { cantidad: 0, total: 0, total_propina: 0 },
+      vale: { cantidad: 0, total: 0, total_propina: 0 }
+    };
+  }
+
+  function getDesglosePagos(where, params) {
+    const filas = db.prepare(`
+      SELECT pg.metodo, COUNT(*) as cantidad, COALESCE(SUM(pg.monto), 0) as total, COALESCE(SUM(pg.propina), 0) as total_propina
+      FROM pagos pg JOIN pedidos p ON p.id = pg.pedido_id
+      WHERE ${where}
+      GROUP BY pg.metodo
+    `).all(...params);
+    const desglose = desgloseVacio();
+    let totalGeneral = 0, totalPropina = 0;
+    for (const f of filas) {
+      if (desglose[f.metodo]) {
+        desglose[f.metodo] = { cantidad: f.cantidad, total: f.total, total_propina: f.total_propina };
+      }
+      totalGeneral += f.total;
+      totalPropina += f.total_propina;
+    }
+    return { desglose, totalGeneral, totalPropina };
+  }
+
+  function getMovimientosTotales(where, params) {
+    const movs = db.prepare(`SELECT * FROM caja_movimientos WHERE ${where} ORDER BY created_at ASC`).all(...params);
+    let ingresos = 0, egresos = 0;
+    const porMetodo = {};
+    for (const mv of movs) {
+      if (mv.tipo === 'INGRESO') ingresos += mv.monto; else egresos += mv.monto;
+      if (!porMetodo[mv.metodo_pago]) porMetodo[mv.metodo_pago] = { ingresos: 0, egresos: 0 };
+      porMetodo[mv.metodo_pago][mv.tipo === 'INGRESO' ? 'ingresos' : 'egresos'] += mv.monto;
+    }
+    return { movs, totales: { ingresos, egresos, por_metodo: porMetodo } };
+  }
+
+  function getMetricasDia(fecha) {
+    const pedidosCerrados = db.prepare(`
+      SELECT COUNT(*) as total, COALESCE(SUM(total), 0) as suma
+      FROM pedidos WHERE estado = 'CERRADO' AND date(created_at) = ?
+    `).get(fecha);
+    const cancelados = db.prepare(`
+      SELECT COUNT(*) as total, COALESCE(SUM(total), 0) as suma
+      FROM pedidos WHERE estado = 'CANCELADO' AND date(created_at) = ?
+    `).get(fecha);
+    const descuentosDelDia = db.prepare(`
+      SELECT COUNT(*) as total,
+             COALESCE(SUM(CASE WHEN tipo = 'porcentaje' THEN (p.total * d.valor / 100) ELSE d.valor END), 0) as monto_estimado
+      FROM descuentos d JOIN pedidos p ON p.id = d.pedido_id
+      WHERE date(d.created_at) = ?
+    `).get(fecha);
+    const valesUsados = db.prepare(`
+      SELECT COUNT(*) as total, COALESCE(SUM(pg.monto), 0) as suma
+      FROM pagos pg JOIN pedidos p ON p.id = pg.pedido_id
+      WHERE pg.metodo = 'vale' AND date(pg.created_at) = ?
+    `).get(fecha);
+    const regalos = db.prepare(`
+      SELECT COUNT(*) as total, COALESCE(SUM(pg.monto), 0) as suma
+      FROM pagos pg JOIN pedidos p ON p.id = pg.pedido_id
+      WHERE pg.metodo = 'regalo' AND date(pg.created_at) = ?
+    `).get(fecha);
+    const topProductos = db.prepare(`
+      SELECT pi.producto_nombre as nombre, SUM(pi.cantidad) as cantidad,
+             SUM(pi.cantidad * (pi.precio_unitario + pi.precio_adicional)) as total
+      FROM pedido_items pi JOIN pedidos p ON p.id = pi.pedido_id
+      WHERE p.estado = 'CERRADO' AND date(p.created_at) = ? AND pi.estado != 'CANCELADO'
+      GROUP BY pi.producto_nombre ORDER BY cantidad DESC, total DESC LIMIT 5
+    `).all(fecha);
+    const ventasPorHora = db.prepare(`
+      SELECT strftime('%H', pg.created_at) as hora, COUNT(*) as cantidad, COALESCE(SUM(pg.monto), 0) as total
+      FROM pagos pg JOIN pedidos p ON p.id = pg.pedido_id
+      WHERE date(pg.created_at) = ?
+      GROUP BY hora ORDER BY hora
+    `).all(fecha);
+    return {
+      total_pedidos: pedidosCerrados.total,
+      suma_pedidos: pedidosCerrados.suma,
+      ticket_promedio: pedidosCerrados.total > 0 ? pedidosCerrados.suma / pedidosCerrados.total : 0,
+      cancelados,
+      descuentos: descuentosDelDia,
+      vales_usados: valesUsados,
+      regalos: regalos,
+      top_productos: topProductos,
+      ventas_por_hora: ventasPorHora
+    };
+  }
+
   router.get('/corte-caja', (req, res) => {
     try {
       const { fecha } = req.query;
       const hoy = fecha || new Date().toISOString().split('T')[0];
 
-      const pagos = db.prepare(`
-        SELECT pg.metodo, COUNT(*) as cantidad, SUM(pg.monto) as total, SUM(pg.propina) as total_propina
-        FROM pagos pg
-        JOIN pedidos p ON p.id = pg.pedido_id
-        WHERE date(pg.created_at) = ?
-        GROUP BY pg.metodo
-      `).all(hoy);
-
-      const desglose = { efectivo: { cantidad: 0, total: 0 }, tarjeta: { cantidad: 0, total: 0 }, transferencia: { cantidad: 0, total: 0 }, otros: { cantidad: 0, total: 0 }, regalo: { cantidad: 0, total: 0 }, vale: { cantidad: 0, total: 0 } };
-      let totalGeneral = 0;
-      let totalPropina = 0;
-      for (const pg of pagos) {
-        if (desglose[pg.metodo]) {
-          desglose[pg.metodo] = { cantidad: pg.cantidad, total: pg.total, total_propina: pg.total_propina || 0 };
-        }
-        totalGeneral += pg.total;
-        totalPropina += pg.total_propina || 0;
-      }
-
-      const pedidosCerrados = db.prepare(`
-        SELECT COUNT(*) as total, COALESCE(SUM(total), 0) as suma
-        FROM pedidos WHERE estado = 'CERRADO' AND date(created_at) = ?
-      `).get(hoy);
-
-      const descuentosDelDia = db.prepare(`
-        SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN tipo = 'porcentaje' THEN 0 ELSE valor END), 0) as monto_fijo,
-               SUM(CASE WHEN tipo = 'porcentaje' THEN valor ELSE 0 END) as porcentaje_sum
-        FROM descuentos d
-        JOIN pedidos p ON p.id = d.pedido_id
-        WHERE date(d.created_at) = ?
-      `).get(hoy);
-
-      const valesUsados = db.prepare(`
-        SELECT COUNT(*) as total, COALESCE(SUM(pg.monto), 0) as suma
-        FROM pagos pg
-        JOIN pedidos p ON p.id = pg.pedido_id
-        WHERE pg.metodo = 'vale' AND date(pg.created_at) = ?
-      `).get(hoy);
-
-      const regalos = db.prepare(`
-        SELECT COUNT(*) as total, COALESCE(SUM(pg.monto), 0) as suma
-        FROM pagos pg
-        JOIN pedidos p ON p.id = pg.pedido_id
-        WHERE pg.metodo = 'regalo' AND date(pg.created_at) = ?
-      `).get(hoy);
-
+      const { desglose, totalGeneral, totalPropina } = getDesglosePagos('date(pg.created_at) = ?', [hoy]);
+      const { movs, totales } = getMovimientosTotales('date(created_at) = ?', [hoy]);
+      const metricas = getMetricasDia(hoy);
       const sesion = db.prepare('SELECT * FROM caja_sesiones WHERE estado = ? ORDER BY id DESC LIMIT 1').get('ABIERTA');
 
-      const movimientos = db.prepare(`
-        SELECT cm.*, u.nombre as usuario_nombre
-        FROM caja_movimientos cm
-        LEFT JOIN usuarios u ON u.id = cm.usuario_id
-        WHERE date(cm.created_at) = ?
-        ORDER BY cm.created_at ASC
-      `).all(hoy);
-
-      let totalIngresos = 0, totalEgresos = 0;
-      const porMetodo = {};
-      for (const mv of movimientos) {
-        if (mv.tipo === 'INGRESO') totalIngresos += mv.monto;
-        else totalEgresos += mv.monto;
-        if (!porMetodo[mv.metodo_pago]) porMetodo[mv.metodo_pago] = { ingresos: 0, egresos: 0 };
-        porMetodo[mv.metodo_pago][mv.tipo === 'INGRESO' ? 'ingresos' : 'egresos'] += mv.monto;
+      const propinaPorMetodo = {};
+      for (const [k, v] of Object.entries(desglose)) {
+        if (v.total_propina > 0) propinaPorMetodo[k] = v.total_propina;
       }
 
       res.json({
@@ -325,14 +396,11 @@ function createAdminRouter() {
         desglose,
         total_general: totalGeneral,
         total_propina: totalPropina,
-        total_pedidos: pedidosCerrados.total,
-        suma_pedidos: pedidosCerrados.suma,
-        descuentos: descuentosDelDia,
-        vales_usados: valesUsados,
-        regalos: regalos,
+        propina_por_metodo: propinaPorMetodo,
         sesion: sesion || null,
-        movimientos: movimientos,
-        movimientos_totales: { ingresos: totalIngresos, egresos: totalEgresos, por_metodo: porMetodo }
+        movimientos: movs,
+        movimientos_totales: totales,
+        ...metricas
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -352,13 +420,9 @@ function createAdminRouter() {
         ORDER BY pg.created_at ASC
       `).all(hoy);
 
-      const movimientos = db.prepare(`
-        SELECT cm.*, u.nombre as usuario_nombre
-        FROM caja_movimientos cm
-        LEFT JOIN usuarios u ON u.id = cm.usuario_id
-        WHERE date(cm.created_at) = ?
-        ORDER BY cm.created_at ASC
-      `).all(hoy);
+      const { movs, totales } = getMovimientosTotales('date(created_at) = ?', [hoy]);
+      const { desglose, totalGeneral, totalPropina } = getDesglosePagos('date(pg.created_at) = ?', [hoy]);
+      const metricas = getMetricasDia(hoy);
 
       const sesion = db.prepare('SELECT * FROM caja_sesiones WHERE estado = ? ORDER BY id DESC LIMIT 1').get('ABIERTA');
 
@@ -370,20 +434,67 @@ function createAdminRouter() {
         ORDER BY cs.closed_at DESC
       `).all(hoy);
 
+      let efectivoEsperado = null;
+      let pagosSesionEfectivo = 0;
+      if (sesion) {
+        const pe = db.prepare(`
+          SELECT COALESCE(SUM(pg.monto), 0) as t FROM pagos pg JOIN pedidos p ON p.id = pg.pedido_id
+          WHERE pg.metodo = 'efectivo' AND pg.created_at >= ? AND pg.created_at <= datetime('now')
+        `).get(sesion.opened_at);
+        const mi = db.prepare(`
+          SELECT COALESCE(SUM(monto), 0) as t FROM caja_movimientos
+          WHERE tipo = 'INGRESO' AND metodo_pago = 'efectivo' AND created_at >= ? AND created_at <= datetime('now')
+        `).get(sesion.opened_at);
+        const me = db.prepare(`
+          SELECT COALESCE(SUM(monto), 0) as t FROM caja_movimientos
+          WHERE tipo = 'EGRESO' AND metodo_pago = 'efectivo' AND created_at >= ? AND created_at <= datetime('now')
+        `).get(sesion.opened_at);
+        pagosSesionEfectivo = pe.t || 0;
+        efectivoEsperado = (sesion.fondo_inicial || 0) + pagosSesionEfectivo + (mi.t || 0) - (me.t || 0);
+      }
+
+      const propinaPorMetodo = {};
+      for (const [k, v] of Object.entries(desglose)) {
+        if (v.total_propina > 0) propinaPorMetodo[k] = v.total_propina;
+      }
+
       const eventos = [];
       if (sesion) {
         eventos.push({ tipo: 'APERTURA', hora: sesion.opened_at, monto: sesion.fondo_inicial, persona: sesion.usuario_nombre || 'Sistema', concepto: `Fondo inicial: $${(sesion.fondo_inicial || 0).toFixed(2)}`, metodo: 'efectivo' });
       }
       for (const pg of pagos) {
-        eventos.push({ tipo: 'PAGO', hora: pg.created_at, monto: pg.monto, persona: pg.cajero_nombre || 'Sistema', concepto: `Pedido #${pg.pedido_id}`, metodo: pg.metodo, propina: pg.propina || 0, referencia: pg.referencia, notas: pg.notas });
+        eventos.push({ tipo: 'PAGO', hora: pg.created_at, monto: pg.monto, persona: pg.cajero_nombre || 'Sistema', concepto: `Pedido #${pg.pedido_id} (Total: $${(pg.pedido_total || 0).toFixed(2)})`, metodo: pg.metodo, propina: pg.propina || 0, referencia: pg.referencia, notas: pg.notas });
       }
-      for (const mv of movimientos) {
-        eventos.push({ tipo: mv.tipo, hora: mv.created_at, monto: mv.monto, persona: mv.persona || mv.usuario_nombre || 'Sistema', concepto: mv.concepto, metodo: mv.metodo_pago, notas: mv.notas });
+      for (const mv of movs) {
+        eventos.push({ tipo: mv.tipo, hora: mv.created_at, monto: mv.monto, persona: mv.persona || 'Sistema', concepto: mv.concepto, metodo: mv.metodo_pago, notas: mv.notas });
+      }
+      for (const cs of historialCerradas) {
+        eventos.push({ tipo: 'CIERRE', hora: cs.closed_at, monto: 0, persona: cs.usuario_nombre || 'Sistema', concepto: `Cierre de caja — Esperado: $${(cs.efectivo_esperado || 0).toFixed(2)} | Contado: $${(cs.efectivo_contado || 0).toFixed(2)}`, metodo: 'efectivo', sobrante: cs.sobrante_faltante });
       }
 
       eventos.sort((a, b) => new Date(a.hora) - new Date(b.hora));
 
-      res.json({ eventos, sesion: sesion || null, historial_cerradas: historialCerradas });
+      let saldo = sesion ? (sesion.fondo_inicial || 0) : 0;
+      for (const ev of eventos) {
+        if (ev.tipo === 'EGRESO') saldo -= ev.monto;
+        else if (ev.tipo === 'PAGO' || ev.tipo === 'INGRESO' || ev.tipo === 'APERTURA') saldo += ev.monto;
+        ev.saldo = saldo;
+      }
+
+      res.json({
+        fecha: hoy,
+        eventos,
+        sesion: sesion || null,
+        historial_cerradas: historialCerradas,
+        desglose,
+        total_general: totalGeneral,
+        total_propina: totalPropina,
+        propina_por_metodo: propinaPorMetodo,
+        movimientos_totales: totales,
+        efectivo_esperado: efectivoEsperado,
+        pagos_sesion_efectivo: pagosSesionEfectivo,
+        ...metricas
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -405,49 +516,54 @@ function createAdminRouter() {
 
   router.post('/caja/cerrar', (req, res) => {
     try {
-      const { efectivo_contado, notas } = req.body;
+      const { efectivo_contado, notas, usuario_id } = req.body;
       const sesion = db.prepare('SELECT * FROM caja_sesiones WHERE estado = ?').get('ABIERTA');
       if (!sesion) return res.status(404).json({ error: 'No hay sesión de caja abierta' });
 
-      const fecha = new Date(sesion.opened_at).toISOString().split('T')[0];
-      const efectivoPagos = db.prepare(`
-        SELECT COALESCE(SUM(pg.monto), 0) as total
-        FROM pagos pg JOIN pedidos p ON p.id = pg.pedido_id
-        WHERE pg.metodo = 'efectivo' AND date(pg.created_at) = ?
-      `).get(fecha);
+      const now = db.prepare("SELECT datetime('now') as t").get().t;
 
-      const movIngresos = db.prepare(`
-        SELECT COALESCE(SUM(monto), 0) as total
-        FROM caja_movimientos
-        WHERE tipo = 'INGRESO' AND metodo_pago = 'efectivo' AND date(created_at) = ?
-      `).get(fecha);
+      const { desglose, totalGeneral, totalPropina } = getDesglosePagos('pg.created_at >= ? AND pg.created_at <= ?', [sesion.opened_at, now]);
+      const { totales } = getMovimientosTotales('created_at >= ? AND created_at <= ?', [sesion.opened_at, now]);
+      const pedidos = db.prepare(`
+        SELECT COUNT(*) as c FROM pedidos WHERE estado = 'CERRADO' AND created_at >= ? AND created_at <= ?
+      `).get(sesion.opened_at, now);
 
-      const movEgresos = db.prepare(`
-        SELECT COALESCE(SUM(monto), 0) as total
-        FROM caja_movimientos
-        WHERE tipo = 'EGRESO' AND metodo_pago = 'efectivo' AND date(created_at) = ?
-      `).get(fecha);
-
-      const fondo = sesion.fondo_inicial;
+      const fondo = sesion.fondo_inicial || 0;
       const efectivo = parseFloat(efectivo_contado) || 0;
-      const pagosEfectivo = efectivoPagos.total || 0;
-      const ingresosEfectivo = movIngresos.total || 0;
-      const egresosEfectivo = movEgresos.total || 0;
+      const pagosEfectivo = desglose.efectivo?.total || 0;
+      const ingresosEfectivo = totales.por_metodo.efectivo?.ingresos || 0;
+      const egresosEfectivo = totales.por_metodo.efectivo?.egresos || 0;
       const efectivoEsperado = fondo + pagosEfectivo + ingresosEfectivo - egresosEfectivo;
-      const sobrante_faltante = efectivo - efectivoEsperado;
+      const sobranteFaltante = efectivo - efectivoEsperado;
 
-      db.prepare('UPDATE caja_sesiones SET efectivo_contado = ?, notas_cierre = ?, estado = ?, closed_at = datetime(\'now\') WHERE id = ?')
-        .run(efectivo, notas || null, 'CERRADA', sesion.id);
+      db.prepare(`
+        UPDATE caja_sesiones SET
+          efectivo_contado = ?, notas_cierre = ?, estado = 'CERRADA', closed_at = ?,
+          total_ventas = ?, propinas = ?, efectivo_esperado = ?, sobrante_faltante = ?,
+          total_pedidos = ?, desglose_json = ?, cerrada_por = ?
+        WHERE id = ?
+      `).run(efectivo, notas || null, now, totalGeneral, totalPropina, efectivoEsperado, sobranteFaltante, pedidos.c, JSON.stringify(desglose), usuario_id || null, sesion.id);
+
+      const propinaPorMetodo = {};
+      for (const [k, v] of Object.entries(desglose)) {
+        if (v.total_propina > 0) propinaPorMetodo[k] = v.total_propina;
+      }
 
       res.json({
         ok: true,
+        sesion_id: sesion.id,
         fondo_inicial: fondo,
-        efectivo_en_pagos: pagosEfectivo,
+        total_ventas: totalGeneral,
+        total_pedidos: pedidos.c,
+        propinas: totalPropina,
+        propina_por_metodo: propinaPorMetodo,
+        desglose,
+        pagos_efectivo: pagosEfectivo,
         ingresos_efectivo: ingresosEfectivo,
         egresos_efectivo: egresosEfectivo,
         efectivo_esperado: efectivoEsperado,
         efectivo_contado: efectivo,
-        sobrante_faltante: sobrante_faltante
+        sobrante_faltante: sobranteFaltante
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -455,64 +571,71 @@ function createAdminRouter() {
   router.get('/caja/sesion-actual', (req, res) => {
     try {
       const sesion = db.prepare('SELECT cs.*, u.nombre as usuario_nombre FROM caja_sesiones cs LEFT JOIN usuarios u ON u.id = cs.usuario_id WHERE cs.estado = ? ORDER BY cs.id DESC LIMIT 1').get('ABIERTA');
-      res.json(sesion || null);
+      if (!sesion) return res.json(null);
+
+      const now = db.prepare("SELECT datetime('now') as t").get().t;
+      const { desglose, totalGeneral, totalPropina } = getDesglosePagos('pg.created_at >= ? AND pg.created_at <= ?', [sesion.opened_at, now]);
+      const { movs, totales } = getMovimientosTotales('created_at >= ? AND created_at <= ?', [sesion.opened_at, now]);
+      const pedidos = db.prepare(`
+        SELECT COUNT(*) as c FROM pedidos WHERE estado = 'CERRADO' AND created_at >= ? AND created_at <= ?
+      `).get(sesion.opened_at, now);
+
+      const pagosEfectivo = desglose.efectivo?.total || 0;
+      const efectivoEsperado = (sesion.fondo_inicial || 0) + pagosEfectivo
+        + (totales.por_metodo.efectivo?.ingresos || 0) - (totales.por_metodo.efectivo?.egresos || 0);
+
+      res.json({
+        ...sesion,
+        total_ventas: totalGeneral,
+        propinas: totalPropina,
+        total_pedidos: pedidos.c,
+        desglose,
+        movimientos_totales: totales,
+        movimientos: movs,
+        pagos_efectivo: pagosEfectivo,
+        efectivo_esperado: efectivoEsperado
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  router.get('/caja/historial', (req, res) => {
+  // ─── MOVIMIENTOS DE CAJA ───
+  router.get('/caja/movimientos', (req, res) => {
     try {
       const { fecha } = req.query;
       const hoy = fecha || new Date().toISOString().split('T')[0];
-      const sesiones = db.prepare(`
-        SELECT cs.*, u.nombre as usuario_nombre
-        FROM caja_sesiones cs
-        LEFT JOIN usuarios u ON u.id = cs.usuario_id
-        WHERE date(cs.opened_at) = ?
-        ORDER BY cs.opened_at DESC
+      const movs = db.prepare(`
+        SELECT cm.*, u.nombre as usuario_nombre
+        FROM caja_movimientos cm
+        LEFT JOIN usuarios u ON u.id = cm.usuario_id
+        WHERE date(cm.created_at) = ?
+        ORDER BY cm.created_at DESC
       `).all(hoy);
-      res.json(sesiones);
+      res.json(movs);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ─── CAJA MOVIMIENTOS ───
   router.post('/caja/movimientos', (req, res) => {
     try {
       const { tipo, concepto, monto, metodo_pago, persona, usuario_id, notas } = req.body;
-      if (!tipo || !['INGRESO', 'EGRESO'].includes(tipo)) return res.status(400).json({ error: 'Tipo inválido (INGRESO o EGRESO)' });
-      if (!concepto || !concepto.trim()) return res.status(400).json({ error: 'Concepto requerido' });
-      if (!monto || monto <= 0) return res.status(400).json({ error: 'Monto inválido' });
-      if (!metodo_pago || !['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'].includes(metodo_pago)) {
-        return res.status(400).json({ error: 'Método de pago inválido' });
+      if (!['INGRESO', 'EGRESO'].includes(tipo)) return res.status(400).json({ error: 'tipo debe ser INGRESO o EGRESO' });
+      if (!concepto || !concepto.trim()) return res.status(400).json({ error: 'concepto requerido' });
+      const montoF = parseFloat(monto);
+      if (!montoF || montoF <= 0) return res.status(400).json({ error: 'monto inválido' });
+      if (!['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'].includes(metodo_pago)) {
+        return res.status(400).json({ error: 'metodo_pago inválido' });
       }
-
-      const result = db.prepare(`
+      const r = db.prepare(`
         INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(tipo, concepto.trim(), monto, metodo_pago, persona || null, usuario_id || null, notas || null);
-
-      const mov = db.prepare('SELECT cm.*, u.nombre as usuario_nombre FROM caja_movimientos cm LEFT JOIN usuarios u ON u.id = cm.usuario_id WHERE cm.id = ?').get(result.lastInsertRowid);
-      res.status(201).json(mov);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-  });
-
-  router.get('/caja/movimientos', (req, res) => {
-    try {
-      const { fecha, tipo } = req.query;
-      const hoy = fecha || new Date().toISOString().split('T')[0];
-      let sql = `SELECT cm.*, u.nombre as usuario_nombre FROM caja_movimientos cm LEFT JOIN usuarios u ON u.id = cm.usuario_id WHERE date(cm.created_at) = ?`;
-      const params = [hoy];
-      if (tipo && ['INGRESO', 'EGRESO'].includes(tipo)) {
-        sql += ' AND cm.tipo = ?';
-        params.push(tipo);
-      }
-      sql += ' ORDER BY cm.created_at DESC';
-      res.json(db.prepare(sql).all(...params));
+      `).run(tipo, concepto.trim(), montoF, metodo_pago, persona || null, usuario_id || null, notas || null);
+      res.status(201).json(db.prepare('SELECT * FROM caja_movimientos WHERE id = ?').get(r.lastInsertRowid));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   router.delete('/caja/movimientos/:id', (req, res) => {
     try {
-      db.prepare('DELETE FROM caja_movimientos WHERE id = ?').run(req.params.id);
+      const r = db.prepare('DELETE FROM caja_movimientos WHERE id = ?').run(req.params.id);
+      if (r.changes === 0) return res.status(404).json({ error: 'Movimiento no encontrado' });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -521,25 +644,9 @@ function createAdminRouter() {
     try {
       const { fecha } = req.query;
       const hoy = fecha || new Date().toISOString().split('T')[0];
-      const movimientos = db.prepare(`
-        SELECT cm.*, u.nombre as usuario_nombre
-        FROM caja_movimientos cm
-        LEFT JOIN usuarios u ON u.id = cm.usuario_id
-        WHERE date(cm.created_at) = ?
-        ORDER BY cm.created_at ASC
-      `).all(hoy);
-
-      let totalIngresos = 0, totalEgresos = 0;
-      const porMetodo = {};
-      for (const mv of movimientos) {
-        if (mv.tipo === 'INGRESO') totalIngresos += mv.monto;
-        else totalEgresos += mv.monto;
-        if (!porMetodo[mv.metodo_pago]) porMetodo[mv.metodo_pago] = { ingresos: 0, egresos: 0 };
-        porMetodo[mv.metodo_pago][mv.tipo === 'INGRESO' ? 'ingresos' : 'egresos'] += mv.monto;
-      }
-
-      const result = printers.printResumenMovimientos(hoy, movimientos, { ingresos: totalIngresos, egresos: totalEgresos, por_metodo: porMetodo });
-      res.json(result);
+      const { movs, totales } = getMovimientosTotales('date(created_at) = ?', [hoy]);
+      printers.printResumenMovimientos(hoy, movs, totales);
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

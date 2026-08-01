@@ -145,6 +145,7 @@
       <a onclick="showSection('reportes')">📊 Reportes</a>
       <a onclick="showSection('caja')">💰 Caja</a>
       <a onclick="showSection('areas')">🗺️ Áreas y Mesas</a>
+      <a onclick="showSection('config')">⚙️ Configuración</a>
     </nav>
 
     <div class="admin-content">
@@ -194,6 +195,7 @@
           <div id="cajaSesionBarFlujo"></div>
           <div id="cajaFlujoResumen" style="margin-bottom:16px;"></div>
           <div id="cajaFlujoDesglose" style="margin-bottom:16px;"></div>
+          <div id="cajaFlujoAnalisis" style="margin-bottom:16px;"></div>
           <div id="cajaFlujoTimeline"></div>
         </div>
 
@@ -265,6 +267,7 @@
       <div id="sec-areas" class="section" style="display:none;">
         <div class="toolbar">
           <h2 style="margin:0;flex:1;">🗺️ Áreas y Mesas</h2>
+          <button class="btn btn-outline btn-sm" onclick="openMesaModal()">🪑 + Nueva mesa</button>
           <button class="btn btn-primary btn-sm" onclick="openAreaModal()">+ Nueva área</button>
         </div>
 
@@ -273,6 +276,32 @@
         </div>
 
         <div id="areasWrap"><p class="empty-state">Cargando...</p></div>
+      </div>
+
+      <!-- CONFIGURACION -->
+      <div id="sec-config" class="section" style="display:none;">
+        <div class="toolbar">
+          <h2 style="margin:0;flex:1;">⚙️ Configuración</h2>
+          <button class="btn btn-outline btn-sm" onclick="loadConfiguracion()">🔄 Recargar</button>
+        </div>
+
+        <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">💳 Modal de Pago (POS)</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Elige qué secciones y métodos aparecen al cobrar. Los cambios se aplican al instante en el POS.</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfiguracion()">💾 Guardar cambios</button>
+          </div>
+
+          <div style="font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:10px;">Secciones visibles</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:20px;" id="cfgModalSecciones"></div>
+
+          <div style="font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:10px;">Métodos de pago visibles</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;" id="cfgModalMetodos"></div>
+        </div>
+
+        <div id="cfgOtrosWrap"></div>
       </div>
     </div>
   </div>
@@ -406,6 +435,29 @@
     </div>
   </div>
 
+  <!-- MODAL MESA -->
+  <div class="modal-overlay admin-modal" id="modalMesa" onclick="if(event.target===this)closeModal('modalMesa')">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h2 id="modalMesaTitle">Nueva mesa</h2>
+        <button class="modal-close" onclick="closeModal('modalMesa')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label>Número</label><input id="mesaNumero" type="number" min="1" class="form-control" placeholder="Auto"></div>
+          <div class="form-group"><label>Capacidad</label><input id="mesaCapacidad" type="number" min="1" value="4" class="form-control"></div>
+        </div>
+        <div class="form-group"><label>Nombre (opcional)</label><input id="mesaNombre" class="form-control" placeholder="Ej: VIP 1"></div>
+        <div class="form-group"><label>Área</label><select id="mesaArea" class="form-control"></select></div>
+        <p id="mesaError" style="color:#DC2626;font-size:0.8rem;margin:8px 0 0;display:none;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalMesa')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveMesa()">Crear mesa</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL AREA -->
   <div class="modal-overlay admin-modal" id="modalArea" onclick="if(event.target===this)closeModal('modalArea')">
     <div class="modal" style="max-width:420px;">
@@ -460,6 +512,89 @@
       if (s === 'reportes') loadReportes();
       if (s === 'caja') loadCaja();
       if (s === 'areas') loadAreasAdmin();
+      if (s === 'config') loadConfiguracion();
+    }
+
+    // ---- CONFIGURACION ----
+    let configGlobal = null;
+
+    async function loadConfiguracion() {
+      try {
+        const res = await fetch('/api/admin/configuracion');
+        configGlobal = await res.json();
+        renderConfigModalPago();
+      } catch (e) {
+        showToast('Error al cargar configuración', 'error');
+      }
+    }
+
+    function renderConfigModalPago() {
+      const cfg = configGlobal?.modal_pago || {};
+      const secciones = [
+        { key: 'mostrar_descuento', label: '🏷️ Descuento', desc: 'Aplicar descuentos al cobrar' },
+        { key: 'mostrar_vale', label: '🎫 Vale de consumo', desc: 'Usar vales en el cobro' },
+        { key: 'mostrar_propina', label: '💡 Propina', desc: 'Botones rápidos y monto de propina' },
+        { key: 'mostrar_notas', label: '📝 Notas / Referencia', desc: 'Referencia y notas del pago' },
+        { key: 'mostrar_regalo', label: '🎁 Regalo / Obsequio', desc: 'Marcar pendiente como obsequio' },
+        { key: 'mostrar_dividir', label: '👥 Dividir cuenta', desc: 'Dividir el pago en partes' }
+      ];
+      const metodos = [
+        { key: 'efectivo', label: '💵 Efectivo' },
+        { key: 'tarjeta', label: '💳 Tarjeta' },
+        { key: 'transferencia', label: '📱 Transferencia' },
+        { key: 'otros', label: '📋 Otros' }
+      ];
+
+      const secEl = document.getElementById('cfgModalSecciones');
+      secEl.innerHTML = secciones.map(s => {
+        const checked = cfg[s.key] !== false;
+        return `<div style="border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+          <label class="toggle"><input type="checkbox" data-cfg-sec="${s.key}" ${checked ? 'checked' : ''}><span class="slider"></span></label>
+          <div>
+            <div style="font-weight:600;font-size:0.85rem;">${s.label}</div>
+            <div style="font-size:0.72rem;color:#94A3B8;">${s.desc}</div>
+          </div>
+        </div>`;
+      }).join('');
+
+      const metEl = document.getElementById('cfgModalMetodos');
+      metEl.innerHTML = metodos.map(m => {
+        const checked = (cfg.metodos || []).includes(m.key);
+        return `<div style="border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+          <label class="toggle"><input type="checkbox" data-cfg-metodo="${m.key}" ${checked ? 'checked' : ''}><span class="slider"></span></label>
+          <div style="font-weight:600;font-size:0.85rem;">${m.label}</div>
+        </div>`;
+      }).join('');
+    }
+
+    async function saveConfiguracion() {
+      const cfg = configGlobal?.modal_pago || {};
+      const secciones = ['mostrar_descuento', 'mostrar_vale', 'mostrar_propina', 'mostrar_notas', 'mostrar_regalo', 'mostrar_dividir'];
+      for (const key of secciones) {
+        const el = document.querySelector(`[data-cfg-sec="${key}"]`);
+        cfg[key] = el ? el.checked : true;
+      }
+      const metodos = [];
+      document.querySelectorAll('[data-cfg-metodo]').forEach(el => {
+        if (el.checked) metodos.push(el.dataset.cfgMetodo);
+      });
+      if (!metodos.length) return showToast('Debe dejar al menos un método de pago visible', 'warning');
+      cfg.metodos = metodos;
+
+      try {
+        const res = await fetch('/api/admin/configuracion/modal_pago', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor: cfg })
+        });
+        if (res.ok) {
+          showToast('Configuración guardada', 'success');
+          configGlobal.modal_pago = cfg;
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     // ---- CAJA SUB-TABS ----
@@ -492,6 +627,7 @@
         renderCajaFlujoBar(data.sesion);
         renderCajaFlujoResumen(data);
         renderCajaFlujoDesglose(data);
+        renderCajaFlujoAnalisis(data);
         renderCajaFlujoTimeline(data);
       } catch (e) {
         document.getElementById('cajaFlujoTimeline').innerHTML = '<p class="empty-state">Error al cargar flujo de caja</p>';
@@ -527,22 +663,28 @@
       const el = document.getElementById('cajaFlujoResumen');
       const sesion = data.sesion;
       const fondo = sesion ? (sesion.fondo_inicial || 0) : 0;
-      const pagosTotal = data.desglose ? Object.values(data.desglose).reduce((s, d) => s + (d.total || 0), 0) : 0;
       const propina = data.total_propina || 0;
       const movIng = data.movimientos_totales?.ingresos || 0;
       const movEgr = data.movimientos_totales?.egresos || 0;
-      const saldoMov = movIng - movEgr;
       const totalGeneral = data.total_general || 0;
+      const ticketPromedio = data.ticket_promedio || 0;
+      const cancelados = data.cancelados || { total: 0 };
+      const efectivoEsperado = data.efectivo_esperado;
+      const totalPedidos = data.total_pedidos || 0;
 
       const cards = [
         { label: 'Fondo inicial', value: `$${fondo.toFixed(2)}`, color: '#64748B', icon: '🏦' },
         { label: 'Total cobrado', value: `$${totalGeneral.toFixed(2)}`, color: '#059669', icon: '💰' },
+        { label: 'Ticket promedio', value: `$${ticketPromedio.toFixed(2)}`, color: '#3B82F6', icon: '🧾' },
+        { label: 'Pedidos cerrados', value: `${totalPedidos}`, color: '#0D9488', icon: '📋' },
       ];
       if (propina > 0) cards.push({ label: 'Propinas', value: `$${propina.toFixed(2)}`, color: '#F97316', icon: '💡' });
-      cards.push({ label: 'Movimientos', value: `${movIng >= 0 ? '+' : ''}$${movIng.toFixed(2)} / -${movEgr.toFixed(2)}`, color: '#3B82F6', icon: '🔄' });
-      if (data.descuentos?.total > 0) cards.push({ label: 'Descuentos', value: `${data.descuentos.total}`, color: '#DC2626', icon: '🏷️' });
-      if (data.vales_usados?.total > 0) cards.push({ label: 'Vales usados', value: `${data.vales_usados.total}`, color: '#F59E0B', icon: '🎫' });
-      if (data.regalos?.total > 0) cards.push({ label: 'Regalos', value: `${data.regalos.total}`, color: '#EC4899', icon: '🎁' });
+      if (efectivoEsperado != null) cards.push({ label: 'Efectivo esperado (caja)', value: `$${efectivoEsperado.toFixed(2)}`, color: '#059669', icon: '💵' });
+      cards.push({ label: 'Movimientos', value: `+$${movIng.toFixed(2)} / -$${movEgr.toFixed(2)}`, color: '#3B82F6', icon: '🔄' });
+      if (cancelados.total > 0) cards.push({ label: 'Cancelados', value: `${cancelados.total}`, color: '#EF4444', icon: '🚫' });
+      if (data.descuentos?.total > 0) cards.push({ label: 'Descuentos', value: `${data.descuentos.total} (−$${(data.descuentos.monto_estimado || 0).toFixed(2)})`, color: '#DC2626', icon: '🏷️' });
+      if (data.vales_usados?.total > 0) cards.push({ label: 'Vales usados', value: `$${data.vales_usados.suma.toFixed(2)}`, color: '#F59E0B', icon: '🎫' });
+      if (data.regalos?.total > 0) cards.push({ label: 'Regalos', value: `$${data.regalos.suma.toFixed(2)}`, color: '#EC4899', icon: '🎁' });
 
       let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">';
       for (const c of cards) {
@@ -568,19 +710,68 @@
         { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
       ];
       let hasData = false;
+      const totalGeneral = data.total_general || 0;
       let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">';
       for (const m of metodos) {
         const d = data.desglose?.[m.key];
         if (!d || d.cantidad === 0) continue;
         hasData = true;
+        const pct = totalGeneral > 0 ? ((d.total / totalGeneral) * 100).toFixed(0) : 0;
         h += `<div style="background:white;padding:10px 14px;border-radius:8px;border-left:3px solid ${m.color};font-size:0.85rem;">
-          <div style="font-weight:600;color:${m.color};">${m.label}</div>
+          <div style="font-weight:600;color:${m.color};">${m.label} <span style="font-weight:400;color:#94A3B8;">${pct}%</span></div>
           <div style="font-size:1.05rem;font-weight:800;">$${d.total.toFixed(2)}</div>
-          <div style="font-size:0.7rem;color:#94A3B8;">${d.cantidad} pago(s)</div>
+          <div style="font-size:0.7rem;color:#94A3B8;">${d.cantidad} pago(s)${d.total_propina > 0 ? ` · propina $${d.total_propina.toFixed(2)}` : ''}</div>
         </div>`;
       }
       h += '</div>';
       el.innerHTML = hasData ? h : '';
+    }
+
+    function renderCajaFlujoAnalisis(data) {
+      const el = document.getElementById('cajaFlujoAnalisis');
+      const top = data.top_productos || [];
+      const porHora = data.ventas_por_hora || [];
+
+      let h = '';
+      if (top.length || porHora.length) {
+        h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px;">';
+        if (top.length) {
+          const maxCant = Math.max(...top.map(t => t.cantidad));
+          h += `<div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:16px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#334155;margin-bottom:12px;">🏆 Top productos más vendidos</div>`;
+          for (const t of top) {
+            const w = maxCant > 0 ? (t.cantidad / maxCant) * 100 : 0;
+            h += `<div style="margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:2px;">
+                <span style="font-weight:600;">${t.nombre}</span>
+                <span style="color:#64748b;">${t.cantidad} ud · $${t.total.toFixed(2)}</span>
+              </div>
+              <div style="background:#F1F5F9;border-radius:6px;height:8px;overflow:hidden;">
+                <div style="width:${w}%;height:100%;background:#059669;border-radius:6px;"></div>
+              </div>
+            </div>`;
+          }
+          h += '</div>';
+        }
+        if (porHora.length) {
+          const maxTotal = Math.max(...porHora.map(v => v.total));
+          h += `<div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:16px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#334155;margin-bottom:12px;">🕐 Ventas por hora</div>
+            <div style="display:flex;align-items:flex-end;gap:6px;height:110px;">`;
+          for (const v of porHora) {
+            const hgt = maxTotal > 0 ? Math.max(4, (v.total / maxTotal) * 100) : 4;
+            h += `<div style="flex:1;text-align:center;">
+              <div style="background:#3B82F6;border-radius:4px 4px 0 0;height:${hgt}%;margin:0 auto;min-height:4px;max-width:26px;position:relative;" title="$${v.total.toFixed(2)} (${v.cantidad} pagos)">
+                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:#64748b;white-space:nowrap;">$${Math.round(v.total)}</div>
+              </div>
+              <div style="font-size:0.62rem;color:#94A3B8;margin-top:4px;">${v.hora}h</div>
+            </div>`;
+          }
+          h += '</div></div>';
+        }
+        h += '</div>';
+      }
+      el.innerHTML = h;
     }
 
     function renderCajaFlujoTimeline(data) {
@@ -621,10 +812,11 @@
                 ${extra}
               </div>
               <div style="text-align:right;">
-                <div style="font-weight:800;color:${montoColor};font-size:0.95rem;">${ev.tipo !== 'APERTURA' && ev.tipo !== 'CIERRE' ? montoPrefix + '$' + ev.monto.toFixed(2) : '$' + ev.monto.toFixed(2)}</div>
+                <div style="font-weight:800;color:${montoColor};font-size:0.95rem;">${ev.tipo !== 'APERTURA' && ev.tipo !== 'CIERRE' ? montoPrefix + '$' + ev.monto.toFixed(2) : ev.tipo === 'CIERRE' && ev.sobrante != null && Math.abs(ev.sobrante) > 0.01 ? (ev.sobrante > 0 ? '+$' : '-$') + Math.abs(ev.sobrante).toFixed(2) : '$' + ev.monto.toFixed(2)}</div>
                 <div class="caja-timeline-meta">${hora} — ${metodoIcon} ${ev.metodo} — ${ev.persona || ''}</div>
               </div>
             </div>
+            ${ev.saldo != null ? `<div style="font-size:0.7rem;color:#94A3B8;margin-top:4px;text-align:right;">Saldo: $${ev.saldo.toFixed(2)}</div>` : ''}
           </div>
         </div>`;
       }
@@ -1037,7 +1229,7 @@
           </div>`;
         }
 
-        h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+        h += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
             <div style="font-size:0.8rem;color:#64748b;">TOTAL COBRADO</div>
             <div style="font-size:2rem;font-weight:800;color:#059669;">$${data.total_general.toFixed(2)}</div>
@@ -1045,7 +1237,12 @@
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
             <div style="font-size:0.8rem;color:#64748b;">PEDIDOS CERRADOS</div>
             <div style="font-size:2rem;font-weight:800;">${data.total_pedidos}</div>
-            <div style="font-size:0.75rem;color:#94a3b8;">Suma pedidos: $${data.suma_pedidos.toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">Suma: $${data.suma_pedidos.toFixed(2)}</div>
+          </div>
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
+            <div style="font-size:0.8rem;color:#64748b;">TICKET PROMEDIO</div>
+            <div style="font-size:2rem;font-weight:800;color:#3B82F6;">$${(data.ticket_promedio || 0).toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">${data.cancelados?.total > 0 ? `🚫 Cancelados: ${data.cancelados.total} (−$${(data.cancelados.suma || 0).toFixed(2)})` : 'Sin cancelados'}</div>
           </div>
         </div>`;
 
@@ -1055,7 +1252,7 @@
             <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🏷️ Descuentos aplicados</div>
             <div style="display:flex;gap:16px;font-size:0.85rem;">
               <span>Total descuentos: <strong style="color:#DC2626;">${data.descuentos.total}</strong></span>
-              <span>Monto fijo: <strong>$${(data.descuentos.monto_fijo || 0).toFixed(2)}</strong></span>
+              <span>Monto estimado: <strong>$${(data.descuentos.monto_estimado || 0).toFixed(2)}</strong></span>
             </div>
           </div>`;
         }
@@ -1077,6 +1274,44 @@
           h += `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.85rem;">
             ⚠️ Diferencia: $${diff.toFixed(2)} (suma pedidos vs suma pagos)
           </div>`;
+        }
+
+        const top = data.top_productos || [];
+        if (top.length) {
+          const maxCant = Math.max(...top.map(t => t.cantidad));
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:700;margin-bottom:12px;">🏆 Top productos más vendidos</div>`;
+          for (const t of top) {
+            const w = maxCant > 0 ? (t.cantidad / maxCant) * 100 : 0;
+            h += `<div style="margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:2px;">
+                <span style="font-weight:600;">${t.nombre}</span>
+                <span style="color:#64748b;">${t.cantidad} ud · $${t.total.toFixed(2)}</span>
+              </div>
+              <div style="background:#F1F5F9;border-radius:6px;height:8px;overflow:hidden;">
+                <div style="width:${w}%;height:100%;background:#059669;border-radius:6px;"></div>
+              </div>
+            </div>`;
+          }
+          h += '</div>';
+        }
+
+        const porHora = data.ventas_por_hora || [];
+        if (porHora.length) {
+          const maxTotal = Math.max(...porHora.map(v => v.total));
+          h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:700;margin-bottom:12px;">🕐 Ventas por hora</div>
+            <div style="display:flex;align-items:flex-end;gap:6px;height:110px;">`;
+          for (const v of porHora) {
+            const hgt = maxTotal > 0 ? Math.max(4, (v.total / maxTotal) * 100) : 4;
+            h += `<div style="flex:1;text-align:center;">
+              <div style="background:#3B82F6;border-radius:4px 4px 0 0;height:${hgt}%;margin:0 auto;min-height:4px;max-width:26px;position:relative;" title="$${v.total.toFixed(2)} (${v.cantidad} pagos)">
+                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:#64748b;white-space:nowrap;">$${Math.round(v.total)}</div>
+              </div>
+              <div style="font-size:0.62rem;color:#94A3B8;margin-top:4px;">${v.hora}h</div>
+            </div>`;
+          }
+          h += '</div></div>';
         }
 
         el.innerHTML = h;
@@ -1106,33 +1341,63 @@
 
     async function cerrarCaja() {
       try {
-        const fecha = document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
-        const res = await fetch('/api/admin/corte-caja?fecha=' + fecha);
+        const res = await fetch('/api/admin/caja/sesion-actual');
         const data = await res.json();
-        const sesion = data.sesion;
+        const sesion = data;
         if (!sesion) return showToast('No hay sesión de caja abierta', 'warning');
 
         const fondo = sesion.fondo_inicial || 0;
-        const pagosEfectivo = data.desglose.efectivo?.total || 0;
+        const pagosEfectivo = sesion.pagos_efectivo || 0;
+        const totalVentas = sesion.total_ventas || 0;
+        const propinas = sesion.propinas || 0;
+        const totalPedidos = sesion.total_pedidos || 0;
+        const desglose = sesion.desglose || {};
+        const esperado = sesion.efectivo_esperado || 0;
+
+        const movsEfectivo = (sesion.movimientos || []).filter(m => m.metodo_pago === 'efectivo');
         let ingresosEfectivo = 0, egresosEfectivo = 0;
-        const movimientos = data.movimientos || [];
-        const movsEfectivo = movimientos.filter(m => m.metodo_pago === 'efectivo');
         for (const mv of movsEfectivo) {
           if (mv.tipo === 'INGRESO') ingresosEfectivo += mv.monto;
           else egresosEfectivo += mv.monto;
         }
-        const esperado = fondo + pagosEfectivo + ingresosEfectivo - egresosEfectivo;
 
         const body = document.getElementById('cierreCajaBody');
+
+        const metodosCierre = [
+          { key: 'efectivo', label: '💵 Efectivo', color: '#059669' },
+          { key: 'tarjeta', label: '💳 Tarjeta', color: '#3B82F6' },
+          { key: 'transferencia', label: '📱 Transferencia', color: '#8B5CF6' },
+          { key: 'yape', label: '📱 Yape', color: '#7C3AED' },
+          { key: 'plin', label: '📱 Plin', color: '#2563EB' },
+          { key: 'otros', label: '📋 Otros', color: '#6B7280' },
+          { key: 'vale', label: '🎫 Vales', color: '#F59E0B' },
+          { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
+        ];
+
+        let desgloseHtml = '';
+        for (const m of metodosCierre) {
+          const d = desglose[m.key];
+          if (!d || d.cantidad === 0) continue;
+          desgloseHtml += `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F1F5F9;font-size:0.85rem;">
+            <span>${m.label} <small style="color:#94A3B8;">(${d.cantidad} pago${d.cantidad !== 1 ? 's' : ''}${d.total_propina > 0 ? ` · propina $${d.total_propina.toFixed(2)}` : ''})</small></span>
+            <span style="font-weight:700;color:${m.color};">$${d.total.toFixed(2)}</span>
+          </div>`;
+        }
 
         let html = `
           <div style="text-align:center;margin-bottom:20px;">
             <div style="font-size:0.8rem;color:#64748b;">Efectivo esperado en caja</div>
             <div style="font-size:2.2rem;font-weight:800;color:#059669;">$${esperado.toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94A3B8;">${totalPedidos} pedidos · Ventas: $${totalVentas.toFixed(2)} · Propinas: $${propinas.toFixed(2)}</div>
+          </div>
+
+          <div style="background:#F8FAFC;border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:0.8rem;font-weight:600;color:#334155;margin-bottom:8px;">📊 Ventas de la sesión por método</div>
+            ${desgloseHtml || '<div style="font-size:0.8rem;color:#94A3B8;">Sin pagos registrados en esta sesión</div>'}
           </div>
 
           <div style="background:#F0FDF4;border-radius:10px;padding:16px;margin-bottom:16px;">
-            <div style="font-size:0.8rem;font-weight:600;color:#059669;margin-bottom:10px;">📐 Fórmula de cálculo</div>
+            <div style="font-size:0.8rem;font-weight:600;color:#059669;margin-bottom:10px;">📐 Fórmula de cálculo (efectivo)</div>
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
               <span>Fondo inicial</span><span style="font-weight:600;">$${fondo.toFixed(2)}</span>
             </div>
@@ -1214,18 +1479,19 @@
         const res = await fetch('/api/admin/caja/cerrar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ efectivo_contado: parseFloat(contado) })
+          body: JSON.stringify({ efectivo_contado: parseFloat(contado), usuario_id: currentUser?.id || 1 })
         });
         if (res.ok) {
           const d = await res.json();
           closeModal('modalCierreCaja');
-          let msg = `Caja cerrada. Esperado: $${d.efectivo_esperado.toFixed(2)} | Contado: $${d.efectivo_contado.toFixed(2)}`;
-          if (Math.abs(d.sobrante_faltante) > 0.01) {
-            msg += ` | ${d.sobrante_faltante > 0 ? 'SOBRANTE' : 'FALTANTE'}: $${Math.abs(d.sobrante_faltante).toFixed(2)}`;
+          const dif = Math.abs(d.sobrante_faltante);
+          let msg = `Caja cerrada · Ventas: $${(d.total_ventas || 0).toFixed(2)} · Esperado: $${d.efectivo_esperado.toFixed(2)} | Contado: $${d.efectivo_contado.toFixed(2)}`;
+          if (dif > 0.01) {
+            msg += ` | ${d.sobrante_faltante > 0 ? 'SOBRANTE' : 'FALTANTE'}: $${dif.toFixed(2)}`;
           } else {
             msg += ' | Cuadrada ✅';
           }
-          showToast(msg, Math.abs(d.sobrante_faltante) > 0.01 ? 'warning' : 'success');
+          showToast(msg, dif > 0.01 ? 'warning' : 'success');
           loadCaja();
         } else {
           const err = await res.json();
@@ -1415,9 +1681,13 @@
         const virtuales = mesasData.filter(m => m.area_id === a.id && m.es_virtual);
 
         let chips = mesasDeArea.length
-          ? mesasDeArea.map(m => `<span style="display:inline-flex;align-items:center;gap:4px;background:#F1F5F9;border-radius:8px;padding:4px 10px;font-size:0.8rem;font-weight:600;">
+          ? mesasDeArea.map(m => `<span style="display:inline-flex;align-items:center;gap:4px;background:${m.estado === 'INACTIVO' ? '#FEE2E2' : '#F1F5F9'};border-radius:8px;padding:4px 10px;font-size:0.8rem;font-weight:600;">
               ${m.nombre || 'Mesa ' + m.numero}
-              ${!m.tiene_pedido_activo ? `<button onclick="asignarMesa(${m.id}, ${a.id})" style="border:none;background:transparent;color:#94A3B8;cursor:pointer;font-size:0.85rem;" title="Quitar del área">✕</button>` : ''}
+              ${m.estado === 'INACTIVO' ? '<span style="font-size:0.65rem;color:#DC2626;">INACTIVA</span>' : ''}
+              <button onclick="openMesaModal(${m.id})" style="border:none;background:transparent;color:#64748B;cursor:pointer;font-size:0.85rem;" title="Editar mesa">✏️</button>
+              ${m.estado === 'INACTIVO'
+                ? `<button onclick="toggleMesaEstado(${m.id}, 'LIBRE')" style="border:none;background:transparent;color:#059669;cursor:pointer;font-size:0.85rem;" title="Activar mesa">🟢</button>`
+                : !m.tiene_pedido_activo ? `<button onclick="toggleMesaEstado(${m.id}, 'INACTIVO')" style="border:none;background:transparent;color:#94A3B8;cursor:pointer;font-size:0.85rem;" title="Inactivar mesa">🗑️</button>` : ''}
             </span>`).join('')
           : '<span style="color:#94A3B8;font-size:0.8rem;">Sin mesas</span>';
 
@@ -1456,6 +1726,80 @@
         h = '<p class="empty-state">No hay áreas. Crea al menos un Salón.</p>' + h;
       }
       el.innerHTML = h;
+    }
+
+    let editingMesaId = null;
+
+    function openMesaModal(id) {
+      editingMesaId = id || null;
+      const mesa = id ? mesasData.find(m => m.id === id) : null;
+      const sel = document.getElementById('mesaArea');
+      sel.innerHTML = '';
+      for (const a of areasData.filter(a => a.tipo === 'SALON' && a.activo)) {
+        sel.innerHTML += `<option value="${a.id}">${a.nombre}</option>`;
+      }
+      if (areasData.some(a => a.tipo === 'SALON' && !a.activo)) {
+        sel.innerHTML += '<option value="">— Oculto —</option>';
+      }
+      document.getElementById('modalMesaTitle').textContent = mesa ? `Editar mesa ${mesa.nombre || mesa.numero}` : 'Nueva mesa';
+      document.getElementById('mesaNumero').value = mesa ? mesa.numero : '';
+      document.getElementById('mesaNombre').value = mesa ? (mesa.nombre || '') : '';
+      document.getElementById('mesaCapacidad').value = mesa ? mesa.capacidad : '4';
+      sel.value = mesa ? (mesa.area_id || '') : '';
+      sel.disabled = !!mesa && !!mesa.tiene_pedido_activo;
+      document.getElementById('mesaError').style.display = 'none';
+      closeAllModals();
+      document.getElementById('modalMesa').classList.add('active');
+    }
+
+    async function saveMesa() {
+      const numero = document.getElementById('mesaNumero').value;
+      const nombre = document.getElementById('mesaNombre').value.trim();
+      const capacidad = document.getElementById('mesaCapacidad').value;
+      const area_id = document.getElementById('mesaArea').value;
+      const errEl = document.getElementById('mesaError');
+
+      const body = {
+        numero: numero ? parseInt(numero) : null,
+        nombre: nombre || null,
+        capacidad: capacidad ? parseInt(capacidad) : 4,
+        area_id: area_id ? parseInt(area_id) : null
+      };
+      try {
+        const res = await fetch(editingMesaId ? `/api/mesas/${editingMesaId}` : '/api/mesas', {
+          method: editingMesaId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (res.ok) {
+          showToast(editingMesaId ? 'Mesa actualizada' : 'Mesa creada', 'success');
+          closeModal('modalMesa');
+          await loadAreasAdmin();
+        } else {
+          const e = await res.json();
+          errEl.textContent = e.error || 'Error';
+          errEl.style.display = 'block';
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function toggleMesaEstado(mesaId, estado) {
+      const accion = estado === 'INACTIVO' ? 'inactivar' : 'activar';
+      if (!confirm(`¿${accion === 'inactivar' ? 'Inactivar' : 'Activar'} esta mesa?`)) return;
+      try {
+        const res = await fetch(`/api/mesas/${mesaId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado, mesero_id: currentUser?.id || 1 })
+        });
+        if (res.ok) {
+          showToast(accion === 'inactivar' ? 'Mesa inactivada' : 'Mesa activada', 'success');
+          await loadAreasAdmin();
+        } else {
+          const e = await res.json();
+          showToast(e.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     function openAreaModal(id) {

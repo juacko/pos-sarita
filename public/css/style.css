@@ -178,6 +178,70 @@ body {
   margin-top: 4px;
 }
 
+.mesa-total {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--gray-dark);
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+
+.mesa-card.OCUPADO .mesa-total,
+.mesa-card.CERRANDO .mesa-total {
+  color: var(--red);
+}
+
+.mesa-tiempo {
+  font-size: 0.68rem;
+  color: var(--gray);
+  margin-top: 4px;
+  display: inline-block;
+  background: var(--gray-light);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.mesa-sinpedido {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--red);
+  margin-top: 4px;
+  display: inline-block;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.btn-liberar-rapido {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--red);
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-liberar-rapido:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+.mesa-pendiente {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--gray-light);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--red);
+}
+
 /* CANALES (DELIVERY / PARA LLEVAR) */
 .canales-row {
   display: grid;
@@ -328,6 +392,10 @@ body {
   padding: 0 8px;
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+.area-header:first-of-type {
+  margin-top: 4px;
 }
 
 /* MODAL */

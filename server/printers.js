@@ -288,8 +288,91 @@ function printViaPowerShell(text, printerName) {
   }
 }
 
+function generatePrecuentaText(pedido, items, mesa) {
+  const lines = [];
+  const totalBruto = items.reduce((sum, i) => sum + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const now = new Date().toLocaleString('es-MX');
+
+  lines.push('\x1B\x61\x01');
+  lines.push('='.repeat(32));
+  lines.push('RESTAURANTE SARITA');
+  lines.push('*** PRE-CUENTA ***');
+  lines.push('(NO VÁLIDO COMO COMPROBANTE)');
+  lines.push('='.repeat(32));
+  lines.push('\x1B\x61\x00');
+  lines.push('');
+  lines.push(`Mesa: ${mesa.numero || mesa.nombre}     ${now}`);
+  lines.push(`Pedido: #${pedido.id}`);
+  if (pedido.mesero_nombre) lines.push(`Mesero: ${pedido.mesero_nombre}`);
+  if (pedido.cliente_nombre) {
+    lines.push('');
+    pushClienteLines(lines, pedido, mesa && mesa.area_tipo);
+  }
+  lines.push('-'.repeat(32));
+  lines.push('');
+
+  for (const item of items) {
+    const precioUnit = item.precio_unitario + (item.precio_adicional || 0);
+    const importe = (item.cantidad * precioUnit).toFixed(2);
+    lines.push(`${item.cantidad}x ${item.producto_nombre}`);
+    lines.push(`  $${item.precio_unitario.toFixed(2)}  ->  $${importe}`);
+    if (item.variante_nombre) lines.push(`  Var: ${item.variante_nombre}`);
+    if (item.notas) lines.push(`  * ${item.notas}`);
+    try {
+      const mods = JSON.parse(item.modificadores_json || '[]');
+      if (mods.length) lines.push(`  Mod: ${mods.map(m => m.nombre || m).join(', ')}`);
+    } catch (e) {}
+    try {
+      const agrs = JSON.parse(item.agregados_json || '[]');
+      if (agrs.length) lines.push(`  Agr: ${agrs.map(a => a.nombre || a).join(', ')}`);
+    } catch (e) {}
+    lines.push('');
+  }
+
+  lines.push('-'.repeat(32));
+  lines.push(`Subtotal: $${totalBruto.toFixed(2)}`.padStart(28));
+
+  const descuentoRow = pedido.descuentos || [];
+  let totalDescCalc = 0;
+  for (const d of descuentoRow) {
+    if (d.tipo === 'porcentaje') {
+      const m = totalBruto * d.valor / 100;
+      totalDescCalc += m;
+      lines.push(`Descuento ${d.valor}%: -$${m.toFixed(2)}`);
+    } else {
+      totalDescCalc += d.valor;
+      lines.push(`Descuento: -$${d.valor.toFixed(2)}`);
+    }
+  }
+  const totalNeto = Math.max(0, totalBruto - totalDescCalc);
+  lines.push(`TOTAL: $${totalNeto.toFixed(2)}`.padStart(28));
+
+  lines.push('');
+  lines.push('-'.repeat(32));
+  lines.push(' PROPINA SUGERIDA:');
+  lines.push(`  10%: $${(totalNeto * 0.10).toFixed(2)}`);
+  lines.push(`  15%: $${(totalNeto * 0.15).toFixed(2)}`);
+  lines.push('-'.repeat(32));
+
+  lines.push('');
+  lines.push('\x1B\x61\x01');
+  lines.push('Solicite su comprobante final');
+  lines.push('¡Muchas Gracias!');
+  lines.push('\x1B\x61\x00');
+  lines.push('\n\n\n\n');
+  lines.push('\x1B\x64\x02');
+  lines.push('\x1B\x6D');
+
+  return lines.join('\n');
+}
+
 function printTicket(pedido, items, mesa) {
   const text = generateTicketText(pedido, items, mesa);
+  return printViaPowerShell(text, 'caja');
+}
+
+function printPrecuenta(pedido, items, mesa) {
+  const text = generatePrecuentaText(pedido, items, mesa);
   return printViaPowerShell(text, 'caja');
 }
 
@@ -413,6 +496,8 @@ function detectPrinters() {
 
 module.exports = {
   printTicket,
+  printPrecuenta,
+  generatePrecuentaText,
   printComanda,
   printResumenMovimientos,
   getConfig,

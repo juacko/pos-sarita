@@ -460,15 +460,40 @@ function createPedidosRouter(io) {
   router.post('/:id/reimprimir', (req, res) => {
     try {
       const pedido = db.prepare(`
-        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre
+        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo
         FROM pedidos p JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
         WHERE p.id = ?
       `).get(req.params.id);
 
       if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
 
       const items = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(pedido.id);
-      const result = printers.printTicket(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre });
+      pedido.descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(pedido.id);
+      pedido.pagos = db.prepare('SELECT * FROM pagos WHERE pedido_id = ?').all(pedido.id);
+      const result = printers.printTicket(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre, area_tipo: pedido.area_tipo });
+
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/:id/precuenta', (req, res) => {
+    try {
+      const pedido = db.prepare(`
+        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo
+        FROM pedidos p JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
+        WHERE p.id = ?
+      `).get(req.params.id);
+
+      if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+      const items = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(pedido.id);
+      pedido.descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(pedido.id);
+
+      const result = printers.printPrecuenta(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre, area_tipo: pedido.area_tipo });
 
       res.json(result);
     } catch (err) {

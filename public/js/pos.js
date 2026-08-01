@@ -679,6 +679,17 @@ async function reimprimirPedido() {
   }
 }
 
+async function imprimirPrecuenta() {
+  if (!pedidoExistente) return;
+  try {
+    const res = await fetch(`/api/pedidos/${pedidoExistente.id}/precuenta`, { method: 'POST' });
+    const data = await res.json();
+    showToast(data.ok ? 'Pre-cuenta impresa' : 'Error al imprimir pre-cuenta', data.ok ? 'success' : 'warning');
+  } catch (err) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
 async function liberarMesaDesdePedido() {
   if (!posMesaData || !currentUser) return;
   if (!confirm('¿Liberar esta mesa? Los clientes se van.')) return;
@@ -708,6 +719,61 @@ let cobroMetodo = 'efectivo';
 let cobroPedidoRef = null;
 let cobroValeData = null;
 let cobroDividirPersonas = [];
+let posConfig = null;
+
+async function loadPosConfig() {
+  try {
+    const res = await fetch('/api/configuracion/modal_pago');
+    posConfig = await res.json();
+  } catch (e) {
+    posConfig = null;
+  }
+}
+loadPosConfig();
+
+const COBRO_METODOS_DEF = [
+  { key: 'efectivo', label: '💵', texto: 'Efectivo' },
+  { key: 'tarjeta', label: '💳', texto: 'Tarjeta' },
+  { key: 'transferencia', label: '📱', texto: 'Transf.' },
+  { key: 'otros', label: '📋', texto: 'Otros' }
+];
+
+function metodosVisibles() {
+  const cfgMetodos = posConfig?.metodos;
+  const lista = cfgMetodos && cfgMetodos.length ? cfgMetodos : COBRO_METODOS_DEF.map(m => m.key);
+  return COBRO_METODOS_DEF.filter(m => lista.includes(m.key));
+}
+
+function renderMetodosCobro() {
+  const grid = document.getElementById('cobroMetodosGrid');
+  if (!grid) return;
+  const visibles = metodosVisibles();
+  grid.innerHTML = visibles.map(m => `
+    <button class="btn btn-outline cobro-metodo ${cobroMetodo === m.key ? 'active' : ''}" data-metodo="${m.key}" onclick="selectMetodo('${m.key}')">${m.label} ${m.texto}</button>
+  `).join('');
+  const activo = grid.querySelector('.cobro-metodo[data-metodo="' + cobroMetodo + '"]');
+  if (activo) {
+    activo.style.background = 'var(--blue)';
+    activo.style.color = 'white';
+    activo.style.borderColor = 'var(--blue)';
+  }
+}
+
+function aplicarVisibilidadCobro() {
+  const cfg = posConfig || {};
+  const secciones = {
+    descuento: 'cobroDescuentoSection',
+    vale: 'cobroValeSection',
+    propina: 'cobroPropinaSection',
+    notas: 'cobroNotasSection',
+    regalo: 'cobroRegaloSection',
+    dividir: 'cobroDividirSection'
+  };
+  for (const [clave, id] of Object.entries(secciones)) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = cfg[clave] === false ? 'none' : '';
+  }
+}
 
 function calcularTotalCobro() {
   if (!cobroPedidoRef) return 0;
@@ -755,15 +821,18 @@ function abrirModalCobro() {
   if (pagado > 0) {
     pagadoInfo.style.display = 'block';
     document.getElementById('cobroPagado').textContent = pagado.toFixed(2);
-    document.getElementById('cobroPendienteInfo').textContent = pendiente.toFixed(2);
   } else {
     pagadoInfo.style.display = 'none';
   }
 
   renderDescuentosAplicados();
 
-  cobroMetodo = 'efectivo';
-  selectMetodo('efectivo');
+  aplicarVisibilidadCobro();
+
+  const visibles = metodosVisibles();
+  cobroMetodo = visibles[0]?.key || 'efectivo';
+  renderMetodosCobro();
+  selectMetodo(cobroMetodo);
   document.getElementById('cobroMonto').value = pendiente.toFixed(2);
   calcularCambio();
 
@@ -1192,6 +1261,7 @@ showMesasView = function() {
   posMesaId = null;
   posMesaData = null;
   pedidoExistente = null;
+  pedidoCliente = null;
   pedidoItems = [];
   loadMesas();
 };

@@ -221,6 +221,12 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (mesa_id) REFERENCES mesas(id)
   );
+
+  CREATE TABLE IF NOT EXISTS configuracion (
+    clave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 function migrateColumns() {
@@ -252,6 +258,15 @@ function migrateColumns() {
   if (!pedCols.includes('cliente_telefono')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_telefono TEXT");
   if (!pedCols.includes('cliente_direccion')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_direccion TEXT");
   if (!pedCols.includes('hora_recogida')) db.exec("ALTER TABLE pedidos ADD COLUMN hora_recogida TEXT");
+
+  const csCols = db.prepare("SELECT name FROM pragma_table_info('caja_sesiones')").all().map(c => c.name);
+  if (!csCols.includes('total_ventas')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN total_ventas REAL DEFAULT 0");
+  if (!csCols.includes('propinas')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN propinas REAL DEFAULT 0");
+  if (!csCols.includes('efectivo_esperado')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN efectivo_esperado REAL");
+  if (!csCols.includes('sobrante_faltante')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN sobrante_faltante REAL");
+  if (!csCols.includes('total_pedidos')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN total_pedidos INTEGER DEFAULT 0");
+  if (!csCols.includes('desglose_json')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN desglose_json TEXT");
+  if (!csCols.includes('cerrada_por')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN cerrada_por INTEGER");
 }
 migrateColumns();
 
@@ -324,6 +339,22 @@ const insertInitialData = db.transaction(() => {
     ins.run('VALE-001', 500, 500, 'Cliente Frecuente');
     ins.run('VALE-002', 250, 250, 'Empleado Sarita');
     ins.run('VALE-TEST', 100, 100, 'Prueba');
+  }
+
+  // Configuración por defecto
+  const configDefaults = {
+    modal_pago: JSON.stringify({
+      mostrar_descuento: true,
+      mostrar_vale: true,
+      mostrar_propina: true,
+      mostrar_notas: true,
+      mostrar_regalo: true,
+      mostrar_dividir: true,
+      metodos: ['efectivo', 'tarjeta', 'transferencia', 'otros']
+    })
+  };
+  for (const [clave, valor] of Object.entries(configDefaults)) {
+    db.prepare('INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?, ?)').run(clave, valor);
   }
 });
 

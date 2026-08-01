@@ -10,6 +10,10 @@ function createMesasRouter(io) {
       const mesas = db.prepare(`
     SELECT m.*, a.nombre as area_nombre, a.tipo as area_tipo, a.orden as area_orden,
           (SELECT COUNT(*) FROM pedidos WHERE mesa_id = m.id AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')) as tiene_pedido_activo,
+          (SELECT total FROM pedidos WHERE id = m.pedido_activo_id) as pedido_total,
+          (SELECT COALESCE(SUM(pg.monto), 0) FROM pagos pg WHERE pg.pedido_id = m.pedido_activo_id) as pedido_pagado,
+          (SELECT COALESCE(SUM(CASE WHEN d.tipo = 'porcentaje' THEN (p.total * d.valor / 100) ELSE d.valor END), 0)
+            FROM descuentos d JOIN pedidos p ON p.id = d.pedido_id WHERE d.pedido_id = m.pedido_activo_id) as pedido_descuento,
           CASE WHEN EXISTS (
             SELECT 1 FROM pedidos p
             WHERE p.mesa_id = m.id AND p.estado = 'CERRADO'
@@ -19,11 +23,15 @@ function createMesasRouter(io) {
           (SELECT CASE 
             WHEN EXISTS (
               SELECT 1 FROM pedidos p
-              WHERE p.mesa_id = m.id AND p.estado = 'CERRADO'
+              WHERE p.id = m.pedido_activo_id AND p.estado = 'CERRADO'
               AND (SELECT COALESCE(SUM(pg.monto), 0) FROM pagos pg WHERE pg.pedido_id = p.id) >= p.total - 0.01
             ) THEN 'PAGADO'
             ELSE m.estado
-          END) as estado_ejefe
+          END) as estado_ejefe,
+          (CASE WHEN m.estado = 'OCUPADO' AND NOT EXISTS (
+            SELECT 1 FROM pedidos p WHERE p.mesa_id = m.id AND p.estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')
+          ) THEN CAST((julianday('now') - julianday(COALESCE(m.ocupado_desde, m.updated_at))) * 1440 AS INTEGER)
+          ELSE NULL END) as minutos_sin_pedido
           FROM mesas m LEFT JOIN areas a ON a.id = m.area_id
           ORDER BY COALESCE(a.orden, 99), a.id, m.numero
       `).all();
@@ -111,6 +119,39 @@ function createMesasRouter(io) {
 
       db.prepare('DELETE FROM areas WHERE id = ?').run(area.id);
       res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/', (req, res) => {
+    try {
+      const { numero, nombre, capacidad, area_id, estado } = req.body;
+
+      let numeroF = numero != null ? parseInt(numero) : null;
+      if (!numeroF || isNaN(numeroF)) {
+        numeroF = db.prepare('SELECT COALESCE(MAX(numero), 0) + 1 as n FROM mesas WHERE es_virtual = 0').get().n;
+      }
+      if (numeroF <= 0) return res.status(400).json({ error: 'Número de mesa inválido' });
+
+      const existe = db.prepare('SELECT id FROM mesas WHERE numero = ? AND es_virtual = 0').get(numeroF);
+      if (existe) return res.status(409).json({ error: `Ya existe una mesa con el número ${numeroF}` });
+
+      let areaF = area_id != null ? area_id : null;
+      if (areaF != null) {
+        const area = db.prepare("SELECT id FROM areas WHERE id = ? AND tipo = 'SALON'").get(areaF);
+        if (!area) return res.status(400).json({ error: 'Área de salón inválida' });
+      }
+
+      const estadosValidos = ['LIBRE', 'OCUPADO', 'RESERVADO', 'CERRANDO', 'INACTIVO'];
+      const estadoF = estado && estadosValidos.includes(estado) ? estado : 'LIBRE';
+
+      const r = db.prepare('INSERT INTO mesas (numero, nombre, capacidad, area_id, es_virtual, estado) VALUES (?, ?, ?, ?, 0, ?)')
+        .run(numeroF, (nombre || '').trim() || null, capacidad || 4, areaF, estadoF);
+
+      const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(r.lastInsertRowid);
+      io.emit('mesa:updated', mesa);
+      res.status(201).json(mesa);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -429,6 +470,58 @@ function createMesasRouter(io) {
       const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
       io.emit('mesa:updated', mesa);
       res.json(mesa);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/:id', (req, res) => {
+    try {
+      const mesaId = parseInt(req.params.id);
+      const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
+      if (!mesa) return res.status(404).json({ error: 'Mesa no encontrada' });
+
+      const { numero, nombre, capacidad, area_id, estado, mesero_id } = req.body;
+
+      const estadosValidos = ['LIBRE', 'OCUPADO', 'RESERVADO', 'CERRANDO', 'INACTIVO'];
+      if (estado !== undefined && !estadosValidos.includes(estado)) {
+        return res.status(400).json({ error: 'Estado inválido' });
+      }
+
+      if (estado === 'INACTIVO' || (estado === undefined && mesa.estado === 'INACTIVO')) {
+        if (mesa.estado !== 'INACTIVO') {
+          const activo = db.prepare("SELECT COUNT(*) as c FROM pedidos WHERE mesa_id = ? AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')").get(mesaId).c;
+          if (activo > 0) return res.status(409).json({ error: 'No se puede inactivar una mesa con pedido activo' });
+        }
+        if (mesero_id != null) {
+          const usuario = db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(mesero_id);
+          if (!usuario || usuario.rol !== 'admin') {
+            return res.status(403).json({ error: 'Solo administradores pueden inactivar mesas' });
+          }
+        }
+      }
+
+      const numeroF = numero != null ? parseInt(numero) : mesa.numero;
+      if (isNaN(numeroF) || numeroF <= 0) return res.status(400).json({ error: 'Número de mesa inválido' });
+      const existe = db.prepare('SELECT id FROM mesas WHERE numero = ? AND es_virtual = 0 AND id != ?').get(numeroF, mesaId);
+      if (existe) return res.status(409).json({ error: `Ya existe una mesa con el número ${numeroF}` });
+
+      const areaF = area_id !== undefined ? area_id : mesa.area_id;
+      if (areaF != null) {
+        const area = db.prepare("SELECT id FROM areas WHERE id = ? AND tipo = 'SALON'").get(areaF);
+        if (!area) return res.status(400).json({ error: 'Área de salón inválida' });
+      }
+
+      const nombreF = nombre !== undefined ? (nombre || '').trim() || null : mesa.nombre;
+      const capacidadF = capacidad != null ? parseInt(capacidad) : mesa.capacidad;
+      const estadoF = estado !== undefined ? estado : mesa.estado;
+
+      db.prepare("UPDATE mesas SET numero = ?, nombre = ?, capacidad = ?, area_id = ?, estado = ?, version = version + 1, updated_at = datetime('now') WHERE id = ?")
+        .run(numeroF, nombreF, capacidadF, areaF, estadoF, mesaId);
+
+      const updated = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
+      io.emit('mesa:updated', updated);
+      res.json(updated);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

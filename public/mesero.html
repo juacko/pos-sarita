@@ -86,6 +86,41 @@
     .mesa-card-mesero .mesero-name {
       font-size: 0.7rem; color: #6B7280; margin-top: 4px;
     }
+    .mesa-card-mesero .total {
+      font-size: 1rem; font-weight: 800; margin-top: 4px; color: #111827;
+    }
+    .mesa-card-mesero.OCUPADO .total,
+    .mesa-card-mesero.CERRANDO .total { color: #DC2626; }
+    .mesa-card-mesero .tiempo {
+      display: inline-block; font-size: 0.68rem; color: #6B7280;
+      background: #F3F4F6; border-radius: 10px; padding: 1px 8px; margin-top: 5px;
+    }
+    .mesa-card-mesero .pendiente {
+      margin-top: 5px; padding-top: 5px; border-top: 1px dashed #E5E7EB;
+      font-size: 0.72rem; font-weight: 700; color: #DC2626;
+    }
+    .mesa-card-mesero .tiempo.sinpedido {
+      color: #DC2626; background: #FEE2E2; border: 1px solid #FCA5A5;
+      font-weight: 700;
+    }
+    .mesa-card-mesero .liberar-rapido {
+      display: block; width: 100%; margin-top: 6px; padding: 5px 0;
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      color: #DC2626; background: transparent;
+      border: 1px solid #FCA5A5; border-radius: 8px; cursor: pointer;
+    }
+    .mesa-card-mesero .liberar-rapido:hover { background: #DC2626; color: #fff; }
+    .toast-mesero {
+      position: fixed; bottom: 20px; right: 20px; z-index: 99999;
+      padding: 12px 18px; border-radius: 10px; color: #fff;
+      font-weight: 600; font-size: 0.85rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,.25);
+      animation: toastIn .25s ease;
+    }
+    .toast-mesero.ok { background: #16A34A; }
+    .toast-mesero.err { background: #DC2626; }
+    .toast-mesero.warn { background: #F59E0B; color: #111827; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
     /* === ORDER VIEW === */
     #posView {
@@ -523,6 +558,7 @@
     let canalModalTipo = null;
     let clienteModalTipo = null;
     let clienteModalAccion = null;
+    let avisosSinPedido = {};
 
     // ---- SOCKET ----
     const socket = io();
@@ -576,6 +612,7 @@
         allMesas = await res.json();
         renderCanales(allMesas);
         renderMesas(allMesas);
+        avisarMesasSinPedido();
         document.getElementById('mesasCount').textContent = allMesas.filter(m => !m.es_virtual).length;
         document.getElementById('ocupadasCount').textContent = allMesas.filter(m => (m.estado === 'OCUPADO' || m.estado === 'CERRANDO') && !m.es_virtual).length;
       } catch (e) { console.error(e); }
@@ -659,15 +696,96 @@
 
         for (const m of g.mesas) {
           const card = document.createElement('div');
-          card.className = `mesa-card-mesero ${m.estado}`;
+          const estadoEfectivo = m.estado_ejefe || m.estado;
+          card.className = `mesa-card-mesero ${estadoEfectivo}`;
           card.dataset.id = m.id;
+
+          let totalHtml = '';
+          let pendienteHtml = '';
+          if (m.pedido_total != null && (m.estado === 'OCUPADO' || m.estado === 'CERRANDO')) {
+            const pendiente = Math.max(0, m.pedido_total - (m.pedido_pagado || 0) - (m.pedido_descuento || 0));
+            totalHtml = `<div class="total">$${m.pedido_total.toFixed(2)}</div>`;
+            if (estadoEfectivo !== 'PAGADO') {
+              pendienteHtml = `<div class="pendiente">Pendiente: $${pendiente.toFixed(2)}</div>`;
+            }
+          }
+
+          const tiempo = m.ocupado_desde ? timeSince(new Date(m.ocupado_desde + 'Z')) : '';
+          const tiempoHtml = tiempo && (m.estado === 'OCUPADO' || m.estado === 'CERRANDO')
+            ? `<div class="tiempo">⏱ ${tiempo}</div>` : '';
+
+          const sinPedido = m.estado === 'OCUPADO' && !m.tiene_pedido_activo && m.minutos_sin_pedido != null;
+          let sinPedidoHtml = '';
+          if (sinPedido) {
+            sinPedidoHtml = `<div class="tiempo sinpedido">⏱ ${m.minutos_sin_pedido} min sin pedido</div>`;
+            if (currentUser && (currentUser.rol === 'admin' || currentUser.id === m.mesero_id)) {
+              sinPedidoHtml += `<button class="liberar-rapido" onclick="event.stopPropagation(); liberarMesaRapida(${m.id})">Liberar</button>`;
+            }
+          }
+
           card.innerHTML = `
+            ${totalHtml}
             <div class="num">${m.numero}</div>
-            <div class="status">${m.estado}</div>
+            <div class="status">${estadoEfectivo}</div>
             ${m.mesero_nombre ? `<div class="mesero-name">${m.mesero_nombre}</div>` : ''}
+            ${tiempoHtml}
+            ${sinPedidoHtml}
+            ${pendienteHtml}
           `;
           card.addEventListener('click', () => abrirPOS(m));
           grid.appendChild(card);
+        }
+      }
+    }
+
+    function timeSince(date) {
+      if (!date || isNaN(date)) return '';
+      const seg = Math.floor((Date.now() - date) / 1000);
+      if (seg < 60) return `${seg}s`;
+      const min = Math.floor(seg / 60);
+      if (min < 60) return `${min} min`;
+      const hrs = Math.floor(min / 60);
+      return `${hrs}h ${min % 60}m`;
+    }
+
+    async function liberarMesaRapida(mesaId) {
+      if (!currentUser) return;
+      if (!confirm('¿Liberar esta mesa? Está ocupada sin pedido.')) return;
+      try {
+        const r = await fetch(`/api/mesas/${mesaId}/liberar`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesero_id: currentUser.id })
+        });
+        if (r.ok) {
+          toast('Mesa liberada', 'ok');
+          loadMesas();
+        } else {
+          const e = await r.json();
+          toast(e.error || 'Error', 'err');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'err');
+      }
+    }
+
+    function toast(msg, tipo) {
+      const el = document.createElement('div');
+      el.className = `toast-mesero ${tipo}`;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3200);
+    }
+
+    function avisarMesasSinPedido() {
+      if (!allMesas) return;
+      avisosSinPedido = avisosSinPedido || {};
+      for (const m of allMesas) {
+        if (m.estado === 'OCUPADO' && !m.tiene_pedido_activo && m.minutos_sin_pedido != null && m.minutos_sin_pedido >= 15) {
+          const nivel = Math.floor(m.minutos_sin_pedido / 15);
+          if ((avisosSinPedido[m.id] || 0) < nivel) {
+            avisosSinPedido[m.id] = nivel;
+            toast(`Mesa ${m.numero} lleva ${m.minutos_sin_pedido} min sin pedido`, 'warn');
+          }
         }
       }
     }
@@ -733,8 +851,9 @@
     }
 
     function abrirClienteFormNuevo() {
+      const tipo = canalModalTipo;
       closeCanalModal();
-      abrirClienteForm(canalModalTipo, 'nuevo', null);
+      abrirClienteForm(tipo, 'nuevo', null);
     }
 
     function abrirClienteForm(tipo, accion, data) {
