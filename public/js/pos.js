@@ -464,10 +464,16 @@ function renderPedidoItems() {
   document.getElementById('totalPedido').textContent = `S/${total.toFixed(2)}`;
 }
 
-function agregarNota(index) {
+async function agregarNota(index) {
   const item = pedidoItems[index];
   if (!item) return;
-  const nota = prompt('Nota para este item:', item.notas || '');
+  const nota = await customPrompt({
+    title: 'Nota de Producto',
+    message: `Instrucciones especiales para: ${item.nombre || 'este ítem'}`,
+    placeholder: 'Ej. Sin cebolla / Poco picante',
+    defaultValue: item.notas || '',
+    icon: '📝'
+  });
   if (nota !== null) {
     item.notas = nota;
     renderPedidoItems();
@@ -531,12 +537,19 @@ async function enviarPedido() {
   }
 }
 
-function cancelarPedido() {
+async function cancelarPedido() {
   if (pedidoItems.length === 0) {
     showMesasView();
     return;
   }
-  if (confirm('¿Cancelar el pedido actual?')) {
+  const ok = await customConfirm({
+    title: '¿Cancelar Pedido?',
+    message: 'Se descartarán todos los productos de este borrador.',
+    confirmText: 'Sí, cancelar',
+    isDanger: true,
+    icon: '🗑️'
+  });
+  if (ok) {
     pedidoItems = [];
     renderPedidoItems();
     showToast('Pedido cancelado', 'warning');
@@ -736,12 +749,19 @@ async function imprimirPrecuenta() {
 }
 
 async function anularPedidoDesdePOS() {
-  if (!pedidoExistente || !currentUser) return;
+  if (!pedidoExistente) return;
   if (currentUser.rol !== 'admin' && currentUser.rol !== 'cajero') {
     showToast('Solo el administrador o el cajero pueden anular pedidos', 'warning');
     return;
   }
-  const motivo = prompt(`Ingresa el motivo para anular el Pedido #${pedidoExistente.id} (requerido):`);
+  const motivo = await customPrompt({
+    title: `Anular Pedido #${pedidoExistente.id}`,
+    message: 'Motivo de la anulación (requerido):',
+    placeholder: 'Ej: Cliente se retiró / Error de comanda',
+    required: true,
+    confirmText: 'Anular Pedido',
+    icon: '🗑️'
+  });
   if (!motivo || !motivo.trim()) {
     showToast('El motivo es requerido para anular el pedido', 'warning');
     return;
@@ -770,7 +790,13 @@ async function liberarMesaDesdePedido() {
 
   if (pedidoExistente && pedidoExistente.estado !== 'CERRADO' && pedidoExistente.estado !== 'CANCELADO') {
     if (currentUser.rol === 'admin' || currentUser.rol === 'cajero') {
-      if (confirm(`Esta mesa tiene un pedido activo (#${pedidoExistente.id}). Para liberarla se debe anular el pedido.\n\n¿Deseas anular el pedido y liberar la mesa?`)) {
+      const okAnular = await customConfirm({
+        title: 'Mesa con Pedido Activo',
+        message: `Esta mesa tiene un pedido activo (#${pedidoExistente.id}). Para liberarla se debe anular el pedido.\n\n¿Deseas anular el pedido y liberar la mesa?`,
+        isDanger: true,
+        confirmText: 'Anular y Liberar'
+      });
+      if (okAnular) {
         anularPedidoDesdePOS();
       }
     } else {
@@ -779,7 +805,13 @@ async function liberarMesaDesdePedido() {
     return;
   }
 
-  if (!confirm('¿Liberar esta mesa? Los clientes se van.')) return;
+  const ok = await customConfirm({
+    title: '¿Liberar Mesa?',
+    message: '¿Estás seguro de liberar esta mesa?',
+    confirmText: 'Sí, liberar',
+    icon: '🪑'
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch(`/api/mesas/${posMesaData.id}/liberar`, {
@@ -895,7 +927,12 @@ function closeEditarPagosModal() {
 }
 
 async function cambiarMetodoPago(pagoId, nuevoMetodo) {
-  const motivo = prompt('Motivo del cambio de método de pago (opcional):');
+  const motivo = await customPrompt({
+    title: 'Cambiar Método de Pago',
+    message: 'Motivo del cambio de método de pago (opcional):',
+    placeholder: 'Ej: Error de digitación',
+    icon: '💳'
+  });
   if (motivo === null) { renderEditarPagos(); return; }
   try {
     const res = await fetch(`/api/admin/pedidos/${editarPagosData.id}/pagos/${pagoId}`, {
@@ -921,7 +958,12 @@ async function agregarPagoPedido() {
   const metodo = document.getElementById('editarPagosMetodo').value;
   const monto = parseFloat(document.getElementById('editarPagosMonto').value);
   if (!monto || monto <= 0) return showToast('Ingresa un monto válido', 'warning');
-  const motivo = prompt('Motivo (opcional):');
+  const motivo = await customPrompt({
+    title: 'Agregar Pago a Pedido',
+    message: 'Motivo de la adición (opcional):',
+    placeholder: 'Ej: Ajuste de cliente',
+    icon: '💰'
+  });
   if (motivo === null) return;
   try {
     const res = await fetch(`/api/admin/pedidos/${editarPagosData.id}/pagos`, {
@@ -945,8 +987,21 @@ async function agregarPagoPedido() {
 }
 
 async function quitarPagoPedido(pagoId, monto) {
-  if (!confirm(`⚠️ Quitar este pago (S/${monto.toFixed(2)}) es una DEVOLUCIÓN: anulará el pedido #${editarPagosData.id} completo, registrará un EGRESO en caja y liberará la mesa.\n\n¿Continuar?`)) return;
-  const motivo = prompt('Motivo de la devolución (requerido):');
+  const ok = await customConfirm({
+    title: '⚠️ Devolución de Pago',
+    message: `Quitar este pago (S/${monto.toFixed(2)}) anulará el pedido #${editarPagosData.id} completo, registrará un EGRESO en caja y liberará la mesa.`,
+    isDanger: true,
+    confirmText: 'Continuar con Devolución'
+  });
+  if (!ok) return;
+
+  const motivo = await customPrompt({
+    title: 'Motivo de Devolución',
+    message: 'Motivo de la devolución (requerido):',
+    placeholder: 'Ej. Cliente insatisfecho / Cobro errado',
+    required: true,
+    icon: '⚠️'
+  });
   if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'warning');
   try {
     const res = await fetch(`/api/admin/pedidos/${editarPagosData.id}/pagos/${pagoId}`, {
@@ -975,8 +1030,21 @@ async function eliminarPedidoPagado() {
     return;
   }
   const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
-  if (!confirm(`⚠️ Eliminar el pedido #${pedidoExistente.id} por S/${pagado.toFixed(2)} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.\n\n¿Continuar?`)) return;
-  const motivo = prompt('Motivo de la eliminación (requerido):');
+  const ok = await customConfirm({
+    title: '⚠️ Eliminar Pedido Pagado',
+    message: `Eliminar el pedido #${pedidoExistente.id} por S/${pagado.toFixed(2)} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.`,
+    isDanger: true,
+    confirmText: 'Proceder a Eliminar'
+  });
+  if (!ok) return;
+
+  const motivo = await customPrompt({
+    title: 'Motivo de la Eliminación',
+    message: 'Motivo de la eliminación (requerido):',
+    placeholder: 'Ej. Pedido duplicado',
+    required: true,
+    icon: '🗑️'
+  });
   if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'warning');
   try {
     const res = await fetch(`/api/admin/pedidos/${pedidoExistente.id}/eliminar`, {
@@ -1080,8 +1148,21 @@ async function verPedidoPagado(id) {
 async function eliminarPedidoPagadoId(id) {
   const ped = pagadosLista.find(p => p.id === id);
   const monto = ped ? (ped.pagado || ped.total || 0) : 0;
-  if (!confirm(`⚠️ Eliminar el pedido #${id} por S/${monto.toFixed(2)} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.\n\n¿Continuar?`)) return;
-  const motivo = prompt('Motivo de la eliminación (requerido):');
+  const ok = await customConfirm({
+    title: '⚠️ Eliminar Pedido Pagado',
+    message: `Eliminar el pedido #${id} por S/${monto.toFixed(2)} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.`,
+    isDanger: true,
+    confirmText: 'Proceder a Eliminar'
+  });
+  if (!ok) return;
+
+  const motivo = await customPrompt({
+    title: 'Motivo de Eliminación',
+    message: 'Motivo de la eliminación (requerido):',
+    placeholder: 'Ej. Error de duplicación',
+    required: true,
+    icon: '🗑️'
+  });
   if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'warning');
   try {
     const res = await fetch(`/api/admin/pedidos/${id}/eliminar`, {
@@ -1445,7 +1526,13 @@ function updatePropinaPreview() {
 // ─── REGALO ───
 async function procesarRegalo() {
   if (!cobroPedidoRef) return;
-  if (!confirm('¿Marcar el pendiente como regalo/obsequio?')) return;
+  const ok = await customConfirm({
+    title: '🎁 Marcar como Regalo',
+    message: '¿Estás seguro de marcar el saldo restante como obsequio/regalo?',
+    confirmText: 'Sí, registrar regalo',
+    icon: '🎁'
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch(`/api/pedidos/${cobroPedidoRef.id}/pagar`, {

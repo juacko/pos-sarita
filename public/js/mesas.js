@@ -422,7 +422,13 @@ async function liberarMesa(mesaId) {  if (!currentUser) return showToast('Debe i
     return;
   }
 
-  if (!confirm('¿Liberar esta mesa?')) return;
+  const ok = await customConfirm({
+    title: '¿Liberar Mesa?',
+    message: '¿Estás seguro de liberar esta mesa?',
+    confirmText: 'Sí, liberar',
+    icon: '🪑'
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch(`/api/mesas/${mesaId}/liberar`, {
@@ -450,7 +456,14 @@ function liberarMesaRapida(mesaId) {
 
 async function cancelarReserva(mesaId) {  if (!currentUser) return showToast('Debe iniciar sesión', 'error');
 
-  if (!confirm('¿Cancelar la reserva de esta mesa?')) return;
+  const ok = await customConfirm({
+    title: '¿Cancelar Reserva?',
+    message: '¿Estás seguro de cancelar la reserva de esta mesa?',
+    confirmText: 'Sí, cancelar',
+    isDanger: true,
+    icon: '📅'
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch(`/api/mesas/${mesaId}/cancelar-reserva`, {
@@ -473,7 +486,13 @@ async function cancelarReserva(mesaId) {  if (!currentUser) return showToast('De
 }
 
 async function transferirMesa(mesaId) {
-  const nuevoId = prompt('ID del nuevo mesero:');
+  const nuevoId = await customPrompt({
+    title: 'Transferir Mesa',
+    message: 'Ingresa el ID del nuevo mesero asignado:',
+    placeholder: 'ID de mesero',
+    required: true,
+    icon: '👤'
+  });
   if (!nuevoId) return;
 
   try {

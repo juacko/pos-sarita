@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/modal-utils.js"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
 
@@ -850,7 +851,13 @@
 
     async function liberarMesaRapida(mesaId) {
       if (!currentUser) return;
-      if (!confirm('¿Liberar esta mesa? Está ocupada sin pedido.')) return;
+      const ok = await customConfirm({
+        title: '¿Liberar Mesa?',
+        message: 'Esta mesa está ocupada sin pedido. ¿Deseas liberarla?',
+        confirmText: 'Sí, liberar',
+        icon: '🪑'
+      });
+      if (!ok) return;
       try {
         const r = await fetch(`/api/mesas/${mesaId}/liberar`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -874,7 +881,13 @@
         toast('Solo el administrador o el cajero pueden anular pedidos', 'err');
         return;
       }
-      const motivo = prompt(`Ingresa el motivo para anular el Pedido #${posMesaData.pedido_activo_id} (requerido):`);
+      const motivo = await customPrompt({
+        title: `Anular Pedido #${posMesaData.pedido_activo_id}`,
+        message: 'Motivo para anular el pedido (requerido):',
+        placeholder: 'Ej. Error en comanda',
+        required: true,
+        icon: '🗑️'
+      });
       if (!motivo || !motivo.trim()) {
         toast('El motivo es requerido para anular el pedido', 'err');
         return;
@@ -901,7 +914,13 @@
       if (posMesaData.pedido_activo_id) {
         const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
         if (puedeAnular) {
-          if (confirm(`Esta mesa tiene un pedido activo. Para liberarla se debe anular el pedido.\n\n¿Deseas anular el pedido y liberar la mesa?`)) {
+          const okAnular = await customConfirm({
+            title: 'Mesa con Pedido Activo',
+            message: 'Esta mesa tiene un pedido activo. Para liberarla se debe anular el pedido.\n\n¿Deseas anular el pedido y liberar la mesa?',
+            isDanger: true,
+            confirmText: 'Anular y Liberar'
+          });
+          if (okAnular) {
             anularPedidoMesero();
           }
         } else {
@@ -909,7 +928,13 @@
         }
         return;
       }
-      if (!confirm('¿Liberar esta mesa? Los clientes se van.')) return;
+      const ok = await customConfirm({
+        title: '¿Liberar Mesa?',
+        message: '¿Estás seguro de liberar esta mesa?',
+        confirmText: 'Sí, liberar',
+        icon: '🪑'
+      });
+      if (!ok) return;
       try {
         const r = await fetch(`/api/mesas/${posMesaData.id}/liberar`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1681,7 +1706,7 @@
       document.getElementById('destinoModal').classList.add('active');
     }
 
-    function elegirMesaDestino(id, accion) {
+    async function elegirMesaDestino(id, accion) {
       const destMesa = allMesas.find(m => m.id === id);
       if (!destMesa) return;
       if (accion === 'unir') {
@@ -1690,7 +1715,13 @@
         const estaOcupada = destMesa.pedido_activo_id && destMesa.pedido_total != null;
         const nombreDest = destMesa.nombre || 'Mesa ' + destMesa.numero;
         if (estaOcupada) {
-          if (!confirm(`La mesa "${nombreDest}" está ocupada (S/${(destMesa.pedido_total || 0).toFixed(2)}). ¿Seguro que deseas mover productos a esta mesa? Los productos se sumarán a su pedido.`)) return;
+          const ok = await customConfirm({
+            title: 'Mesa Destino Ocupada',
+            message: `La mesa "${nombreDest}" está ocupada (S/${(destMesa.pedido_total || 0).toFixed(2)}). ¿Seguro que deseas mover productos a esta mesa? Los productos se sumarán a su pedido.`,
+            confirmText: 'Sí, mover productos',
+            icon: '🔀'
+          });
+          if (!ok) return;
         }
         abrirSeleccionItems(destMesa);
       }
@@ -1760,7 +1791,13 @@
 
     async function confirmarUnir(destMesa) {
       if (!posMesaData?.pedido_activo_id) return;
-      if (!confirm(`¿Unir todo el pedido de esta mesa con ${destMesa.nombre || 'Mesa ' + destMesa.numero}? La mesa actual quedará libre.`)) return;
+      const ok = await customConfirm({
+        title: 'Unir Pedidos de Mesas',
+        message: `¿Unir todo el pedido de esta mesa con ${destMesa.nombre || 'Mesa ' + destMesa.numero}? La mesa actual quedará libre.`,
+        confirmText: 'Sí, unir mesas',
+        icon: '🔗'
+      });
+      if (!ok) return;
       try {
         const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/unir`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1796,7 +1833,13 @@
         detalle: it.detalle || '',
         notas: it.notas || ''
       };
-      if (!confirm(`¿Enviar +1 de "${it.producto_nombre}" a cocina?`)) return;
+      const ok = await customConfirm({
+        title: 'Enviar a Cocina',
+        message: `¿Enviar +1 de "${it.producto_nombre}" a cocina?`,
+        confirmText: 'Sí, enviar',
+        icon: '👨‍🍳'
+      });
+      if (!ok) return;
       try {
         const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1821,10 +1864,16 @@
     // ---- SEND ORDER ----
     async function enviarPedido() {
       if (!posMesaId || !pedidoItems.length) {
-        alert('Agrega al menos un producto');
+        toast('Agrega al menos un producto', 'warning');
         return;
       }
-      if (!confirm('¿Enviar pedido a cocina?')) return;
+      const ok = await customConfirm({
+        title: 'Enviar a Cocina',
+        message: '¿Enviar pedido a cocina?',
+        confirmText: 'Sí, enviar pedido',
+        icon: '👨‍🍳'
+      });
+      if (!ok) return;
 
       try {
         let res;
@@ -1860,16 +1909,23 @@
           showMesasView();
         } else {
           const err = await res.json();
-          alert(err.error || 'Error al enviar pedido');
+          toast(err.error || 'Error al enviar pedido', 'error');
         }
       } catch (e) {
-        alert('Error de conexión');
+        toast('Error de conexión', 'error');
       }
     }
 
-    function cancelarPedido() {
+    async function cancelarPedido() {
       if (!pedidoItems.length) { showMesasView(); return; }
-      if (confirm('¿Cancelar el pedido actual?')) {
+      const ok = await customConfirm({
+        title: '¿Cancelar Pedido?',
+        message: '¿Estás seguro de cancelar el pedido actual?',
+        confirmText: 'Sí, cancelar',
+        isDanger: true,
+        icon: '🗑️'
+      });
+      if (ok) {
         pedidoItems = [];
         renderCart();
         showMesasView();

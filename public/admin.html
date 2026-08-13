@@ -136,7 +136,7 @@
     }
     .caja-timeline-body { flex: 1; min-width: 0; }
     .caja-timeline-meta { font-size: 0.78rem; color: var(--text-muted); }
-  </style>
+  <script src="/js/modal-utils.js"></script>
 </head>
 <body>
   <div class="header">
@@ -1304,7 +1304,14 @@
     }
 
     async function deleteModificador(id) {
-      if (!confirm('¿Eliminar modificador y todas sus opciones?')) return;
+      const ok = await customConfirm({
+        title: '¿Eliminar Modificador?',
+        message: 'Se eliminará este modificador y todas sus opciones registradas.',
+        confirmText: 'Sí, eliminar',
+        isDanger: true,
+        icon: '🗑️'
+      });
+      if (!ok) return;
       await fetch('/api/admin/modificadores/' + id, { method: 'DELETE' });
       await loadProductos();
       const p = productosCompleto.find(x => x.id === editingProductoId);
@@ -1597,12 +1604,23 @@
     async function cambiarMetodoPagoAdmin(pagoId) {
       const metodos = metodosConfigurables();
       const actual = (adminEditarPagosData.pagos || []).find(pg => pg.id === pagoId)?.metodo;
-      const opciones = metodos.map(m => `${m.key}:${m.texto}`).join(', ');
-      const entrada = prompt('Nuevo método (' + opciones + '):', actual);
+      const opciones = metodos.map(m => `${m.key}`).join(', ');
+      const entrada = await customPrompt({
+        title: 'Cambiar Método de Pago',
+        message: `Métodos permitidos: ${opciones}`,
+        placeholder: 'ej. efectivo / tarjeta / transferencia',
+        defaultValue: actual || '',
+        icon: '💳'
+      });
       if (!entrada) return;
       const metodo = entrada.trim().toLowerCase();
       if (!metodos.some(m => m.key === metodo) && !['regalo', 'vale'].includes(metodo)) return showToast('Método inválido', 'error');
-      const motivo = prompt('Motivo (opcional):');
+      const motivo = await customPrompt({
+        title: 'Motivo del Cambio',
+        message: 'Motivo del cambio de método (opcional):',
+        placeholder: 'Ej: Ajuste por error',
+        icon: '📝'
+      });
       if (motivo === null) return;
       try {
         const res = await fetch(`/api/admin/pedidos/${adminEditarPagosData.id}/pagos/${pagoId}`, {
@@ -1611,14 +1629,27 @@
           body: JSON.stringify({ metodo, motivo: (motivo || '').trim() || null, usuario_id: currentUser?.id })
         });
         const data = await res.json();
-        if (res.ok) { showToast('Método actualizado', 'ok'); await abrirModalEditarPagosAdmin(adminEditarPagosData.id); }
+        if (res.ok) { showToast('Método actualizado', 'success'); await abrirModalEditarPagosAdmin(adminEditarPagosData.id); }
         else showToast(data.error || 'Error', 'error');
       } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     async function quitarPagoAdmin(pagoId, monto) {
-      if (!confirm(`⚠️ Quitar este pago (S/${monto.toFixed(2)}) es una DEVOLUCIÓN: anulará el pedido #${adminEditarPagosData.id} completo, registrará un EGRESO en caja y liberará la mesa.`)) return;
-      const motivo = prompt('Motivo de la devolución (requerido):');
+      const ok = await customConfirm({
+        title: '⚠️ Devolución de Pago',
+        message: `Quitar este pago (S/${monto.toFixed(2)}) anulará el pedido #${adminEditarPagosData.id} completo, registrará un EGRESO en caja y liberará la mesa.`,
+        isDanger: true,
+        confirmText: 'Proceder a Devolución'
+      });
+      if (!ok) return;
+
+      const motivo = await customPrompt({
+        title: 'Motivo de Devolución',
+        message: 'Motivo de la devolución (requerido):',
+        placeholder: 'Ej. Error en cobro',
+        required: true,
+        icon: '⚠️'
+      });
       if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'error');
       try {
         const res = await fetch(`/api/admin/pedidos/${adminEditarPagosData.id}/pagos/${pagoId}`, {
@@ -1628,7 +1659,7 @@
         });
         const data = await res.json();
         if (res.ok && data.ok) {
-          showToast('Pedido anulado (devolución)', 'ok');
+          showToast('Pedido anulado (devolución)', 'success');
           closeModal('modalEditarPagos');
           loadReportes();
         } else showToast(data.error || 'Error', 'error');
@@ -1636,8 +1667,21 @@
     }
 
     async function eliminarPedidoAdmin(pedidoId) {
-      if (!confirm(`⚠️ Eliminar el pedido #${pedidoId} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.`)) return;
-      const motivo = prompt('Motivo de la eliminación (requerido):');
+      const ok = await customConfirm({
+        title: '⚠️ Eliminar Pedido',
+        message: `Eliminar el pedido #${pedidoId} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.`,
+        isDanger: true,
+        confirmText: 'Sí, eliminar pedido'
+      });
+      if (!ok) return;
+
+      const motivo = await customPrompt({
+        title: 'Motivo de Eliminación',
+        message: 'Motivo de la eliminación (requerido):',
+        placeholder: 'Ej. Duplicado',
+        required: true,
+        icon: '🗑️'
+      });
       if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'error');
       try {
         const res = await fetch('/api/admin/pedidos/' + pedidoId + '/eliminar', {
@@ -2040,7 +2084,14 @@
 
     async function abrirCaja() {
       if (!currentUser) return showToast('Inicia sesión para abrir la caja', 'error');
-      const fondo = prompt('Fondo inicial de caja (S/):', '500');
+      const fondo = await customPrompt({
+        title: 'Apertura de Caja',
+        message: 'Ingresa el fondo inicial de caja en S/:',
+        placeholder: '500.00',
+        defaultValue: '500',
+        required: true,
+        icon: '💰'
+      });
       if (fondo === null) return;
       try {
         const res = await fetch('/api/admin/caja/abrir', {
@@ -2448,7 +2499,14 @@
     }
 
     async function eliminarMovimiento(id) {
-      if (!confirm('¿Eliminar este movimiento?')) return;
+      const ok = await customConfirm({
+        title: '¿Eliminar Movimiento?',
+        message: '¿Estás seguro de eliminar este movimiento de caja?',
+        confirmText: 'Sí, eliminar',
+        isDanger: true,
+        icon: '💸'
+      });
+      if (!ok) return;
       try {
         await fetch('/api/admin/caja/movimientos/' + id, { method: 'DELETE' });
         showToast('Movimiento eliminado', 'success');
@@ -2548,7 +2606,13 @@
     let editingMesaId = null;
 
     async function liberarMesaAdmin(mesaId) {
-      if (!confirm('¿Liberar esta mesa?')) return;
+      const ok = await customConfirm({
+        title: '¿Liberar Mesa?',
+        message: '¿Estás seguro de liberar esta mesa?',
+        confirmText: 'Sí, liberar',
+        icon: '🪑'
+      });
+      if (!ok) return;
       try {
         const res = await fetch(`/api/mesas/${mesaId}/liberar`, {
           method: 'POST',
@@ -2620,7 +2684,13 @@
 
     async function toggleMesaEstado(mesaId, estado) {
       const accion = estado === 'INACTIVO' ? 'inactivar' : 'activar';
-      if (!confirm(`¿${accion === 'inactivar' ? 'Inactivar' : 'Activar'} esta mesa?`)) return;
+      const ok = await customConfirm({
+        title: `¿${accion === 'inactivar' ? 'Inactivar' : 'Activar'} Mesa?`,
+        message: `¿Deseas ${accion} esta mesa?`,
+        confirmText: accion === 'inactivar' ? 'Sí, inactivar' : 'Sí, activar',
+        isDanger: accion === 'inactivar'
+      });
+      if (!ok) return;
       try {
         const res = await fetch(`/api/mesas/${mesaId}`, {
           method: 'PATCH',
@@ -2677,7 +2747,14 @@
     }
 
     async function deleteArea(id) {
-      if (!confirm('¿Eliminar esta área? Las mesas se moverán a otro salón.')) return;
+      const ok = await customConfirm({
+        title: '¿Eliminar Área?',
+        message: '¿Eliminar esta área? Las mesas asignadas se moverán a estado sin área.',
+        confirmText: 'Sí, eliminar',
+        isDanger: true,
+        icon: '🗺️'
+      });
+      if (!ok) return;
       try {
         const res = await fetch(`/api/mesas/areas/${id}`, { method: 'DELETE' });
         if (res.ok) {

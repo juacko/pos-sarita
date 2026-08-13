@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/modal-utils.js"></script>
   <style>
     .cocina-layout {
       display: grid;
@@ -374,9 +375,15 @@
       }).catch(console.error);
     }
 
-    function marcarListo(pedidoId, pendientes) {
-      if (pendientes > 0 && !confirm(`Hay ${pendientes} item(s) sin marcar. ¿Marcar todo como listo de todas formas?`)) {
-        return;
+    async function marcarListo(pedidoId, pendientes) {
+      if (pendientes > 0) {
+        const ok = await customConfirm({
+          title: 'Items Pendientes',
+          message: `Hay ${pendientes} item(s) sin marcar. ¿Marcar todo como listo de todas formas?`,
+          confirmText: 'Sí, marcar listo',
+          icon: '🍳'
+        });
+        if (!ok) return;
       }
 
       fetch(`/api/pedidos/${pedidoId}/estado`, {
