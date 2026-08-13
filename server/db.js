@@ -252,12 +252,15 @@ function migrateColumns() {
   if (!piCols.includes('modificadores_json')) db.exec("ALTER TABLE pedido_items ADD COLUMN modificadores_json TEXT DEFAULT '[]'");
   if (!piCols.includes('agregados_json')) db.exec("ALTER TABLE pedido_items ADD COLUMN agregados_json TEXT DEFAULT '[]'");
   if (!piCols.includes('detalle')) db.exec("ALTER TABLE pedido_items ADD COLUMN detalle TEXT DEFAULT ''");
+  if (!piCols.includes('destino_impresion')) db.exec("ALTER TABLE pedido_items ADD COLUMN destino_impresion TEXT DEFAULT 'cocina'");
   const pCols = db.prepare("SELECT name FROM pragma_table_info('productos')").all().map(c => c.name);
   if (!pCols.includes('descripcion')) db.exec("ALTER TABLE productos ADD COLUMN descripcion TEXT DEFAULT ''");
   if (!pCols.includes('para_llevar')) db.exec("ALTER TABLE productos ADD COLUMN para_llevar INTEGER DEFAULT 0");
+  if (!pCols.includes('destino_override')) db.exec("ALTER TABLE productos ADD COLUMN destino_override TEXT DEFAULT NULL");
   const cCols = db.prepare("SELECT name FROM pragma_table_info('categorias')").all().map(c => c.name);
   if (!cCols.includes('activo')) db.exec("ALTER TABLE categorias ADD COLUMN activo INTEGER DEFAULT 1");
   if (!cCols.includes('created_at')) db.exec("ALTER TABLE categorias ADD COLUMN created_at DATETIME");
+  if (!cCols.includes('destino')) db.exec("ALTER TABLE categorias ADD COLUMN destino TEXT DEFAULT 'cocina'");
 
   const pgCols = db.prepare("SELECT name FROM pragma_table_info('pagos')").all().map(c => c.name);
   if (!pgCols.includes('propina')) db.exec("ALTER TABLE pagos ADD COLUMN propina REAL DEFAULT 0");

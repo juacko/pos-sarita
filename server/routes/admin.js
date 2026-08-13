@@ -44,18 +44,18 @@ function createAdminRouter(io) {
 
   router.post('/categorias', (req, res) => {
     try {
-      const { nombre, color } = req.body;
+      const { nombre, color, destino } = req.body;
       if (!nombre) return res.status(400).json({ error: 'nombre requerido' });
-      const r = db.prepare('INSERT INTO categorias (nombre, color) VALUES (?, ?)').run(nombre, color || '#6B7280');
+      const r = db.prepare('INSERT INTO categorias (nombre, color, destino) VALUES (?, ?, ?)').run(nombre, color || '#6B7280', destino || 'cocina');
       res.status(201).json(db.prepare('SELECT * FROM categorias WHERE id = ?').get(r.lastInsertRowid));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   router.put('/categorias/:id', (req, res) => {
     try {
-      const { nombre, color, activo } = req.body;
-      db.prepare('UPDATE categorias SET nombre=?, color=?, activo=? WHERE id=?')
-        .run(nombre, color, activo ?? 1, req.params.id);
+      const { nombre, color, activo, destino } = req.body;
+      db.prepare('UPDATE categorias SET nombre=?, color=?, activo=?, destino=? WHERE id=?')
+        .run(nombre, color, activo ?? 1, destino || 'cocina', req.params.id);
       res.json(db.prepare('SELECT * FROM categorias WHERE id = ?').get(req.params.id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -97,19 +97,19 @@ function createAdminRouter(io) {
 
   router.post('/productos', (req, res) => {
     try {
-      const { nombre, descripcion, precio, categoria_id, para_llevar } = req.body;
+      const { nombre, descripcion, precio, categoria_id, para_llevar, destino_override } = req.body;
       if (!nombre || precio == null) return res.status(400).json({ error: 'nombre y precio requeridos' });
-      const r = db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id, para_llevar) VALUES (?,?,?,?,?)')
-        .run(nombre, descripcion || '', precio, categoria_id || null, para_llevar ? 1 : 0);
+      const r = db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id, para_llevar, destino_override) VALUES (?,?,?,?,?,?)')
+        .run(nombre, descripcion || '', precio, categoria_id || null, para_llevar ? 1 : 0, destino_override || null);
       res.status(201).json(db.prepare('SELECT * FROM productos WHERE id = ?').get(r.lastInsertRowid));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   router.put('/productos/:id', (req, res) => {
     try {
-      const { nombre, descripcion, precio, categoria_id, activo, para_llevar } = req.body;
-      db.prepare('UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, para_llevar=? WHERE id=?')
-        .run(nombre, descripcion || '', precio, categoria_id || null, activo ?? 1, para_llevar ? 1 : 0, req.params.id);
+      const { nombre, descripcion, precio, categoria_id, activo, para_llevar, destino_override } = req.body;
+      db.prepare('UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, para_llevar=?, destino_override=? WHERE id=?')
+        .run(nombre, descripcion || '', precio, categoria_id || null, activo ?? 1, para_llevar ? 1 : 0, destino_override || null, req.params.id);
       res.json(db.prepare('SELECT * FROM productos WHERE id = ?').get(req.params.id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

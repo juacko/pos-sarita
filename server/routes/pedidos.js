@@ -6,6 +6,18 @@ const pagos = require('../metodos-pago');
 function createPedidosRouter(io) {
   const router = Router();
 
+  // ---- HELPER: resolver destino de impresión de un item ----
+  function resolverDestino(productoId) {
+    if (!productoId) return 'cocina';
+    const row = db.prepare(`
+      SELECT COALESCE(p.destino_override, c.destino, 'cocina') AS destino_resuelto
+      FROM productos p
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE p.id = ?
+    `).get(productoId);
+    return row ? row.destino_resuelto : 'cocina';
+  }
+
   // ---- HELPERS MOVIMIENTO ENTRE MESAS ----
   function recalcularTotalPedido(pedidoId) {
     const t = db.prepare(`
@@ -166,20 +178,21 @@ function createPedidosRouter(io) {
 
         const insertItem = db.prepare(`
           INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
-            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
           const precioBase = item.precio || 0;
           const precioAdic = item.precio_adicional || 0;
+          const destino = resolverDestino(item.producto_id || null);
           insertItem.run(
             pedidoId, item.producto_id || null, item.nombre, item.cantidad, precioBase,
             precioAdic, item.notas || null,
             item.variante_id || null, item.variante_nombre || null,
             JSON.stringify(item.modificadores || []),
             JSON.stringify(item.agregados || []),
-            item.detalle || ''
+            item.detalle || '', destino
           );
           total += item.cantidad * (precioBase + precioAdic);
         }
@@ -246,21 +259,22 @@ function createPedidosRouter(io) {
 
         const insertItem = db.prepare(`
           INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
-            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         let total = 0;
         for (const item of items) {
           const precioBase = item.precio || 0;
           const precioAdic = item.precio_adicional || 0;
+          const destino = resolverDestino(item.producto_id || null);
           insertItem.run(
             req.params.id, item.producto_id || null, item.nombre, item.cantidad, precioBase,
             precioAdic, item.notas || null,
             item.variante_id || null, item.variante_nombre || null,
             JSON.stringify(item.modificadores || []),
             JSON.stringify(item.agregados || []),
-            item.detalle || ''
+            item.detalle || '', destino
           );
           total += item.cantidad * (precioBase + precioAdic);
         }
@@ -471,13 +485,17 @@ function createPedidosRouter(io) {
         ORDER BY p.created_at ASC
       `).all();
 
+      const resultado = [];
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
-          SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
         `).all(pedido.id);
+        if (pedido.items.length > 0) resultado.push(pedido);
       }
 
-      res.json(pedidos);
+      res.json(resultado);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -492,7 +510,8 @@ function createPedidosRouter(io) {
 
       const pedidos = db.prepare(`
         SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre,
-               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO') as total_items
+               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO'
+                  AND (pi.destino_impresion = 'cocina' OR pi.destino_impresion = 'ambos' OR pi.destino_impresion IS NULL)) as total_items
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
@@ -503,7 +522,70 @@ function createPedidosRouter(io) {
 
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
-          SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
+        `).all(pedido.id);
+      }
+
+      res.json(pedidos);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── BARRA ───
+  router.get('/barra', (req, res) => {
+    try {
+      const pedidos = db.prepare(`
+        SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre
+        FROM pedidos p
+        JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
+        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION')
+        ORDER BY p.created_at ASC
+      `).all();
+
+      const resultado = [];
+      for (const pedido of pedidos) {
+        pedido.items = db.prepare(`
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
+        `).all(pedido.id);
+        if (pedido.items.length > 0) resultado.push(pedido);
+      }
+
+      res.json(resultado);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/barra/historial', (req, res) => {
+    try {
+      const { fecha } = req.query;
+      const d = fecha ? new Date(fecha + 'T00:00:00') : new Date();
+      const ini = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 00:00:00';
+      const fin = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 23:59:59';
+
+      const pedidos = db.prepare(`
+        SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre,
+               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO'
+                  AND (pi.destino_impresion = 'barra' OR pi.destino_impresion = 'ambos')) as total_items
+        FROM pedidos p
+        JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
+        WHERE p.estado IN ('LISTO', 'ENTREGADO', 'CERRADO')
+          AND p.created_at >= ? AND p.created_at <= ?
+        ORDER BY p.created_at DESC
+      `).all(ini, fin);
+
+      for (const pedido of pedidos) {
+        pedido.items = db.prepare(`
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
         `).all(pedido.id);
       }
 

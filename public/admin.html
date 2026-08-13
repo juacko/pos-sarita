@@ -361,7 +361,16 @@
         <div class="form-group"><label>Descripción</label><textarea id="prodDesc" class="form-control" rows="2" placeholder="Descripción corta"></textarea></div>
         <div class="form-row">
           <div class="form-group"><label>Categoría</label><select id="prodCategoria" class="form-control"></select></div>
-          <div class="form-group"><label><input id="prodParaLlevar" type="checkbox"> Compatible para llevar</label></div>
+          <div class="form-group">
+            <label>Destino de comanda (override)</label>
+            <select id="prodDestinoOverride" class="form-control">
+              <option value="">— Heredar de categoría —</option>
+              <option value="cocina">🍳 Cocina (forzar)</option>
+              <option value="barra">🍹 Barra (forzar)</option>
+              <option value="ambos">📋 Ambos (forzar)</option>
+            </select>
+          </div>
+          <div class="form-group" style="align-self: flex-end;"><label><input id="prodParaLlevar" type="checkbox"> Compatible para llevar</label></div>
         </div>
 
         <hr style="margin:16px 0;border-color:#e2e8f0;">
@@ -432,6 +441,14 @@
       <div class="modal-body">
         <div class="form-group"><label>Nombre</label><input id="catNombre" class="form-control"></div>
         <div class="form-group"><label>Color</label><input id="catColor" type="color" class="form-control" style="height:44px;padding:4px;"></div>
+        <div class="form-group">
+          <label>Destino de comanda / KDS</label>
+          <select id="catDestino" class="form-control">
+            <option value="cocina">🍳 Cocina</option>
+            <option value="barra">🍹 Barra</option>
+            <option value="ambos">📋 Ambos (cocina + barra)</option>
+          </select>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('modalCategoria')">Cancelar</button>
@@ -1130,15 +1147,21 @@
         const c = categorias.find(x => x.id === id);
         document.getElementById('catNombre').value = c?.nombre || '';
         document.getElementById('catColor').value = c?.color || '#6B7280';
+        document.getElementById('catDestino').value = c?.destino || 'cocina';
       } else {
         document.getElementById('catNombre').value = '';
         document.getElementById('catColor').value = '#3B82F6';
+        document.getElementById('catDestino').value = 'cocina';
       }
       document.getElementById('modalCategoria').classList.add('active');
     }
 
     async function saveCategoria() {
-      const data = { nombre: document.getElementById('catNombre').value, color: document.getElementById('catColor').value };
+      const data = {
+        nombre: document.getElementById('catNombre').value,
+        color: document.getElementById('catColor').value,
+        destino: document.getElementById('catDestino').value
+      };
       if (!data.nombre) return alert('Nombre requerido');
       try {
         if (editingCategoriaId) {
@@ -1188,13 +1211,14 @@
       editingProductoId = id || null;
       document.getElementById('modalProductoTitle').textContent = id ? 'Editar producto' : 'Nuevo producto';
 
-      let p = { nombre: '', descripcion: '', precio: '', categoria_id: '', para_llevar: 0, variantes: [], modificadores: [], agregados: [] };
+      let p = { nombre: '', descripcion: '', precio: '', categoria_id: '', para_llevar: 0, destino_override: '', variantes: [], modificadores: [], agregados: [] };
       if (id) p = productosCompleto.find(x => x.id === id) || p;
 
       document.getElementById('prodNombre').value = p.nombre;
       document.getElementById('prodPrecio').value = p.precio;
       document.getElementById('prodDesc').value = p.descripcion || '';
       document.getElementById('prodParaLlevar').checked = !!p.para_llevar;
+      document.getElementById('prodDestinoOverride').value = p.destino_override || '';
 
       const sel = document.getElementById('prodCategoria');
       sel.innerHTML = '<option value="">Sin categoría</option>';
@@ -1221,7 +1245,8 @@
         descripcion: document.getElementById('prodDesc').value,
         precio: parseFloat(document.getElementById('prodPrecio').value),
         categoria_id: parseInt(document.getElementById('prodCategoria').value) || null,
-        para_llevar: document.getElementById('prodParaLlevar').checked ? 1 : 0
+        para_llevar: document.getElementById('prodParaLlevar').checked ? 1 : 0,
+        destino_override: document.getElementById('prodDestinoOverride').value || null
       };
       if (!data.nombre || !data.precio) return alert('Nombre y precio requeridos');
       try {

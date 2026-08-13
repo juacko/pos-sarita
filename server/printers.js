@@ -20,13 +20,24 @@ let config = {
     tipo: 'windows',
     habilitada: true,
     ancho_papel: 80
+  },
+  barra: {
+    nombre: 'Impresora Barra',
+    nombre_impresora: 'BARRA',
+    tipo: 'windows',
+    habilitada: true,
+    ancho_papel: 80
   }
 };
 
 if (fs.existsSync(CONFIG_PATH)) {
   try {
     const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    config = { caja: { ...config.caja, ...saved.caja }, cocina: { ...config.cocina, ...saved.cocina } };
+    config = {
+      caja:   { ...config.caja,   ...saved.caja },
+      cocina: { ...config.cocina, ...saved.cocina },
+      barra:  { ...config.barra,  ...(saved.barra || {}) }
+    };
   } catch (e) {
     console.error('[PRINTERS] Error loading config:', e.message);
   }
@@ -488,9 +499,70 @@ function printPrecuenta(pedido, items, mesa) {
   return printRawEscPos(buffer, 'caja');
 }
 
+function generateComandaBarraText(pedido, items, mesa) {
+  const lines = [];
+  const ahora = new Date();
+  const hora = ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const fecha = ahora.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  lines.push(blankLine());
+  lines.push(bigText('BARRA'));
+  lines.push(sepLine('=', 'barra'));
+  lines.push(blankLine());
+  lines.push({ text: `MESA: ${mesa && (mesa.numero || mesa.nombre)}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
+  lines.push(twoCol(`TIPO: ${tipoLabel(mesa && mesa.area_tipo)}`, `HORA: ${hora}`, 48));
+  if (clienteRelevante(mesa) && pedido.cliente_nombre) {
+    lines.push({ text: `Cliente: ${pedido.cliente_nombre}`, align: 'L' });
+    if (pedido.cliente_telefono) lines.push({ text: `Tel: ${pedido.cliente_telefono}`, align: 'L' });
+    if (pedido.cliente_direccion) lines.push({ text: `Direccion: ${pedido.cliente_direccion}`, align: 'L' });
+    if (pedido.hora_recogida) lines.push({ text: `Recoger: ${pedido.hora_recogida}`, align: 'L' });
+  }
+  if (pedido.mesero_nombre) lines.push({ text: `Mesero: ${pedido.mesero_nombre}`, align: 'L' });
+  if (pedido.nota) lines.push({ text: `NOTA: ${pedido.nota}`, align: 'L', bold: true });
+  lines.push(sepLine('=', 'barra'));
+  lines.push(blankLine());
+
+  for (const item of items) {
+    if (item.estado === 'CANCELADO') continue;
+    lines.push({ text: `${item.cantidad}x  ${item.producto_nombre}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
+    if (item.variante_nombre) lines.push({ text: `     * ${item.variante_nombre}`, align: 'L' });
+    if (item.notas) lines.push({ text: `     * ${item.notas}`, align: 'L' });
+    try {
+      const mods = JSON.parse(item.modificadores_json || '[]');
+      if (mods.length) lines.push(...wrapText(`     + ${mods.map(modLabel).join(', ')}`, 48).map(t => ({ text: t, align: 'L' })));
+    } catch (e) {}
+    try {
+      const agrs = JSON.parse(item.agregados_json || '[]');
+      if (agrs.length) lines.push(...wrapText(`     + ${agrs.map(a => a.nombre || a).join(', ')}`, 48).map(t => ({ text: t, align: 'L' })));
+    } catch (e) {}
+    if (item.detalle) lines.push({ text: `     # ${item.detalle}`, align: 'L' });
+    lines.push(blankLine());
+  }
+
+  lines.push(sepLine('=', 'barra'));
+  lines.push({ text: `PEDIDO #${pedido.id}`, align: 'C', bold: true });
+  lines.push({ text: `${fecha}  ${hora}`, align: 'C' });
+
+  return buildEscPos(lines, 'barra');
+}
+
+function printComandaBarra(pedido, items, mesa) {
+  const buffer = generateComandaBarraText(pedido, items, mesa);
+  return printRawEscPos(buffer, 'barra');
+}
+
 function printComanda(pedido, items, mesa) {
-  const buffer = generateComandaText(pedido, items, mesa);
-  return printRawEscPos(buffer, 'cocina');
+  const itemsCocina = items.filter(i => ['cocina', 'ambos'].includes(i.destino_impresion || 'cocina'));
+  const itemsBarra  = items.filter(i => ['barra',  'ambos'].includes(i.destino_impresion || 'cocina'));
+
+  const results = [];
+  if (itemsCocina.length) {
+    results.push(printRawEscPos(generateComandaText(pedido, itemsCocina, mesa), 'cocina'));
+  }
+  if (itemsBarra.length) {
+    results.push(printRawEscPos(generateComandaBarraText(pedido, itemsBarra, mesa), 'barra'));
+  }
+  return results[0] || { ok: true };
 }
 
 function generateResumenMovimientosText(fecha, movimientos, totales) {
@@ -553,8 +625,9 @@ function getConfig() {
 }
 
 function updateConfig(newConfig) {
-  if (newConfig.caja) config.caja = { ...config.caja, ...newConfig.caja };
+  if (newConfig.caja)   config.caja   = { ...config.caja,   ...newConfig.caja };
   if (newConfig.cocina) config.cocina = { ...config.cocina, ...newConfig.cocina };
+  if (newConfig.barra)  config.barra  = { ...config.barra,  ...newConfig.barra };
   saveConfig();
   return config;
 }
@@ -612,10 +685,13 @@ module.exports = {
   printPrecuenta,
   generatePrecuentaText,
   generateComandaText,
+  generateComandaBarraText,
   printComanda,
+  printComandaBarra,
   printResumenMovimientos,
   getConfig,
   updateConfig,
   testPrinter,
   detectPrinters
 };
+

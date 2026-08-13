@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barra - POS Sarita</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/modal-utils.js"></script>
+  <style>
+    .barra-layout {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 18px;
+      padding: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .comanda-card {
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-top: 5px solid #4F46E5;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .comanda-card:hover {
+      box-shadow: var(--shadow-lg);
+      transform: translateY(-2px);
+    }
+
+    .comanda-card.urgente {
+      border-top-color: var(--danger);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: var(--shadow-sm); }
+      50% { box-shadow: 0 4px 20px rgba(239, 68, 68, 0.35); }
+    }
+
+    .comanda-header {
+      padding: 14px 18px;
+      background: var(--bg-main);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .comanda-mesa {
+      font-family: var(--font-display);
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--text-dark);
+    }
+
+    .comanda-time {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .comanda-body {
+      padding: 16px 18px;
+    }
+
+    .comanda-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comanda-item:last-child {
+      border-bottom: none;
+    }
+
+    .comanda-item-qty {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.15rem;
+      background: #EEF2FF;
+      color: #4F46E5;
+      padding: 2px 10px;
+      border-radius: var(--radius-sm);
+      margin-right: 12px;
+      min-width: 36px;
+      text-align: center;
+    }
+
+    .comanda-item-info {
+      flex: 1;
+    }
+
+    .comanda-item-name {
+      font-weight: 600;
+      color: var(--text-dark);
+      font-size: 0.95rem;
+    }
+
+    .comanda-item-nota {
+      font-size: 0.78rem;
+      color: var(--warning-text);
+      font-weight: 600;
+      font-style: italic;
+    }
+
+    .comanda-item-status {
+      font-size: 0.72rem;
+      padding: 3px 10px;
+      border-radius: var(--radius-full);
+      font-weight: 700;
+    }
+
+    .comanda-item-nuevo {
+      background: #DBEAFE;
+      border: 1.5px solid #2563EB;
+      border-radius: var(--radius-full);
+      padding: 2px 10px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #1D4ED8;
+      text-transform: uppercase;
+      animation: pulseNuevo 1.5s infinite;
+    }
+
+    @keyframes pulseNuevo {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+
+    .comanda-item-check {
+      width: 20px;
+      height: 20px;
+      accent-color: #4F46E5;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .comanda-item.listo {
+      opacity: 0.55;
+    }
+
+    .comanda-item.listo .comanda-item-name {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .comanda-progreso {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      background: var(--gray-light);
+      color: var(--text-dark);
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .comanda-progreso.completo {
+      background: var(--success-light);
+      color: var(--success-text);
+    }
+
+    .comanda-footer {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-main);
+      display: flex;
+      gap: 10px;
+    }
+
+    .barra-header {
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--text-dark);
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .barra-header h1 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--text-dark);
+    }
+
+    .comanda-nota {
+      background: #FEF3C7;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      margin: 8px 0;
+      color: #92400E;
+    }
+
+    .comanda-tipo {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .comanda-tipo.delivery { background: #DBEAFE; color: #1D4ED8; }
+    .comanda-tipo.llevar { background: #FEF3C7; color: #92400E; }
+    .comanda-tipo.salon { background: #D1FAE5; color: #065F46; }
+
+    .comanda-cliente {
+      font-size: 0.78rem;
+      color: #374151;
+      margin-top: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--gray);
+    }
+
+    .empty-state h2 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="barra-header">
+    <h1>🍹 BARRA - Pedidos en vivo</h1>
+    <div>
+      <span id="pedidosCount" style="margin-right:16px;">0 pedidos</span>
+      <button class="btn btn-secondary btn-sm" onclick="openHistorial()">🕓 Historial</button>
+      <span id="reloj" style="margin-left:16px;"></span>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="historialModal" onclick="if(event.target===this)closeHistorial()">
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-header">
+        <h2>🕓 Historial de pedidos de barra</h2>
+        <button class="modal-close" onclick="closeHistorial()">&times;</button>
+      </div>
+      <div class="modal-body" id="historialBody" style="max-height:70vh;overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <div id="comandasContainer" class="barra-layout">
+    <div class="empty-state">
+      <h2>🎯 Sin pedidos pendientes</h2>
+      <p>Los pedidos nuevos de barra aparecerán aquí automáticamente</p>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    function loadPedidos() {
+      fetch('/api/pedidos/barra')
+        .then(r => r.json())
+        .then(renderPedidos)
+        .catch(console.error);
+    }
+
+    function renderPedidos(pedidos) {
+      const container = document.getElementById('comandasContainer');
+
+      if (!pedidos || pedidos.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="grid-column:1/-1;">
+            <h2>🎯 Sin pedidos pendientes</h2>
+            <p>Los pedidos nuevos de barra aparecerán aquí automáticamente</p>
+          </div>`;
+        document.getElementById('pedidosCount').textContent = '0 pedidos';
+        return;
+      }
+
+      document.getElementById('pedidosCount').textContent = `${pedidos.length} pedido${pedidos.length > 1 ? 's' : ''}`;
+
+      container.innerHTML = '';
+      for (const pedido of pedidos) {
+        const card = document.createElement('div');
+        const isUrgente = pedido.estado === 'ABIERTO' && Date.now() - new Date(pedido.created_at).getTime() > 600000;
+        card.className = `comanda-card${isUrgente ? ' urgente' : ''}`;
+
+        const tiempo = timeSince(new Date(pedido.created_at + 'Z'));
+
+        card.innerHTML = `
+          <div class="comanda-header">
+            <div>
+              <div class="comanda-mesa">
+                ${pedido.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🛵 DELIVERY</span> ' :
+                  pedido.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🥡 PARA LLEVAR</span> ' : ''}
+                ${pedido.area_tipo === 'SALON' || !pedido.area_tipo ? `Mesa ${pedido.mesa_numero || pedido.mesa_nombre || 'N/A'}` : (pedido.mesa_nombre || 'Delivery')}
+              </div>
+              <div style="font-size:0.75rem;color:var(--gray);">
+                Pedido #${pedido.id} ${pedido.mesero_nombre ? '| ' + pedido.mesero_nombre : ''}
+              </div>
+              ${(pedido.cliente_nombre || pedido.cliente_telefono || pedido.cliente_direccion || pedido.hora_recogida) ? `
+              <div class="comanda-cliente">
+                ${pedido.cliente_nombre ? `👤 ${pedido.cliente_nombre}` : ''}
+                ${pedido.cliente_telefono ? ` · 📞 ${pedido.cliente_telefono}` : ''}
+                ${pedido.cliente_direccion ? `<br>📍 ${pedido.cliente_direccion}` : ''}
+                ${pedido.hora_recogida ? `<br>🕐 Recoger: ${pedido.hora_recogida}` : ''}
+              </div>` : ''}
+            </div>
+            <div class="comanda-time">${tiempo}</div>
+          </div>
+          <div class="comanda-body">
+            ${pedido.nota ? `<div class="comanda-nota">📝 ${pedido.nota}</div>` : ''}
+            ${(!pedido.items || pedido.items.length === 0) ? '<p style="color:var(--gray);">Sin items</p>' : (() => {
+              const activos = pedido.items;
+              const listos = activos.filter(i => i.estado === 'LISTO').length;
+              const total = activos.length;
+              const todosListos = listos === total;
+              const progresoHtml = `<div class="comanda-progreso${todosListos ? ' completo' : ''}">${todosListos ? '✅ ' : ''}${listos}/${total} listos</div>`;
+              const itemsHtml = activos.map(item => {
+                const esNuevo = item.estado === 'PENDIENTE' && item.created_at && (Date.now() - new Date(item.created_at + 'Z').getTime()) < 3 * 60 * 1000;
+                return `
+                <div class="comanda-item ${item.estado === 'LISTO' ? 'listo' : ''}">
+                  <input type="checkbox" class="comanda-item-check" onchange="marcarItemPreparado(${item.id}, this.checked)" ${item.estado === 'LISTO' ? 'checked' : ''}>
+                  <div style="display:flex;align-items:center;flex:1;">
+                    <span class="comanda-item-qty">${item.cantidad}</span>
+                    <div class="comanda-item-info">
+                      <div class="comanda-item-name">${item.producto_nombre} ${esNuevo ? '<span class="comanda-item-nuevo">Nuevo</span>' : ''}</div>
+                      ${item.variante_nombre ? `<div style="font-size:0.75rem;color:#4F46E5;font-weight:600;">${item.variante_nombre}</div>` : ''}
+                      ${item.detalle ? `<div style="font-size:0.75rem;color:#64748b;">${item.detalle}</div>` : ''}
+                      ${item.notas ? `<div class="comanda-item-nota">${item.notas}</div>` : ''}
+                    </div>
+                  </div>
+                  <span class="comanda-item-status badge-${item.estado === 'PENDIENTE' ? 'yellow' : item.estado === 'COCINANDO' ? 'blue' : 'green'} badge">
+                    ${item.estado === 'COCINANDO' ? 'PREPARANDO' : item.estado}
+                  </span>
+                </div>`;
+              }).join('');
+              return progresoHtml + itemsHtml;
+            })()}
+          </div>
+          <div class="comanda-footer">
+            <button class="btn btn-primary btn-sm" onclick="marcarPreparando(${pedido.id})" ${pedido.estado !== 'ABIERTO' ? 'disabled' : ''}>
+              🍹 Preparando
+            </button>
+            <button class="btn btn-success btn-sm" onclick="marcarListo(${pedido.id}, ${(pedido.items || []).filter(i => i.estado !== 'LISTO').length})" ${pedido.estado === 'LISTO' || pedido.estado === 'ENTREGADO' || pedido.estado === 'CERRADO' ? 'disabled' : ''}>
+              ✅ Marcar todo listo
+            </button>
+          </div>
+        `;
+
+        container.appendChild(card);
+      }
+    }
+
+    function marcarPreparando(pedidoId) {
+      fetch(`/api/pedidos/${pedidoId}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'EN_PREPARACION' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
+
+      fetch(`/api/pedidos/${pedidoId}/items/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'COCINANDO' })
+      }).catch(console.error);
+    }
+
+    async function marcarListo(pedidoId, pendientes) {
+      if (pendientes > 0) {
+        const ok = await customConfirm({
+          title: 'Items Pendientes',
+          message: `Hay ${pendientes} item(s) de barra sin marcar. ¿Marcar todo como listo de todas formas?`,
+          confirmText: 'Sí, marcar listo',
+          icon: '🍹'
+        });
+        if (!ok) return;
+      }
+
+      fetch(`/api/pedidos/${pedidoId}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'LISTO' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
+
+      fetch(`/api/pedidos/${pedidoId}/items/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'LISTO' })
+      }).catch(console.error);
+    }
+
+    function marcarItemPreparado(itemId, checked) {
+      fetch(`/api/pedidos/items/${itemId}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: checked ? 'LISTO' : 'PENDIENTE' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
+    }
+
+    let historialFecha = '';
+
+    function openHistorial() {
+      historialFecha = '';
+      document.getElementById('historialModal').classList.add('active');
+      cargarHistorial();
+    }
+
+    function closeHistorial() {
+      document.getElementById('historialModal').classList.remove('active');
+    }
+
+    function cargarHistorial() {
+      const body = document.getElementById('historialBody');
+      body.innerHTML = '<p style="color:var(--gray);">Cargando historial...</p>';
+      const qs = historialFecha ? `?fecha=${encodeURIComponent(historialFecha)}` : '';
+      fetch('/api/pedidos/barra/historial' + qs)
+        .then(r => r.json())
+        .then(renderHistorial)
+        .catch(err => { body.innerHTML = '<p style="color:var(--danger);">Error al cargar historial</p>'; console.error(err); });
+    }
+
+    function renderHistorial(pedidos) {
+      const body = document.getElementById('historialBody');
+
+      const hoy = new Date().toISOString().slice(0, 10);
+      body.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <input type="date" value="${historialFecha || hoy}" onchange="historialFecha=this.value;cargarHistorial()" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;">
+          ${historialFecha ? `<button class="btn btn-secondary btn-sm" onclick="historialFecha='';cargarHistorial();document.querySelector('#historialBody input[type=date]').value='${hoy}'">Hoy</button>` : ''}
+          <span style="color:var(--gray);font-size:0.85rem;">${pedidos.length} pedido(s)</span>
+        </div>
+        ${pedidos.length === 0 ? '<p style="color:var(--gray);">Sin pedidos para esta fecha.</p>' :
+          pedidos.map(p => `
+            <div class="comanda-card" style="margin-bottom:10px;">
+              <div class="comanda-header">
+                <div>
+                  <div class="comanda-mesa">
+                    ${p.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🛵 DELIVERY</span> ' :
+                      p.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🥡 PARA LLEVAR</span> ' : ''}
+                    ${p.area_tipo === 'SALON' || !p.area_tipo ? `Mesa ${p.mesa_numero || p.mesa_nombre || 'N/A'}` : (p.mesa_nombre || 'Delivery')}
+                  </div>
+                  <div style="font-size:0.75rem;color:var(--gray);">
+                    Pedido #${p.id} ${p.mesero_nombre ? '| ' + p.mesero_nombre : ''} | ${new Date(p.created_at + 'Z').toLocaleTimeString('es-MX')}
+                  </div>
+                </div>
+                <span class="comanda-tipo salon" style="background:#DBEAFE;color:#1D4ED8;">${p.estado}</span>
+              </div>
+              <div class="comanda-body">
+                ${(p.items || []).map(i => `
+                  <div class="comanda-item">
+                    <span class="comanda-item-qty">${i.cantidad}</span>
+                    <div class="comanda-item-info">
+                      <div class="comanda-item-name">${i.producto_nombre}</div>
+                      ${i.variante_nombre ? `<div style="font-size:0.75rem;color:#4F46E5;font-weight:600;">${i.variante_nombre}</div>` : ''}
+                      ${i.detalle ? `<div style="font-size:0.75rem;color:#64748b;">${i.detalle}</div>` : ''}
+                    </div>
+                    <span class="badge badge-${i.estado === 'PENDIENTE' ? 'yellow' : i.estado === 'COCINANDO' ? 'blue' : 'green'}">${i.estado}</span>
+                  </div>`).join('')}
+              </div>
+            </div>`).join('')}
+      `;
+    }
+
+    function timeSince(date) {
+      const seconds = Math.floor((Date.now() - date) / 1000);
+      if (seconds < 60) return 'hace ' + seconds + 's';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return 'hace ' + minutes + 'min';
+      return 'hace ' + Math.floor(minutes / 60) + 'h ' + (minutes % 60) + 'min';
+    }
+
+    function updateClock() {
+      document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-MX');
+    }
+
+    socket.on('pedido:nuevo', () => loadPedidos());
+    socket.on('pedido:actualizado', () => loadPedidos());
+    socket.on('item:actualizado', () => loadPedidos());
+    socket.on('mesa:updated', () => loadPedidos());
+
+    setInterval(updateClock, 1000);
+    updateClock();
+    loadPedidos();
+  </script>
+</body>
+</html>
