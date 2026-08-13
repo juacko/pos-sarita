@@ -1126,12 +1126,16 @@
     async function renderCategorias() {
       const w = document.getElementById('categoriasWrap');
       if (!categorias.length) { w.innerHTML = '<p class="empty-state">Sin categorías</p>'; return; }
-      let h = '<table><thead><tr><th>Color</th><th>Nombre</th><th>Productos</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
+      let h = '<table><thead><tr><th>Color</th><th>Nombre</th><th>Destino Comanda</th><th>Productos</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
       for (const c of categorias) {
         const count = productosCompleto.filter(p => p.categoria_id === c.id).length;
+        const dest = c.destino || 'cocina';
+        const destLabel = dest === 'barra' ? '🍹 Barra' : dest === 'ambos' ? '📋 Ambos' : '🍳 Cocina';
+        const destBadgeClass = dest === 'barra' ? 'background:#EEF2FF;color:#4F46E5;' : dest === 'ambos' ? 'background:#ECFDF5;color:#047857;' : 'background:#FEF3C7;color:#92400E;';
         h += `<tr>
           <td><span class="badge-color" style="background:${c.color}"></span></td>
           <td><strong>${c.nombre}</strong></td>
+          <td><span style="font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:12px;${destBadgeClass}">${destLabel}</span></td>
           <td>${count} productos</td>
           <td><label class="toggle"><input type="checkbox" ${c.activo ? 'checked' : ''} onchange="toggleCategoria(${c.id},this.checked)"><span class="slider"></span></label></td>
           <td><button class="btn btn-outline btn-sm" onclick="openCategoriaModal(${c.id})">✏️</button></td>
@@ -1176,7 +1180,9 @@
     }
 
     async function toggleCategoria(id, active) {
-      await fetch('/api/admin/categorias/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ activo: active ? 1 : 0 }) });
+      const c = categorias.find(x => x.id === id);
+      if (c) c.activo = active ? 1 : 0;
+      await fetch('/api/admin/categorias/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ...c, activo: active ? 1 : 0 }) });
     }
 
     // ---- PRODUCTOS ----
@@ -1185,11 +1191,18 @@
       const q = (document.getElementById('searchProductos').value || '').toLowerCase();
       let list = productosCompleto.filter(p => p.nombre.toLowerCase().includes(q) || (p.categoria_nombre || '').toLowerCase().includes(q));
       if (!list.length) { w.innerHTML = '<p class="empty-state">Sin productos</p>'; return; }
-      let h = '<table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Variantes</th><th>Mod.</th><th>Agr.</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
+      let h = '<table><thead><tr><th>Producto</th><th>Categoría</th><th>Destino</th><th>Precio</th><th>Variantes</th><th>Mod.</th><th>Agr.</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
       for (const p of list) {
+        const cat = categorias.find(c => c.id === p.categoria_id);
+        const catDestino = cat?.destino || 'cocina';
+        const hasOverride = !!p.destino_override;
+        const finalDest = p.destino_override || catDestino;
+        const destLabel = finalDest === 'barra' ? '🍹 Barra' : finalDest === 'ambos' ? '📋 Ambos' : '🍳 Cocina';
+        const isOverrideTag = hasOverride ? ' <small style="color:#6366F1;font-weight:700;">(Forzado)</small>' : '';
         h += `<tr>
           <td><strong>${p.nombre}</strong><br><small style="color:#94a3b8;">${p.descripcion || ''}</small></td>
           <td>${p.categoria_nombre || '-'}</td>
+          <td><span style="font-size:0.75rem;">${destLabel}${isOverrideTag}</span></td>
           <td><strong>S/${p.precio.toFixed(2)}</strong></td>
           <td>${p.variantes?.length || 0}</td>
           <td>${p.modificadores?.length || 0}</td>

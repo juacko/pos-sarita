@@ -10,7 +10,7 @@ function createPedidosRouter(io) {
   function resolverDestino(productoId) {
     if (!productoId) return 'cocina';
     const row = db.prepare(`
-      SELECT COALESCE(p.destino_override, c.destino, 'cocina') AS destino_resuelto
+      SELECT COALESCE(NULLIF(p.destino_override, ''), NULLIF(c.destino, ''), 'cocina') AS destino_resuelto
       FROM productos p
       LEFT JOIN categorias c ON c.id = p.categoria_id
       WHERE p.id = ?

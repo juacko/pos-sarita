@@ -53,9 +53,17 @@ function createAdminRouter(io) {
 
   router.put('/categorias/:id', (req, res) => {
     try {
-      const { nombre, color, activo, destino } = req.body;
+      const existing = db.prepare('SELECT * FROM categorias WHERE id = ?').get(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Categoría no encontrada' });
+
+      const nombre = req.body.nombre !== undefined ? req.body.nombre : existing.nombre;
+      const color = req.body.color !== undefined ? req.body.color : existing.color;
+      const activo = req.body.activo !== undefined ? (req.body.activo ? 1 : 0) : existing.activo;
+      const destino = req.body.destino !== undefined ? (req.body.destino || 'cocina') : (existing.destino || 'cocina');
+
       db.prepare('UPDATE categorias SET nombre=?, color=?, activo=?, destino=? WHERE id=?')
-        .run(nombre, color, activo ?? 1, destino || 'cocina', req.params.id);
+        .run(nombre, color, activo, destino, req.params.id);
+
       res.json(db.prepare('SELECT * FROM categorias WHERE id = ?').get(req.params.id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -107,9 +115,20 @@ function createAdminRouter(io) {
 
   router.put('/productos/:id', (req, res) => {
     try {
-      const { nombre, descripcion, precio, categoria_id, activo, para_llevar, destino_override } = req.body;
+      const existing = db.prepare('SELECT * FROM productos WHERE id = ?').get(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const nombre = req.body.nombre !== undefined ? req.body.nombre : existing.nombre;
+      const descripcion = req.body.descripcion !== undefined ? req.body.descripcion : existing.descripcion;
+      const precio = req.body.precio !== undefined ? req.body.precio : existing.precio;
+      const categoria_id = req.body.categoria_id !== undefined ? req.body.categoria_id : existing.categoria_id;
+      const activo = req.body.activo !== undefined ? (req.body.activo ? 1 : 0) : existing.activo;
+      const para_llevar = req.body.para_llevar !== undefined ? (req.body.para_llevar ? 1 : 0) : existing.para_llevar;
+      const destino_override = req.body.destino_override !== undefined ? (req.body.destino_override || null) : existing.destino_override;
+
       db.prepare('UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, para_llevar=?, destino_override=? WHERE id=?')
-        .run(nombre, descripcion || '', precio, categoria_id || null, activo ?? 1, para_llevar ? 1 : 0, destino_override || null, req.params.id);
+        .run(nombre, descripcion || '', precio, categoria_id || null, activo, para_llevar, destino_override || null, req.params.id);
+
       res.json(db.prepare('SELECT * FROM productos WHERE id = ?').get(req.params.id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
