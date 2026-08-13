@@ -507,86 +507,117 @@
   </div>
 
   <!-- NOTE MODAL -->
-  <div class="note-modal-overlay" id="noteModal" onclick="if(event.target===this)closeNoteModal()">
-    <div class="note-modal">
-      <h3>📝 Nota para el producto</h3>
-      <textarea id="noteInput" rows="3" placeholder="Ej: sin cebolla, término medio..."></textarea>
-      <div class="note-actions">
-        <button style="background:#F3F4F6;" onclick="closeNoteModal()">Cancelar</button>
-        <button style="background:#1e3a5f;color:white;" onclick="saveNote()">Guardar</button>
+  <div class="modal-overlay" id="noteModal" onclick="if(event.target===this)closeNoteModal()">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h2 style="font-family:var(--font-display);font-size:1.15rem;">📝 Nota para el producto</h2>
+        <button class="modal-close" onclick="closeNoteModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px;">
+        <textarea id="noteInput" class="form-control" rows="3" placeholder="Ej: sin cebolla, término medio, bien frío..." style="font-size:0.92rem;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeNoteModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveNote()">Guardar</button>
       </div>
     </div>
   </div>
 
   <!-- PRODUCT CUSTOMIZER MODAL -->
-  <div class="note-modal-overlay" id="customizeModal" onclick="if(event.target===this)closeCustomizeModal()">
-    <div class="note-modal" style="width:380px;max-height:80vh;overflow-y:auto;">
-      <h3 id="customizeTitle">Personalizar producto</h3>
-      <div id="customizeBody"></div>
-      <div class="note-actions" style="margin-top:12px;">
-        <button style="background:#F3F4F6;" onclick="closeCustomizeModal()">Cancelar</button>
-        <button style="background:#059669;color:white;" onclick="confirmCustomize()">Agregar al pedido</button>
+  <div class="modal-overlay" id="customizeModal" onclick="if(event.target===this)closeCustomizeModal()">
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 id="customizeTitle" style="font-family:var(--font-display);font-size:1.2rem;">Personalizar producto</h2>
+        <button class="modal-close" onclick="closeCustomizeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="customizeBody" style="padding:20px;"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeCustomizeModal()">Cancelar</button>
+        <button class="btn btn-success" onclick="confirmCustomize()">Agregar al pedido</button>
       </div>
     </div>
   </div>
 
   <!-- CANAL MODAL (DELIVERY / PARA LLEVAR) -->
-  <div class="note-modal-overlay" id="canalModal" onclick="if(event.target===this)closeCanalModal()">
-    <div class="note-modal" style="width:360px;max-height:80vh;overflow-y:auto;">
-      <h3 id="canalModalTitle">🛵 Delivery</h3>
-      <div id="canalPedidosActivos" style="margin-bottom:12px;"></div>
-      <button class="opt-btn primary" onclick="abrirClienteFormNuevo()">🆕 Nuevo pedido</button>
+  <div class="modal-overlay" id="canalModal" onclick="if(event.target===this)closeCanalModal()">
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2 id="canalModalTitle" style="font-family:var(--font-display);font-size:1.25rem;">🛵 Delivery</h2>
+        <button class="modal-close" onclick="closeCanalModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px;">
+        <div id="canalPedidosActivos" style="margin-bottom:16px;"></div>
+        <button class="btn btn-success btn-block" style="padding:12px;font-size:0.92rem;" onclick="abrirClienteFormNuevo()">🆕 Nuevo pedido</button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeCanalModal()">Cerrar</button>
+      </div>
     </div>
   </div>
 
   <!-- CLIENTE MODAL -->
-  <div class="note-modal-overlay" id="clienteModal" onclick="if(event.target===this)closeClienteModal()">
-    <div class="note-modal">
-      <h3 id="clienteModalTitle">Datos del cliente</h3>
-      <div class="form-group" style="margin-bottom:10px;">
-        <label style="font-size:0.8rem;font-weight:600;">Nombre del cliente *</label>
-        <input id="cliNombre" class="form-control" placeholder="Nombre">
+  <div class="modal-overlay" id="clienteModal" onclick="if(event.target===this)closeClienteModal()">
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 id="clienteModalTitle" style="font-family:var(--font-display);font-size:1.2rem;">📋 Datos del cliente</h2>
+        <button class="modal-close" onclick="closeClienteModal()">&times;</button>
       </div>
-      <div class="form-group" style="margin-bottom:10px;">
-        <label style="font-size:0.8rem;font-weight:600;">Teléfono</label>
-        <input id="cliTelefono" class="form-control" placeholder="Ej: 987 654 321">
+      <div class="modal-body" style="padding:20px;">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="font-size:0.82rem;font-weight:600;color:var(--text-dark);">Nombre del cliente *</label>
+          <input id="cliNombre" class="form-control" placeholder="Nombre completo">
+        </div>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="font-size:0.82rem;font-weight:600;color:var(--text-dark);">Teléfono de contacto</label>
+          <input id="cliTelefono" class="form-control" placeholder="Ej: 987 654 321">
+        </div>
+        <div id="cliDireccionGroup" class="form-group" style="margin-bottom:14px;display:none;">
+          <label style="font-size:0.82rem;font-weight:600;color:var(--text-dark);">Dirección de entrega</label>
+          <input id="cliDireccion" class="form-control" placeholder="Calle, Av, Nro, Referencia">
+        </div>
+        <div id="cliHoraGroup" class="form-group" style="margin-bottom:14px;display:none;">
+          <label style="font-size:0.82rem;font-weight:600;color:var(--text-dark);">Hora de recogida (opcional)</label>
+          <input id="cliHora" type="time" class="form-control">
+        </div>
       </div>
-      <div id="cliDireccionGroup" class="form-group" style="margin-bottom:10px;display:none;">
-        <label style="font-size:0.8rem;font-weight:600;">Dirección de entrega</label>
-        <input id="cliDireccion" class="form-control" placeholder="Calle, Nro, Referencia">
-      </div>
-      <div id="cliHoraGroup" class="form-group" style="margin-bottom:10px;display:none;">
-        <label style="font-size:0.8rem;font-weight:600;">Hora de recogida (opcional)</label>
-        <input id="cliHora" type="time" class="form-control">
-      </div>
-      <div class="note-actions" style="margin-top:8px;">
-        <button style="background:#F3F4F6;" onclick="closeClienteModal()">Cancelar</button>
-        <button style="background:#059669;color:white;" onclick="guardarCliente()">✅ Crear pedido</button>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeClienteModal()">Cancelar</button>
+        <button class="btn btn-success" onclick="guardarCliente()">✅ Crear pedido</button>
       </div>
     </div>
   </div>
 
   <!-- MESA DESTINO MODAL (MOVER / UNIR) -->
-  <div class="note-modal-overlay" id="destinoModal" onclick="if(event.target===this)closeDestinoModal()">
-    <div class="note-modal" style="width:400px;max-height:80vh;overflow-y:auto;">
-      <h3 id="destinoModalTitle">Seleccionar mesa</h3>
-      <div id="destinoModalList" style="display:grid;gap:8px;margin:12px 0;"></div>
-      <div class="note-actions">
-        <button style="background:#F3F4F6;" onclick="closeDestinoModal()">Cancelar</button>
+  <div class="modal-overlay" id="destinoModal" onclick="if(event.target===this)closeDestinoModal()">
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 id="destinoModalTitle" style="font-family:var(--font-display);font-size:1.2rem;">🔀 Seleccionar mesa</h2>
+        <button class="modal-close" onclick="closeDestinoModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px;">
+        <div id="destinoModalList" style="display:grid;gap:8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeDestinoModal()">Cancelar</button>
       </div>
     </div>
   </div>
 
   <!-- MOVER ITEMS MODAL -->
-  <div class="note-modal-overlay" id="moverItemsModal" onclick="if(event.target===this)closeMoverItemsModal()">
-    <div class="note-modal" style="width:420px;max-height:80vh;overflow-y:auto;">
-      <h3 id="moverItemsTitle">Mover productos</h3>
-      <p id="moverItemsInfo" style="font-size:0.85rem;color:#64748b;"></p>
-      <div id="moverItemsList" style="margin:12px 0;"></div>
-      <div class="note-actions">
-        <button style="background:#F3F4F6;" onclick="closeMoverItemsModal()">Cancelar</button>
-        <button style="background:#1e3a5f;color:white;" onclick="confirmarMoverItems('seleccion')">Mover seleccionados</button>
-        <button style="background:#059669;color:white;" onclick="confirmarMoverItems('todo')">Mover todo</button>
+  <div class="modal-overlay" id="moverItemsModal" onclick="if(event.target===this)closeMoverItemsModal()">
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2 id="moverItemsTitle" style="font-family:var(--font-display);font-size:1.2rem;">Mover productos</h2>
+        <button class="modal-close" onclick="closeMoverItemsModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px;">
+        <p id="moverItemsInfo" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;"></p>
+        <div id="moverItemsList" style="margin-bottom:12px;"></div>
+      </div>
+      <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
+        <button class="btn btn-outline" onclick="closeMoverItemsModal()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="confirmarMoverItems('seleccion')">Mover seleccionados</button>
+        <button class="btn btn-success btn-sm" onclick="confirmarMoverItems('todo')">Mover todo</button>
       </div>
     </div>
   </div>
@@ -993,20 +1024,34 @@
 
     function renderPedidosActivos(pedidos) {
       const el = document.getElementById('canalPedidosActivos');
-      if (!pedidos || !pedidos.length) { el.innerHTML = ''; return; }
+      if (!pedidos || !pedidos.length) {
+        el.innerHTML = '<div style="text-align:center;padding:20px 12px;color:var(--text-muted);background:var(--bg-main);border-radius:var(--radius-md);margin-bottom:12px;font-size:0.88rem;border:1px dashed var(--border);">No hay pedidos activos en este canal</div>';
+        return;
+      }
       el.innerHTML = `
-        <p style="font-size:0.85rem;font-weight:700;margin-bottom:8px;">📋 Pedidos activos (${pedidos.length})</p>
+        <div style="font-family:var(--font-display);font-size:0.85rem;font-weight:800;color:var(--text-dark);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em;">📋 Pedidos activos (${pedidos.length})</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
         ${pedidos.map(p => {
           const total = (p.items || []).reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
           const itemsCount = (p.items || []).reduce((s, i) => s + i.cantidad, 0);
-          return `<div class="canal-pedido-mesero" onclick="abrirPedidoActivo(${p.mesa_id})">
-            <div style="flex:1;">
-              <div>#${p.id} — <strong>${p.cliente_nombre || 'Cliente'}</strong> <span style="font-size:0.65rem;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:10px;">${p.estado}</span></div>
-              <div class="det">${itemsCount} item(s) · S/${total.toFixed(2)}${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}</div>
+          return `<div class="canal-pedido-mesero" onclick="abrirPedidoActivo(${p.mesa_id})" style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-md);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;box-shadow:var(--shadow-xs);transition:all 0.15s var(--ease-out);">
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+                <span style="font-family:var(--font-display);font-weight:800;font-size:0.95rem;color:var(--primary);">#${p.id}</span>
+                <strong style="font-size:0.9rem;color:var(--text-dark);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.cliente_nombre || 'Cliente sin nombre'}</strong>
+                <span class="badge badge-info" style="font-size:0.65rem;padding:2px 8px;border-radius:var(--radius-full);">${p.estado}</span>
+              </div>
+              <div class="det" style="font-size:0.78rem;color:var(--text-muted);line-height:1.4;">
+                ${itemsCount} item(s) ${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}
+              </div>
             </div>
-            <span>Abrir →</span>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-family:var(--font-display);font-size:1.05rem;font-weight:800;color:var(--primary);">S/${total.toFixed(2)}</div>
+              <span style="font-size:0.75rem;font-weight:700;color:var(--primary);display:inline-flex;align-items:center;gap:2px;">Abrir →</span>
+            </div>
           </div>`;
         }).join('')}
+        </div>
       `;
     }
 
