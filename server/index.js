@@ -25,7 +25,7 @@ app.use('/api/mesas', createMesasRouter(io));
 app.use('/api/pedidos', createPedidosRouter(io));
 app.use('/api/productos', createProductosRouter());
 app.use('/api/usuarios', createUsuariosRouter());
-app.use('/api/admin', createAdminRouter());
+app.use('/api/admin', createAdminRouter(io));
 
 app.get('/api/printers/config', (req, res) => {
   res.json(printers.getConfig());

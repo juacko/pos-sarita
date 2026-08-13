@@ -30,6 +30,7 @@ async function submitPin() {
       document.getElementById('appContent').style.display = 'block';
       updateUserInfo();
       initApp();
+      document.dispatchEvent(new Event('pos-login-done'));
 
       showToast(`Bienvenido ${user.nombre}`, 'success');
     } else {

@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>POS Sarita</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -52,9 +55,11 @@
         <h2 style="font-size:1rem;color:var(--gray-dark);">Selecciona una mesa</h2>
         <div style="display:flex;gap:6px;">
           <a href="/impresoras.html" class="btn btn-outline btn-sm">🖨️ Impresoras</a>
+          <button class="btn btn-outline btn-sm" onclick="toggleVistaPagados()">📋 Pagados</button>
           <button class="btn btn-outline btn-sm" onclick="loadMesas()">🔄 Refrescar</button>
         </div>
       </div>
+      <div id="pagadosPanel" style="display:none;padding:12px 24px 0;"></div>
       <div id="canalesRow" class="canales-row"></div>
       <div id="areaFilter" class="area-filter"></div>
       <div id="mesasGrid" class="mesas-grid"></div>
@@ -91,7 +96,7 @@
           <div class="pos-right-total">
             <div class="total-line">
               <span>TOTAL</span>
-              <span id="totalPedido">$0.00</span>
+              <span id="totalPedido">S/0.00</span>
             </div>
             <div class="form-group" style="margin-bottom:8px;">
               <label>Nota del pedido</label>
@@ -141,11 +146,11 @@
           <div class="pos-right-total">
             <div class="total-line">
               <span>TOTAL</span>
-              <span id="pedidoViewTotal">$0.00</span>
+              <span id="pedidoViewTotal">S/0.00</span>
             </div>
             <div id="pedidoViewPendiente" class="total-line" style="font-size:1rem;color:var(--red);display:none;">
               <span>Pendiente</span>
-              <span id="pedidoViewPendienteMonto">$0.00</span>
+              <span id="pedidoViewPendienteMonto">S/0.00</span>
             </div>
             <div id="pedidoViewActions">
               <button class="btn btn-outline btn-block" id="btnAgregarMas" onclick="abrirPOSFromPedido()">
@@ -157,8 +162,17 @@
               <button class="btn btn-danger btn-block" id="btnLiberarMesa" onclick="liberarMesaDesdePedido()" style="display:none;margin-top:4px;">
                 🚪 Liberar Mesa (clientes se van)
               </button>
+              <button class="btn btn-outline btn-block" id="btnAnularPedido" onclick="anularPedidoDesdePOS()" style="margin-top:4px;color:#DC2626;border-color:#FCA5A5;display:none;">
+                🚫 Anular pedido
+              </button>
               <button class="btn btn-outline btn-block" id="btnReimprimirPedido" onclick="reimprimirPedido()" style="margin-top:4px;display:none;">
                 🖨️ Reimprimir ticket
+              </button>
+              <button class="btn btn-outline btn-block" id="btnEditarPagos" onclick="abrirModalEditarPagos()" style="margin-top:4px;display:none;">
+                💳 Editar pagos
+              </button>
+              <button class="btn btn-outline btn-block" id="btnEliminarPedidoPagado" onclick="eliminarPedidoPagado()" style="margin-top:4px;color:#DC2626;border-color:#FCA5A5;display:none;">
+                🗑️ Eliminar pedido
               </button>
               <button class="btn btn-outline btn-block" id="btnPrecuenta" onclick="imprimirPrecuenta()" style="margin-top:4px;">
                 📄 Imprimir Pre-cuenta
@@ -184,12 +198,12 @@
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div>
               <div style="font-size:0.72rem;color:var(--gray);">Total a cobrar</div>
-              <div id="cobroTotal" style="font-size:1.6rem;font-weight:800;color:var(--green);line-height:1.1;">$0.00</div>
+              <div id="cobroTotal" style="font-size:1.6rem;font-weight:800;color:var(--green);line-height:1.1;">S/0.00</div>
             </div>
             <div style="text-align:right;font-size:0.75rem;color:var(--gray);">
-              <div>Subtotal: <span id="cobroSubtotal" style="font-weight:600;">$0.00</span></div>
-              <div id="cobroDescuentoRow" style="display:none;color:#DC2626;">Descuento: <span id="cobroDescuentoMonto">-$0.00</span></div>
-              <div id="cobroPagadoInfo" style="display:none;color:var(--green);font-weight:600;">Ya pagado: $<span id="cobroPagado">0.00</span></div>
+              <div>Subtotal: <span id="cobroSubtotal" style="font-weight:600;">S/0.00</span></div>
+              <div id="cobroDescuentoRow" style="display:none;color:#DC2626;">Descuento: <span id="cobroDescuentoMonto">-S/0.00</span></div>
+              <div id="cobroPagadoInfo" style="display:none;color:var(--green);font-weight:600;">Ya pagado: S/<span id="cobroPagado">0.00</span></div>
             </div>
           </div>
         </div>
@@ -209,7 +223,7 @@
                   <label style="font-size:0.72rem;color:var(--gray);">Tipo</label>
                   <select id="cobroDescTipo" class="form-control" onchange="document.getElementById('cobroDescValor').placeholder=this.value==='porcentaje'?'Ej: 10':'Ej: 50'">
                     <option value="porcentaje">%</option>
-                    <option value="monto_fijo">$ fijo</option>
+                    <option value="monto_fijo">S/ fijo</option>
                   </select>
                 </div>
                 <div>
@@ -258,7 +272,7 @@
                 <button class="btn btn-outline btn-sm" style="flex:1;padding:3px 0;font-size:0.72rem;" onclick="setPropina(20)">20%</button>
                 <button class="btn btn-outline btn-sm" style="flex:1;padding:3px 0;font-size:0.72rem;" onclick="setPropina(0)">Quitar</button>
               </div>
-              <input id="cobroPropinaMonto" type="number" step="0.01" min="0" class="form-control" placeholder="Monto propina $" style="font-size:0.8rem;" oninput="updatePropinaPreview()">
+              <input id="cobroPropinaMonto" type="number" step="0.01" min="0" class="form-control" placeholder="Monto propina S/" style="font-size:0.8rem;" oninput="updatePropinaPreview()">
               <div id="cobroPropinaPreview" style="font-size:0.75rem;color:var(--gray);margin-top:4px;"></div>
             </div>
           </div>
@@ -296,8 +310,8 @@
           </div>
           <div id="cobroPagosList" style="display:flex;flex-direction:column;gap:6px;"></div>
           <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:8px;font-size:0.8rem;">
-            <span>Suma: <strong id="cobroSumaPagos" style="color:var(--gray-dark);">$0.00</strong></span>
-            <span id="cobroFaltaCambio"><strong id="cobroFaltaCambioValor" style="color:var(--red);">Falta $0.00</strong></span>
+            <span>Suma: <strong id="cobroSumaPagos" style="color:var(--gray-dark);">S/0.00</strong></span>
+            <span id="cobroFaltaCambio"><strong id="cobroFaltaCambioValor" style="color:var(--red);">Falta S/0.00</strong></span>
           </div>
         </div>
 
@@ -309,9 +323,40 @@
     </div>
   </div>
 
+  <!-- MODAL EDITAR PAGOS -->
+  <div id="editarPagosModal" class="modal-overlay" onclick="if(event.target===this)closeEditarPagosModal()">
+    <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto;">
+      <div class="modal-header">
+        <h2>💳 Editar pagos — Pedido #<span id="editarPagosPedidoId"></span></h2>
+        <button class="modal-close" onclick="closeEditarPagosModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:12px;">
+        <div id="editarPagosInfo"></div>
+        <div id="editarPagosList"></div>
+
+        <div style="background:var(--gray-light);border-radius:10px;padding:10px 14px;margin-top:12px;">
+          <div style="font-weight:700;font-size:0.88rem;margin-bottom:8px;">➕ Agregar forma de pago</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="editarPagosMetodo" class="form-control" style="flex:1;min-width:130px;"></select>
+            <input id="editarPagosMonto" type="number" step="0.01" min="0" placeholder="Monto" class="form-control" style="width:120px;text-align:right;">
+            <button class="btn btn-success btn-sm" onclick="agregarPagoPedido()">Agregar</button>
+          </div>
+          <div style="font-size:0.75rem;color:var(--gray);margin-top:6px;" id="editarPagosPendiente"></div>
+        </div>
+
+        <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 14px;margin-top:12px;">
+          <div style="font-weight:700;font-size:0.85rem;color:#92400E;margin-bottom:4px;">⚠️ Eliminar un pago = devolución</div>
+          <div style="font-size:0.78rem;color:#78350F;">Quitar un pago anula el pedido completo, genera un EGRESO en caja y devuelve la mesa. Requiere motivo.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeEditarPagosModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL PERSONALIZAR PRODUCTO -->
-  <div id="customizeModal" class="modal-overlay" onclick="if(event.target===this)closeCustomizeModal()">
-    <div class="modal" style="max-width:400px;max-height:85vh;overflow-y:auto;">
+  <div id="customizeModal" class="modal-overlay" onclick="if(event.target===this)closeCustomizeModal()">    <div class="modal" style="max-width:400px;max-height:85vh;overflow-y:auto;">
       <div class="modal-header">
         <h2 id="customizeTitle">Personalizar producto</h2>
         <button class="modal-close" onclick="closeCustomizeModal()">&times;</button>
@@ -383,6 +428,23 @@
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeClienteModal()">Cancelar</button>
         <button class="btn btn-success" onclick="guardarCliente()">✅ Crear pedido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL SIN CAJA ABIERTA -->
+  <div id="sinCajaModal" class="modal-overlay" onclick="if(event.target===this)closeSinCajaModal()">
+    <div class="modal" style="max-width:420px;text-align:center;">
+      <div class="modal-body" style="padding:28px 24px;">
+        <div style="font-size:3rem;margin-bottom:10px;">💰</div>
+        <h2 style="margin:0 0 8px;">Caja no abierta</h2>
+        <p style="color:#64748b;font-size:0.92rem;margin:0 0 18px;">
+          Para cobrar este pedido primero debes <strong>abrir la caja</strong> en el panel de administración.
+        </p>
+        <button class="btn btn-success btn-block" style="font-size:1rem;" onclick="irAbrirCaja()">🔓 Abrir caja</button>
+      </div>
+      <div class="modal-footer" style="justify-content:center;">
+        <button class="btn btn-outline" onclick="closeSinCajaModal()">Cerrar</button>
       </div>
     </div>
   </div>

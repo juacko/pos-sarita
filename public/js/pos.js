@@ -140,7 +140,7 @@ function renderProductos() {
   for (const prod of filtered) {
     const btn = document.createElement('button');
     btn.className = 'producto-btn';
-    btn.innerHTML = `${prod.nombre} <span class="precio">$${prod.precio.toFixed(2)}</span>`;
+    btn.innerHTML = `${prod.nombre} <span class="precio">S/${prod.precio.toFixed(2)}</span>`;
     btn.onclick = () => agregarItem(prod);
     container.appendChild(btn);
   }
@@ -200,7 +200,7 @@ function openCustomizeModal(prod, callback) {
   agregadoQtys = {};
 
   document.getElementById('customizeTitle').textContent = prod.nombre;
-  let html = `<p style="color:var(--gray);font-size:0.85rem;margin-bottom:12px;">Precio base: <strong>$${prod.precio.toFixed(2)}</strong></p>`;
+  let html = `<p style="color:var(--gray);font-size:0.85rem;margin-bottom:12px;">Precio base: <strong>S/${prod.precio.toFixed(2)}</strong></p>`;
 
   if (prod.variantes?.length) {
     html += '<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">Presentación:</strong>';
@@ -215,7 +215,7 @@ function openCustomizeModal(prod, callback) {
 
   if (prod.modificadores?.length) {
     prod.modificadores.forEach(m => {
-      html += `<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">${m.nombre}${m.requerido ? ' <span style="color:#ef4444;">*</span>' : ''}</strong>`;
+      html += `<div id="pos_mod_wrap_${m.id}" data-dep="${m.depende_variante_id || ''}" style="margin-bottom:12px;${m.depende_variante_id ? 'display:none;' : ''}"><strong style="font-size:0.85rem;">${m.nombre}${m.requerido ? ' <span style="color:#ef4444;">*</span>' : ''}</strong>`;
       if (m.tipo === 'text') {
         html += `<input class="form-control" style="margin-top:4px;" id="pos_mod_text_${m.id}" placeholder="Escribe...">`;
       } else {
@@ -235,7 +235,7 @@ function openCustomizeModal(prod, callback) {
     html += '<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">Agregados:</strong>';
     prod.agregados.forEach(a => {
       html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85rem;">
-        <span style="flex:1;">${a.nombre} <span style="color:var(--green);">+$${a.precio.toFixed(2)}</span></span>
+        <span style="flex:1;">${a.nombre} <span style="color:var(--green);">+S/${a.precio.toFixed(2)}</span></span>
         <button class="btn btn-outline btn-sm" onclick="changeAgregado(${a.id}, -1)">−</button>
         <span id="pos_agr_qty_${a.id}">0</span>
         <button class="btn btn-outline btn-sm" onclick="changeAgregado(${a.id}, 1)">+</button>
@@ -244,7 +244,7 @@ function openCustomizeModal(prod, callback) {
     html += '</div>';
   }
 
-  html += '<div id="customizeTotal" style="text-align:right;font-size:1.2rem;font-weight:800;color:var(--green);border-top:1px solid #e2e8f0;padding-top:8px;">Total: $' + prod.precio.toFixed(2) + '</div>';
+        html += '<div id="customizeTotal" style="text-align:right;font-size:1.2rem;font-weight:800;color:var(--green);border-top:1px solid #e2e8f0;padding-top:8px;">Total: S/' + prod.precio.toFixed(2) + '</div>';
 
   document.getElementById('customizeBody').innerHTML = html;
   document.getElementById('customizeModal').classList.add('active');
@@ -252,7 +252,23 @@ function openCustomizeModal(prod, callback) {
 
 function selectVariante(jsonStr) {
   try { selectedVariante = JSON.parse(jsonStr.replace(/&#39;/g, "'")); } catch(e) { selectedVariante = JSON.parse(jsonStr); }
+  refreshModifierVisibility();
   updateCustomizeTotal();
+}
+
+function refreshModifierVisibility() {
+  const prod = customizeProduct;
+  if (!prod?.modificadores) return;
+  prod.modificadores.forEach(m => {
+    const wrap = document.getElementById('pos_mod_wrap_' + m.id);
+    if (!wrap) return;
+    const visible = !m.depende_variante_id || (selectedVariante && selectedVariante.id == m.depende_variante_id);
+    wrap.style.display = visible ? '' : 'none';
+    if (!visible) {
+      delete selectedMods[m.id];
+      wrap.querySelectorAll('input').forEach(i => i.checked = false);
+    }
+  });
 }
 
 function selectOpcion(modId, el) {
@@ -300,7 +316,7 @@ function updateCustomizeTotal() {
     if (agr && qty > 0) adicional += agr.precio * qty;
   }
   const total = prod.precio + adicional;
-  document.getElementById('customizeTotal').textContent = 'Total: $' + total.toFixed(2);
+        document.getElementById('customizeTotal').textContent = 'Total: S/' + total.toFixed(2);
 }
 
 function closeCustomizeModal() {
@@ -311,6 +327,30 @@ function closeCustomizeModal() {
 function confirmCustomize() {
   const prod = customizeProduct;
   if (!prod) return;
+
+  if (prod.variantes?.length && !selectedVariante) {
+    showToast('Selecciona la presentación/guarnición', 'warning');
+    return;
+  }
+
+  // Validar modificadores requeridos visibles (incluye dependientes activos)
+  const faltantes = [];
+  for (const m of prod.modificadores || []) {
+    const visible = !m.depende_variante_id || (selectedVariante && selectedVariante.id == m.depende_variante_id);
+    if (!visible || !m.requerido) continue;
+    if (m.tipo === 'text') {
+      const txt = document.getElementById('pos_mod_text_' + m.id)?.value || '';
+      if (!txt.trim()) faltantes.push(m.nombre);
+    } else {
+      const vals = selectedMods[m.id];
+      const ok = vals !== undefined && (Array.isArray(vals) ? vals.length > 0 : true);
+      if (!ok) faltantes.push(m.nombre);
+    }
+  }
+  if (faltantes.length) {
+    showToast(`Falta seleccionar: ${faltantes.join(', ')}`, 'warning');
+    return;
+  }
 
   const modificadores = prod.modificadores?.map(m => {
     const vals = selectedMods[m.id];
@@ -413,15 +453,15 @@ function renderPedidoItems() {
           </div>
         </div>
         <div style="text-align:right;">
-          ${item.precio_adicional > 0 ? `<div style="font-size:0.7rem;color:var(--gray);">$${item.precio.toFixed(2)} + $${item.precio_adicional.toFixed(2)}</div>` : ''}
-          <div class="pedido-item-price">$${(item.cantidad * precioUnitario).toFixed(2)}</div>
+          ${item.precio_adicional > 0 ? `<div style="font-size:0.7rem;color:var(--gray);">S/${item.precio.toFixed(2)} + S/${item.precio_adicional.toFixed(2)}</div>` : ''}
+          <div class="pedido-item-price">S/${(item.cantidad * precioUnitario).toFixed(2)}</div>
           <button class="pedido-item-remove" onclick="eliminarItem(${idx})">&times;</button>
         </div>
       </div>`;
     }).join('');
   }
 
-  document.getElementById('totalPedido').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('totalPedido').textContent = `S/${total.toFixed(2)}`;
 }
 
 function agregarNota(index) {
@@ -552,9 +592,13 @@ async function verPedidoExistente(mesaId) {
     const isFullyPaid = pagado >= total - 0.01;
     const isCerrado = pedidoExistente.estado === 'CERRADO' || pedidoExistente.estado === 'CANCELADO';
 
+    const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
     document.getElementById('btnCobrarPedido').style.display = (!isCerrado && !isFullyPaid) ? 'flex' : 'none';
     document.getElementById('btnReimprimirPedido').style.display = isCerrado ? 'flex' : 'none';
-    document.getElementById('btnLiberarMesa').style.display = (isCerrado || isFullyPaid) ? 'flex' : 'none';
+    document.getElementById('btnLiberarMesa').style.display = 'flex';
+    document.getElementById('btnAnularPedido').style.display = (!isCerrado && puedeAnular) ? 'flex' : 'none';
+    document.getElementById('btnEditarPagos').style.display = (isCerrado && pedidoExistente.estado !== 'CANCELADO' && puedeAnular) ? 'flex' : 'none';
+    document.getElementById('btnEliminarPedidoPagado').style.display = (isCerrado && pedidoExistente.estado !== 'CANCELADO' && puedeAnular) ? 'flex' : 'none';
     document.getElementById('btnAgregarMas').style.display = (!isCerrado && !isFullyPaid) ? 'flex' : 'none';
   } catch (err) {
     showToast('Error al cargar pedido', 'error');
@@ -594,8 +638,8 @@ function renderPedidoExistenteItems() {
           ${details}
         </div>
         <div style="text-align:right;">
-          ${precioAdic > 0 ? `<div style="font-size:0.7rem;color:var(--gray);">$${item.precio_unitario.toFixed(2)} + $${precioAdic.toFixed(2)}</div>` : ''}
-          <div class="pedido-item-price">$${subtotal.toFixed(2)}</div>
+          ${precioAdic > 0 ? `<div style="font-size:0.7rem;color:var(--gray);">S/${item.precio_unitario.toFixed(2)} + S/${precioAdic.toFixed(2)}</div>` : ''}
+          <div class="pedido-item-price">S/${subtotal.toFixed(2)}</div>
         </div>
       </div>
     `;
@@ -617,27 +661,27 @@ function renderPedidoExistenteResumen() {
   const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pendiente = Math.max(0, total - pagado);
 
-  document.getElementById('pedidoViewTotal').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('pedidoViewTotal').textContent = `S/${total.toFixed(2)}`;
 
   const pendienteEl = document.getElementById('pedidoViewPendiente');
   if (pagado > 0 && pendiente > 0) {
     pendienteEl.style.display = 'flex';
-    document.getElementById('pedidoViewPendienteMonto').textContent = `$${pendiente.toFixed(2)}`;
+    document.getElementById('pedidoViewPendienteMonto').textContent = `S/${pendiente.toFixed(2)}`;
   } else {
     pendienteEl.style.display = 'none';
   }
 
   let html = `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--gray);">Items:</span><span>${pedidoExistente.items.length}</span></div>`;
-  html += `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--gray);">Subtotal:</span><span>$${totalBruto.toFixed(2)}</span></div>`;
+  html += `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--gray);">Subtotal:</span><span>S/${totalBruto.toFixed(2)}</span></div>`;
   if (totalDescuento > 0) {
-    html += `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:#DC2626;">Descuento:</span><span style="color:#DC2626;">-$${totalDescuento.toFixed(2)}</span></div>`;
+    html += `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:#DC2626;">Descuento:</span><span style="color:#DC2626;">-S/${totalDescuento.toFixed(2)}</span></div>`;
     for (const d of descuentos) {
-      const motLabel = d.tipo === 'porcentaje' ? `${d.valor}%` : `$${d.valor.toFixed(2)}`;
+      const motLabel = d.tipo === 'porcentaje' ? `${d.valor}%` : `S/${d.valor.toFixed(2)}`;
       html += `<div style="font-size:0.75rem;color:var(--gray);margin-bottom:4px;margin-left:12px;">${motLabel} — ${d.motivo}</div>`;
     }
   }
   if (pagado > 0) {
-    html += `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--gray);">Pagado:</span><span style="color:var(--green);">$${pagado.toFixed(2)}</span></div>`;
+    html += `<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span style="color:var(--gray);">Pagado:</span><span style="color:var(--green);">S/${pagado.toFixed(2)}</span></div>`;
   }
   container.innerHTML = html;
 }
@@ -650,11 +694,12 @@ function renderPedidoExistentePagos() {
     return;
   }
 
-  const metodos = { efectivo: '💵', tarjeta: '💳', transferencia: '📱', otros: '📋', regalo: '🎁', vale: '🎫' };
+  const metodos = { regalo: '🎁', vale: '🎟️' };
+  for (const m of metodosVisibles()) metodos[m.key] = m.label;
   container.innerHTML = '<div style="font-size:0.8rem;font-weight:600;margin-bottom:4px;">Pagos realizados:</div>' +
     pagos.map(p => {
-      let info = `${metodos[p.metodo] || ''} ${p.metodo}: $${p.monto.toFixed(2)}`;
-      if (p.propina > 0) info += ` (+$${p.propina.toFixed(2)} propina)`;
+      let info = `${metodos[p.metodo] || ''} ${p.metodo}: S/${p.monto.toFixed(2)}`;
+      if (p.propina > 0) info += ` (+S/${p.propina.toFixed(2)} propina)`;
       if (p.referencia) info += ` [${p.referencia}]`;
       if (p.usuario_nombre) info += ` — ${p.usuario_nombre}`;
       return `<div style="font-size:0.8rem;color:var(--gray);padding:4px 0;">${info}</div>`;
@@ -690,8 +735,50 @@ async function imprimirPrecuenta() {
   }
 }
 
+async function anularPedidoDesdePOS() {
+  if (!pedidoExistente || !currentUser) return;
+  if (currentUser.rol !== 'admin' && currentUser.rol !== 'cajero') {
+    showToast('Solo el administrador o el cajero pueden anular pedidos', 'warning');
+    return;
+  }
+  const motivo = prompt(`Ingresa el motivo para anular el Pedido #${pedidoExistente.id} (requerido):`);
+  if (!motivo || !motivo.trim()) {
+    showToast('El motivo es requerido para anular el pedido', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/admin/pedidos/${pedidoExistente.id}/anular`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser.id })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Pedido anulado y mesa liberada', 'success');
+      showMesasView();
+    } else {
+      showToast(data.error || 'Error al anular el pedido', 'error');
+    }
+  } catch (err) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
 async function liberarMesaDesdePedido() {
   if (!posMesaData || !currentUser) return;
+
+  if (pedidoExistente && pedidoExistente.estado !== 'CERRADO' && pedidoExistente.estado !== 'CANCELADO') {
+    if (currentUser.rol === 'admin' || currentUser.rol === 'cajero') {
+      if (confirm(`Esta mesa tiene un pedido activo (#${pedidoExistente.id}). Para liberarla se debe anular el pedido.\n\n¿Deseas anular el pedido y liberar la mesa?`)) {
+        anularPedidoDesdePOS();
+      }
+    } else {
+      showToast('La mesa tiene un pedido activo. Solo admin o cajero puede anularlo para liberarla.', 'warning');
+    }
+    return;
+  }
+
   if (!confirm('¿Liberar esta mesa? Los clientes se van.')) return;
 
   try {
@@ -713,6 +800,307 @@ async function liberarMesaDesdePedido() {
   }
 }
 
+// ─── MODAL EDITAR PAGOS (pedidos pagados) ───
+
+let editarPagosData = null;
+
+function COBRO_METODOS_LABELS() {
+  const extra = { regalo: 'Regalo', vale: 'Vale' };
+  for (const m of metodosVisibles()) extra[m.key] = m.texto;
+  return extra;
+}
+
+function metodosEditables() {
+  const labels = COBRO_METODOS_LABELS();
+  const keys = metodosVisibles().map(m => m.key);
+  const out = {};
+  for (const k of keys) if (labels[k]) out[k] = labels[k];
+  return out;
+}
+
+async function abrirModalEditarPagos() {
+  if (!pedidoExistente || !currentUser) return;
+  if (currentUser.rol !== 'admin' && currentUser.rol !== 'cajero') {
+    showToast('Solo admin o cajero puede editar pagos', 'warning');
+    return;
+  }
+  const res = await fetch(`/api/pedidos/${pedidoExistente.id}`);
+  if (!res.ok) return showToast('No se pudo cargar el pedido', 'error');
+  editarPagosData = await res.json();
+
+  document.getElementById('editarPagosPedidoId').textContent = editarPagosData.id;
+  renderEditarPagos();
+  document.getElementById('editarPagosModal').style.display = 'flex';
+}
+
+function renderEditarPagos() {
+  const total = editarPagosData.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const descRow = editarPagosData.descuentos || [];
+  const descFijo = descRow.filter(d => d.tipo === 'monto_fijo').reduce((s, d) => s + d.valor, 0);
+  const descPct = descRow.filter(d => d.tipo === 'porcentaje').reduce((s, d) => s + d.valor, 0);
+  const totalFinal = Math.max(0, total * (1 - descPct / 100) - descFijo);
+  const pagos = editarPagosData.pagos || [];
+  const pagado = pagos.reduce((s, p) => s + p.monto, 0);
+  const pendiente = Math.max(0, totalFinal - pagado);
+
+  const labels = metodosEditables();
+  document.getElementById('editarPagosInfo').innerHTML = `
+    <div style="background:var(--gray-light);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;">
+        <span>Total</span><span style="font-weight:700;">S/${totalFinal.toFixed(2)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;">
+        <span>Pagado</span><span style="font-weight:700;color:var(--green);">S/${pagado.toFixed(2)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;">
+        <span>Pendiente</span><span style="font-weight:700;color:var(--red);">S/${pendiente.toFixed(2)}</span>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('editarPagosPendiente').textContent = `Pendiente actual: S/${pendiente.toFixed(2)}`;
+
+  const metodoSel = document.getElementById('editarPagosMetodo');
+  const actual = metodoSel.value || 'efectivo';
+  metodoSel.innerHTML = Object.keys(labels)
+    .map(m => `<option value="${m}" ${m === actual ? 'selected' : ''}>${labels[m]}</option>`)
+    .join('');
+
+  const listEl = document.getElementById('editarPagosList');
+  if (!pagos.length) {
+    listEl.innerHTML = '<p style="color:var(--gray);text-align:center;padding:10px;">Sin pagos registrados</p>';
+    return;
+  }
+  listEl.innerHTML = pagos.map(p => {
+    const propinaTxt = p.propina > 0 ? ` <small style="color:var(--gray);">+ propina S/${p.propina.toFixed(2)}</small>` : '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;background:#fff;">
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:0.9rem;">${labels[p.metodo] || p.metodo} — S/${p.monto.toFixed(2)}${propinaTxt}</div>
+          <div style="font-size:0.75rem;color:var(--gray);">${p.referencia ? 'Ref: ' + p.referencia + ' · ' : ''}${p.created_at ? p.created_at : ''}${p.usuario_nombre ? ' · ' + p.usuario_nombre : ''}</div>
+        </div>
+        <select class="form-control" style="width:140px;font-size:0.8rem;padding:4px;" onchange="cambiarMetodoPago(${p.id}, this.value)">
+          ${Object.keys(labels).map(m => `<option value="${m}" ${m === p.metodo ? 'selected' : ''}>${labels[m]}</option>`).join('')}
+          ${labels[p.metodo] ? '' : `<option value="${p.metodo}" selected>${COBRO_METODOS_LABELS()[p.metodo] || p.metodo}</option>`}
+        </select>
+        <button class="btn btn-sm" style="background:#DC2626;color:white;padding:5px 10px;" onclick="quitarPagoPedido(${p.id}, ${p.monto})">Quitar</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function closeEditarPagosModal() {
+  document.getElementById('editarPagosModal').style.display = 'none';
+  editarPagosData = null;
+}
+
+async function cambiarMetodoPago(pagoId, nuevoMetodo) {
+  const motivo = prompt('Motivo del cambio de método de pago (opcional):');
+  if (motivo === null) { renderEditarPagos(); return; }
+  try {
+    const res = await fetch(`/api/admin/pedidos/${editarPagosData.id}/pagos/${pagoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metodo: nuevoMetodo, motivo: (motivo || '').trim() || null, usuario_id: currentUser.id })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Método de pago actualizado', 'success');
+      const r = await fetch(`/api/pedidos/${editarPagosData.id}`);
+      editarPagosData = await r.json();
+      renderEditarPagos();
+    } else {
+      showToast(data.error || 'Error', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function agregarPagoPedido() {
+  const metodo = document.getElementById('editarPagosMetodo').value;
+  const monto = parseFloat(document.getElementById('editarPagosMonto').value);
+  if (!monto || monto <= 0) return showToast('Ingresa un monto válido', 'warning');
+  const motivo = prompt('Motivo (opcional):');
+  if (motivo === null) return;
+  try {
+    const res = await fetch(`/api/admin/pedidos/${editarPagosData.id}/pagos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metodo, monto, motivo: (motivo || '').trim() || null, usuario_id: currentUser.id })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Pago agregado', 'success');
+      document.getElementById('editarPagosMonto').value = '';
+      const r = await fetch(`/api/pedidos/${editarPagosData.id}`);
+      editarPagosData = await r.json();
+      renderEditarPagos();
+    } else {
+      showToast(data.error || 'Error', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function quitarPagoPedido(pagoId, monto) {
+  if (!confirm(`⚠️ Quitar este pago (S/${monto.toFixed(2)}) es una DEVOLUCIÓN: anulará el pedido #${editarPagosData.id} completo, registrará un EGRESO en caja y liberará la mesa.\n\n¿Continuar?`)) return;
+  const motivo = prompt('Motivo de la devolución (requerido):');
+  if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'warning');
+  try {
+    const res = await fetch(`/api/admin/pedidos/${editarPagosData.id}/pagos/${pagoId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser.id })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Pedido anulado (devolución)', 'success');
+      closeEditarPagosModal();
+      await verPedidoExistente(pedidoExistente.id);
+      showMesasView();
+    } else {
+      showToast(data.error || 'Error', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function eliminarPedidoPagado() {
+  if (!pedidoExistente) return;
+  if (currentUser.rol !== 'admin' && currentUser.rol !== 'cajero') {
+    showToast('Solo admin o cajero puede eliminar pedidos', 'warning');
+    return;
+  }
+  const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
+  if (!confirm(`⚠️ Eliminar el pedido #${pedidoExistente.id} por S/${pagado.toFixed(2)} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.\n\n¿Continuar?`)) return;
+  const motivo = prompt('Motivo de la eliminación (requerido):');
+  if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'warning');
+  try {
+    const res = await fetch(`/api/admin/pedidos/${pedidoExistente.id}/eliminar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser.id })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Pedido eliminado (devolución)', 'success');
+      showMesasView();
+    } else {
+      showToast(data.error || 'Error', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+// ─── VISTA PAGADOS (historial) ───
+
+let vistaPagadosOn = false;
+let pagadosLista = [];
+
+async function toggleVistaPagados() {
+  vistaPagadosOn = !vistaPagadosOn;
+  const panel = document.getElementById('pagadosPanel');
+  if (vistaPagadosOn) {
+    await loadPagados();
+    panel.style.display = 'block';
+    const grid = document.getElementById('mesasGrid');
+    const area = document.getElementById('areaFilter');
+    const canales = document.getElementById('canalesRow');
+    if (grid) grid.style.display = 'none';
+    if (area) area.style.display = 'none';
+    if (canales) canales.style.display = 'none';
+  } else {
+    panel.style.display = 'none';
+    const grid = document.getElementById('mesasGrid');
+    const area = document.getElementById('areaFilter');
+    const canales = document.getElementById('canalesRow');
+    if (grid) grid.style.display = '';
+    if (area) area.style.display = '';
+    if (canales) canales.style.display = '';
+  }
+}
+
+async function loadPagados() {
+  try {
+    const res = await fetch('/api/admin/pedidos/pagados?limite=60');
+    if (!res.ok) throw new Error();
+    pagadosLista = await res.json();
+    renderPagados();
+  } catch (e) {
+    const panel = document.getElementById('pagadosPanel');
+    panel.innerHTML = '<p style="color:var(--red);">Error al cargar el historial</p>';
+  }
+}
+
+function renderPagados() {
+  const panel = document.getElementById('pagadosPanel');
+  const puede = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
+  if (!pagadosLista.length) {
+    panel.innerHTML = '<p class="empty-state">Sin pedidos pagados o anulados recientes</p>';
+    return;
+  }
+  const rows = pagadosLista.map(p => {
+    const badge = p.estado === 'CERRADO'
+      ? '<span class="badge badge-green">Pagado</span>'
+      : `<span class="badge badge-red">Anulado</span>`;
+    const acciones = `
+      <button class="btn btn-sm btn-outline" onclick="verPedidoPagado(${p.id})">Ver</button>
+      ${p.estado === 'CERRADO' && puede
+        ? `<button class="btn btn-sm btn-outline" style="color:#DC2626;border-color:#FCA5A5;" onclick="eliminarPedidoPagadoId(${p.id})">🗑️</button>`
+        : ''}
+    `;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:8px 12px;margin-bottom:6px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:0.85rem;">Pedido #${p.id} · ${p.mesa_nombre || ('Mesa ' + (p.mesa_numero || ''))} ${badge}</div>
+          <div style="font-size:0.75rem;color:var(--gray);">${p.created_at}${p.cliente_nombre ? ' · ' + p.cliente_nombre : ''}${p.motivo_cancelacion ? ' · ' + p.motivo_cancelacion : ''}</div>
+        </div>
+        <div style="font-weight:700;color:var(--green);">S/${(p.pagado || p.total || 0).toFixed(2)}</div>
+        <div style="display:flex;gap:4px;">${acciones}</div>
+      </div>
+    `;
+  }).join('');
+  panel.innerHTML = `
+    <h2 style="font-size:0.95rem;color:var(--gray-dark);margin-bottom:10px;">📋 Historial de pedidos pagados / anulados</h2>
+    <div style="max-height:65vh;overflow-y:auto;">${rows}</div>
+  `;
+}
+
+async function verPedidoPagado(id) {
+  const res = await fetch(`/api/pedidos/${id}`);
+  if (!res.ok) return showToast('No se pudo cargar el pedido', 'error');
+  pedidoExistente = await res.json();
+  await verPedidoExistente(id);
+}
+
+async function eliminarPedidoPagadoId(id) {
+  const ped = pagadosLista.find(p => p.id === id);
+  const monto = ped ? (ped.pagado || ped.total || 0) : 0;
+  if (!confirm(`⚠️ Eliminar el pedido #${id} por S/${monto.toFixed(2)} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.\n\n¿Continuar?`)) return;
+  const motivo = prompt('Motivo de la eliminación (requerido):');
+  if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'warning');
+  try {
+    const res = await fetch(`/api/admin/pedidos/${id}/eliminar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser.id })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Pedido eliminado (devolución)', 'success');
+      await loadPagados();
+    } else {
+      showToast(data.error || 'Error', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
 // ─── MODAL DE COBRO ───
 
 let cobroMetodo = 'efectivo';
@@ -726,7 +1114,7 @@ async function loadPosConfig() {
     const res = await fetch('/api/configuracion/modal_pago');
     posConfig = await res.json();
   } catch (e) {
-    posConfig = null;
+    // conservar config previa
   }
 }
 loadPosConfig();
@@ -740,8 +1128,16 @@ const COBRO_METODOS_DEF = [
 
 function metodosVisibles() {
   const cfgMetodos = posConfig?.metodos;
-  const lista = cfgMetodos && cfgMetodos.length ? cfgMetodos : COBRO_METODOS_DEF.map(m => m.key);
-  return COBRO_METODOS_DEF.filter(m => lista.includes(m.key));
+  if (cfgMetodos && cfgMetodos.length) {
+    return cfgMetodos.map(m => {
+      if (typeof m === 'string') {
+        const def = COBRO_METODOS_DEF.find(d => d.key === m);
+        return def || { key: m, label: '📋', texto: m };
+      }
+      return { key: m?.key, label: m?.label || '💳', texto: m?.texto || m?.key || '' };
+    }).filter(m => m.key);
+  }
+  return COBRO_METODOS_DEF;
 }
 
 function renderPagosCobro() {
@@ -778,15 +1174,15 @@ function actualizarResumenCobro() {
   if (!cobroPagos.length) return;
   const pendiente = calcularPendienteCobro();
   const suma = cobroPagos.reduce((s, p) => s + (p.monto || 0), 0);
-  document.getElementById('cobroSumaPagos').textContent = `$${suma.toFixed(2)}`;
+  document.getElementById('cobroSumaPagos').textContent = `S/${suma.toFixed(2)}`;
   const dif = Math.round((suma - pendiente) * 100) / 100;
   const faltaEl = document.getElementById('cobroFaltaCambioValor');
   const ultima = cobroPagos[cobroPagos.length - 1];
   if (dif > 0.004) {
-    faltaEl.textContent = ultima?.metodo === 'efectivo' ? `Cambio: $${dif.toFixed(2)}` : `Sobrante: $${dif.toFixed(2)}`;
+    faltaEl.textContent = ultima?.metodo === 'efectivo' ? `Cambio: S/${dif.toFixed(2)}` : `Sobrante: S/${dif.toFixed(2)}`;
     faltaEl.style.color = 'var(--green)';
   } else if (dif < -0.004) {
-    faltaEl.textContent = `Falta: $${Math.abs(dif).toFixed(2)}`;
+    faltaEl.textContent = `Falta: S/${Math.abs(dif).toFixed(2)}`;
     faltaEl.style.color = 'var(--red)';
   } else {
     faltaEl.textContent = 'Completo ✓';
@@ -834,11 +1230,11 @@ function cambioFilaPagoMonto(idx, valor) {
 function aplicarVisibilidadCobro() {
   const cfg = posConfig || {};
   const secciones = {
-    descuento: 'cobroDescuentoSection',
-    vale: 'cobroValeSection',
-    propina: 'cobroPropinaSection',
-    notas: 'cobroNotasSection',
-    regalo: 'cobroRegaloSection'
+    mostrar_descuento: 'cobroDescuentoSection',
+    mostrar_vale: 'cobroValeSection',
+    mostrar_propina: 'cobroPropinaSection',
+    mostrar_notas: 'cobroNotasSection',
+    mostrar_regalo: 'cobroRegaloSection'
   };
   for (const [clave, id] of Object.entries(secciones)) {
     const el = document.getElementById(id);
@@ -864,7 +1260,7 @@ function calcularPendienteCobro() {
   return Math.max(0, total - pagado);
 }
 
-function abrirModalCobro() {
+async function abrirModalCobro() {
   if (!pedidoExistente) return;
   cobroPedidoRef = pedidoExistente;
   cobroValeData = null;
@@ -875,18 +1271,18 @@ function abrirModalCobro() {
   const pendiente = Math.max(0, total - pagado);
 
   document.getElementById('cobroPedidoId').textContent = cobroPedidoRef.id;
-  document.getElementById('cobroSubtotal').textContent = `$${totalBruto.toFixed(2)}`;
+  document.getElementById('cobroSubtotal').textContent = `S/${totalBruto.toFixed(2)}`;
 
   const descRow = document.getElementById('cobroDescuentoRow');
   const totalDescuento = totalBruto - total;
   if (totalDescuento > 0) {
     descRow.style.display = 'flex';
-    document.getElementById('cobroDescuentoMonto').textContent = `-$${totalDescuento.toFixed(2)}`;
+    document.getElementById('cobroDescuentoMonto').textContent = `-S/${totalDescuento.toFixed(2)}`;
   } else {
     descRow.style.display = 'none';
   }
 
-  document.getElementById('cobroTotal').textContent = `$${pendiente.toFixed(2)}`;
+  document.getElementById('cobroTotal').textContent = `S/${pendiente.toFixed(2)}`;
 
   const pagadoInfo = document.getElementById('cobroPagadoInfo');
   if (pagado > 0) {
@@ -898,6 +1294,7 @@ function abrirModalCobro() {
 
   renderDescuentosAplicados();
 
+  await loadPosConfig();
   aplicarVisibilidadCobro();
 
   const visibles = metodosVisibles();
@@ -983,7 +1380,7 @@ function renderDescuentosAplicados() {
   const descuentos = cobroPedidoRef?.descuentos || [];
   if (!descuentos.length) { container.innerHTML = ''; return; }
   container.innerHTML = descuentos.map(d => {
-    const val = d.tipo === 'porcentaje' ? `${d.valor}%` : `$${d.valor.toFixed(2)}`;
+    const val = d.tipo === 'porcentaje' ? `${d.valor}%` : `S/${d.valor.toFixed(2)}`;
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#FEF2F2;border-radius:6px;margin-bottom:4px;font-size:0.8rem;">
       <span>🏷️ <strong>${val}</strong> — ${d.motivo}</span>
       <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:0.7rem;color:#DC2626;" onclick="eliminarDescuento(${d.id})">✕</button>
@@ -995,7 +1392,7 @@ function refreshCobroMontos() {
   const total = calcularTotalCobro();
   const pagado = (cobroPedidoRef?.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pendiente = Math.max(0, total - pagado);
-  document.getElementById('cobroTotal').textContent = `$${pendiente.toFixed(2)}`;
+  document.getElementById('cobroTotal').textContent = `S/${pendiente.toFixed(2)}`;
   ajustarUltimaFila();
 }
 
@@ -1010,7 +1407,7 @@ async function buscarVale() {
       document.getElementById('cobroValeInfo').style.display = 'block';
       document.getElementById('cobroValeError').style.display = 'none';
       document.getElementById('cobroValeNombre').textContent = cobroValeData.cliente_nombre || 'Sin nombre';
-      document.getElementById('cobroValeMonto').textContent = `$${cobroValeData.monto_restante.toFixed(2)}`;
+      document.getElementById('cobroValeMonto').textContent = `S/${cobroValeData.monto_restante.toFixed(2)}`;
       const pendiente = calcularPendienteCobro();
       const usar = Math.min(pendiente, cobroValeData.monto_restante);
       document.getElementById('cobroValeUsar').value = usar.toFixed(2);
@@ -1042,7 +1439,7 @@ function setPropina(pct) {
 function updatePropinaPreview() {
   const propina = parseFloat(document.getElementById('cobroPropinaMonto').value) || 0;
   const total = calcularTotalCobro();
-  document.getElementById('cobroPropinaPreview').textContent = propina > 0 ? `Propina: $${propina.toFixed(2)} (${(propina / total * 100).toFixed(1)}% del total)` : '';
+  document.getElementById('cobroPropinaPreview').textContent = propina > 0 ? `Propina: S/${propina.toFixed(2)} (${(propina / total * 100).toFixed(1)}% del total)` : '';
 }
 
 // ─── REGALO ───
@@ -1126,7 +1523,7 @@ async function procesarPago() {
   let suma = pagos.reduce((s, p) => s + p.monto, 0);
 
   if (suma < pendientePostVale - 0.01) {
-    return showToast(`Falta: $${(pendientePostVale - suma).toFixed(2)}`, 'warning');
+    return showToast(`Falta: S/${(pendientePostVale - suma).toFixed(2)}`, 'warning');
   }
 
   // El sobrante solo se acepta en efectivo (cambio); en otros métodos se recorta
@@ -1135,7 +1532,7 @@ async function procesarPago() {
     ultimo.monto = Math.max(0, Math.round((ultimo.monto - (suma - pendientePostVale)) * 100) / 100);
     suma = pagos.reduce((s, p) => s + p.monto, 0);
     if (suma < pendientePostVale - 0.01) {
-      return showToast(`Falta: $${(pendientePostVale - suma).toFixed(2)}`, 'warning');
+      return showToast(`Falta: S/${(pendientePostVale - suma).toFixed(2)}`, 'warning');
     }
   }
 
@@ -1163,7 +1560,11 @@ async function procesarPago() {
         if (data.cambio > 0) cambio = data.cambio;
       } else {
         const err = await res.json();
-        showToast(err.error || 'Error al cobrar', 'error');
+        if (err.code === 'CAJA_CERRADA' || /caja abierta/i.test(err.error || '')) {
+          mostrarModalSinCaja();
+        } else {
+          showToast(err.error || 'Error al cobrar', 'error');
+        }
         break;
       }
     } catch (err) {
@@ -1174,7 +1575,7 @@ async function procesarPago() {
 
   if (pagosOk === pagos.length) {
     let msg = pagos.length > 1 ? `${pagos.length} pagos registrados` : 'Pago registrado';
-    if (cambio > 0) msg = `Cambio: $${cambio.toFixed(2)}`;
+    if (cambio > 0) msg = `Cambio: S/${cambio.toFixed(2)}`;
     showToast(msg, 'success');
   } else {
     showToast(`Se registraron ${pagosOk} de ${pagos.length} pagos`, 'warning');
@@ -1183,6 +1584,21 @@ async function procesarPago() {
   closeCobroModal();
   await verPedidoExistente(posMesaData.id);
   await loadMesas();
+}
+
+// ─── MODAL SIN CAJA ABIERTA ───
+
+function mostrarModalSinCaja() {
+  closeCobroModal();
+  document.getElementById('sinCajaModal').classList.add('active');
+}
+
+function closeSinCajaModal() {
+  document.getElementById('sinCajaModal').classList.remove('active');
+}
+
+function irAbrirCaja() {
+  window.open('/admin.html#caja', '_blank');
 }
 
 // ─── HIDE POS VIEW ON SHOW MESAS ───

@@ -42,12 +42,12 @@ const seed = db.transaction(() => {
   // ─── HELPER ───
   const insProd = db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id) VALUES (?, ?, ?, ?)');
   const insVar = db.prepare('INSERT INTO variantes (producto_id, nombre, precio_adicional) VALUES (?, ?, ?)');
-  const insMod = db.prepare('INSERT INTO modificadores (producto_id, nombre, tipo, requerido, max_opciones) VALUES (?, ?, ?, ?, ?)');
+  const insMod = db.prepare('INSERT INTO modificadores (producto_id, nombre, tipo, requerido, max_opciones, depende_variante_id) VALUES (?, ?, ?, ?, ?, ?)');
   const insOpc = db.prepare('INSERT INTO opciones_mod (modificador_id, nombre, precio_adicional) VALUES (?, ?, ?)');
   const insAgr = db.prepare('INSERT INTO agregados (producto_id, nombre, precio, maximo) VALUES (?, ?, ?, ?)');
 
-  function addMod(productId, nombre, tipo, requerido, maxOpciones, opciones) {
-    const r = insMod.run(productId, nombre, tipo, requerido, maxOpciones);
+  function addMod(productId, nombre, tipo, requerido, maxOpciones, opciones, dependeVarianteId) {
+    const r = insMod.run(productId, nombre, tipo, requerido, maxOpciones, dependeVarianteId || null);
     const modId = r.lastInsertRowid;
     for (const [on, op] of opciones) insOpc.run(modId, on, op);
     return modId;
@@ -291,8 +291,15 @@ const seed = db.transaction(() => {
     const r = insProd.run(nombre, desc, precios[0], cat('Combos'));
     const pid = r.lastInsertRowid;
     // Variantes: cada guarnición tiene precio diferente
+    let varPastaId = null;
     for (let i = 0; i < guarniciones.length; i++) {
-      insVar.run(pid, guarniciones[i], precios[i] - precios[0]);
+      const vr = insVar.run(pid, guarniciones[i], precios[i] - precios[0]);
+      if (guarniciones[i] === 'Pastas') varPastaId = vr.lastInsertRowid;
+    }
+    // Modificador dependiente: solo aplica si se elige la guarnición "Pastas"
+    if (varPastaId) {
+      addMod(pid, 'Tipo de pasta', 'select', 1, 1,
+        [['Pasta al Pesto', 0], ['Pasta Huancaína', 0], ['Pasta Alfredo', 0]], varPastaId);
     }
     // Agregados
     insAgr.run(pid, 'Arroz extra', 5, 2);

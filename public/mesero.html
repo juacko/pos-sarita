@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Mesero - POS Sarita</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <style>
     * { -webkit-tap-highlight-color: transparent; }
@@ -43,16 +46,28 @@
 
     /* === HEADER MESERO === */
     .header-mesero {
-      background: #1e3a5f; color: white; padding: 12px 16px;
+      background: linear-gradient(135deg, #16294a 0%, #1e3a5f 55%, #2d5a87 100%);
+      color: white; padding: 12px 16px;
       display: flex; justify-content: space-between; align-items: center;
       position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 12px rgba(22,41,74,0.25);
     }
-    .header-mesero h1 { font-size: 1.1rem; font-weight: 700; }
-    .header-mesero-info { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; }
+    .header-mesero h1 {
+      font-size: 1.15rem; font-weight: 800; color: #ffffff !important;
+      display: flex; align-items: center; gap: 8px;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .header-mesero-info { display: flex; align-items: center; gap: 12px; font-size: 0.85rem; color: #ffffff; }
+    .header-mesero-info #userBadge {
+      color: #ffffff; font-weight: 600;
+      background: rgba(255,255,255,0.18);
+      padding: 4px 12px; border-radius: 20px;
+    }
     .header-mesero .btn-icon {
       background: rgba(255,255,255,0.15); border: none; color: white;
       width: 36px; height: 36px; border-radius: 50%; font-size: 1.1rem;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
+      text-decoration: none;
     }
     .header-mesero .btn-icon:active { background: rgba(255,255,255,0.3); }
 
@@ -75,6 +90,7 @@
     .mesa-card-mesero.LIBRE { border-color: #10B981; }
     .mesa-card-mesero.OCUPADO { border-color: #EF4444; }
     .mesa-card-mesero.RESERVADO { border-color: #F59E0B; }
+    .mesa-card-mesero.PAGADO { border-color: #8B5CF6; }
     .mesa-card-mesero.INACTIVO { opacity: 0.5; border-color: #9CA3AF; }
     .mesa-card-mesero .info-top {
       min-height: 26px; display: flex; flex-direction: column;
@@ -96,6 +112,7 @@
     .mesa-card-mesero.LIBRE .status { background: #D1FAE5; color: #065F46; }
     .mesa-card-mesero.OCUPADO .status { background: #FEE2E2; color: #991B1B; }
     .mesa-card-mesero.RESERVADO .status { background: #FEF3C7; color: #92400E; }
+    .mesa-card-mesero.PAGADO .status { background: #EDE9FE; color: #6D28D9; }
     .mesa-card-mesero.INACTIVO .status { background: #F3F4F6; color: #6B7280; }
     .mesa-card-mesero .mesero-name {
       font-size: 0.7rem; color: #6B7280; margin-top: 4px;
@@ -417,8 +434,8 @@
       <div class="header-mesero-info">
         <span id="userBadge"></span>
         <a href="/cocina.html" target="_blank" class="btn-icon" title="Pantalla cocina">👨‍🍳</a>
-        <a href="/impresoras.html" target="_blank" class="btn-icon" title="Impresoras">🖨️</a>
-        <a href="/admin.html" target="_blank" class="btn-icon" title="Admin">⚙️</a>
+        <a id="impresorasLink" href="/impresoras.html" target="_blank" class="btn-icon" title="Impresoras" style="display:none;">🖨️</a>
+        <a id="adminLink" href="/admin.html" target="_blank" class="btn-icon" title="Admin" style="display:none;">⚙️</a>
         <button class="btn-icon" onclick="logout()" title="Salir">✕</button>
       </div>
     </div>
@@ -429,7 +446,10 @@
         <span style="font-size:0.85rem;color:#6B7280;">
           <span id="mesasCount">0</span> mesas · <span id="ocupadasCount">0</span> ocupadas
         </span>
-        <button class="btn btn-outline btn-sm" onclick="loadMesas()">🔄</button>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button id="toggleCanalesBtn" class="btn btn-outline btn-sm" style="display:none;" onclick="toggleCanales()">🛵 Canales</button>
+          <button class="btn btn-outline btn-sm" onclick="loadMesas()">🔄</button>
+        </span>
       </div>
       <div id="canalesRow" class="canales-row-mesero"></div>
       <div id="areaFilter" class="area-filter-mesero"></div>
@@ -457,7 +477,7 @@
       <div class="cart-bar" id="cartBar" style="display:none;">
         <div class="cart-summary">
           <span class="cart-count" id="cartCount">0 productos</span>
-          <span class="cart-total" id="cartTotal">$0.00</span>
+          <span class="cart-total" id="cartTotal">S/0.00</span>
         </div>
         <div class="cart-actions">
           <button class="btn-cart-detail" onclick="openCartModal()">🛒 Ver pedido</button>
@@ -545,6 +565,31 @@
     </div>
   </div>
 
+  <!-- MESA DESTINO MODAL (MOVER / UNIR) -->
+  <div class="note-modal-overlay" id="destinoModal" onclick="if(event.target===this)closeDestinoModal()">
+    <div class="note-modal" style="width:400px;max-height:80vh;overflow-y:auto;">
+      <h3 id="destinoModalTitle">Seleccionar mesa</h3>
+      <div id="destinoModalList" style="display:grid;gap:8px;margin:12px 0;"></div>
+      <div class="note-actions">
+        <button style="background:#F3F4F6;" onclick="closeDestinoModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MOVER ITEMS MODAL -->
+  <div class="note-modal-overlay" id="moverItemsModal" onclick="if(event.target===this)closeMoverItemsModal()">
+    <div class="note-modal" style="width:420px;max-height:80vh;overflow-y:auto;">
+      <h3 id="moverItemsTitle">Mover productos</h3>
+      <p id="moverItemsInfo" style="font-size:0.85rem;color:#64748b;"></p>
+      <div id="moverItemsList" style="margin:12px 0;"></div>
+      <div class="note-actions">
+        <button style="background:#F3F4F6;" onclick="closeMoverItemsModal()">Cancelar</button>
+        <button style="background:#1e3a5f;color:white;" onclick="confirmarMoverItems('seleccion')">Mover seleccionados</button>
+        <button style="background:#059669;color:white;" onclick="confirmarMoverItems('todo')">Mover todo</button>
+      </div>
+    </div>
+  </div>
+
   <!-- SUCCESS OVERLAY -->
   <div class="success-overlay" id="successOverlay">
     <div class="success-box">
@@ -560,6 +605,8 @@
     let currentUser = null;
     let posMesaId = null;
     let posMesaData = null;
+    let canalesOcultos = false;
+    let canalesStorageKey = 'posCanalesOcultos';
     let categorias = [];
     let productos = [];
     let pedidoItems = [];
@@ -574,6 +621,10 @@
     let clienteModalTipo = null;
     let clienteModalAccion = null;
     let avisosSinPedido = {};
+    let pedidoActivoItems = [];
+    let actividadDestino = null;
+    let mesaDestinoElegida = null;
+    let moverSeleccion = new Set();
 
     // ---- SOCKET ----
     const socket = io();
@@ -618,7 +669,13 @@
 
     // ---- APP ----
     async function initApp() {
-      await Promise.all([loadMesas(), loadCategorias(), loadProductos(), loadAreas()]);
+      canalesStorageKey = 'posCanalesOcultos_' + (currentUser?.id || 'anon');
+      canalesOcultos = localStorage.getItem(canalesStorageKey) === '1';
+      const esAdmin = currentUser && currentUser.rol === 'admin';
+      document.getElementById('impresorasLink').style.display = esAdmin ? '' : 'none';
+      document.getElementById('adminLink').style.display = esAdmin ? '' : 'none';
+      await loadAreas();
+      await Promise.all([loadMesas(), loadCategorias(), loadProductos()]);
     }
 
     async function loadMesas() {
@@ -659,15 +716,18 @@
 
     function renderCanales(mesas) {
       const el = document.getElementById('canalesRow');
+      const btn = document.getElementById('toggleCanalesBtn');
       if (!el) return;
       const tipos = [
         { tipo: 'DELIVERY', icono: '🛵', label: 'Delivery', color: '#3B82F6', sub: 'A domicilio' },
         { tipo: 'PARA_LLEVAR', icono: '🥡', label: 'Para Llevar', color: '#F59E0B', sub: 'Para recoger' }
       ];
       el.innerHTML = '';
+      let hayCanales = false;
       for (const t of tipos) {
         const hayArea = areasGlobal.some(a => a.tipo === t.tipo && a.activo);
         if (!hayArea) continue;
+        hayCanales = true;
         const activas = mesas.filter(m => m.es_virtual && m.area_tipo === t.tipo && m.pedido_activo_id).length;
         const card = document.createElement('div');
         card.className = 'canal-card-mesero';
@@ -681,6 +741,18 @@
         card.onclick = () => openCanalModal(t.tipo);
         el.appendChild(card);
       }
+      if (btn) btn.style.display = hayCanales ? 'inline-block' : 'none';
+      el.style.display = canalesOcultos ? 'none' : 'grid';
+      if (btn) btn.textContent = canalesOcultos ? '🛵 Ver canales' : '🛵 Canales';
+    }
+
+    function toggleCanales() {
+      canalesOcultos = !canalesOcultos;
+      localStorage.setItem(canalesStorageKey, canalesOcultos ? '1' : '0');
+      const el = document.getElementById('canalesRow');
+      const btn = document.getElementById('toggleCanalesBtn');
+      if (el) el.style.display = canalesOcultos ? 'none' : 'grid';
+      if (btn) btn.textContent = canalesOcultos ? '🛵 Ver canales' : '🛵 Canales';
     }
 
     function renderMesas(mesas) {
@@ -719,17 +791,25 @@
           let pendienteHtml = '';
           if (m.pedido_total != null && (m.estado === 'OCUPADO' || m.estado === 'CERRANDO')) {
             const pendiente = Math.max(0, m.pedido_total - (m.pedido_pagado || 0) - (m.pedido_descuento || 0));
-            totalHtml = `<div class="total">$${m.pedido_total.toFixed(2)}</div>`;
+            totalHtml = `<div class="total">S/${m.pedido_total.toFixed(2)}</div>`;
             if (estadoEfectivo !== 'PAGADO') {
-              pendienteHtml = `<div class="pendiente">Pendiente: $${pendiente.toFixed(2)}</div>`;
+              pendienteHtml = `<div class="pendiente">Pendiente: S/${pendiente.toFixed(2)}</div>`;
             }
           }
 
-          const tiempo = m.ocupado_desde ? timeSince(new Date(m.ocupado_desde + 'Z')) : '';
-          const tiempoHtml = tiempo && (m.estado === 'OCUPADO' || m.estado === 'CERRANDO')
-            ? `<div class="tiempo">⏱ ${tiempo}</div>` : '';
+          const esPagado = estadoEfectivo === 'PAGADO';
+          const enAtencion = m.estado === 'OCUPADO' || m.estado === 'CERRANDO';
 
-          const sinPedido = m.estado === 'OCUPADO' && !m.tiene_pedido_activo && m.minutos_sin_pedido != null;
+          const tOcupado = m.ocupado_desde ? timeSince(new Date(m.ocupado_desde + 'Z')) : '';
+          const tiempoHtml = (tOcupado && enAtencion)
+            ? `<div class="tiempo">⏱ ${tOcupado}</div>` : '';
+
+          let pagoHtml = '';
+          if (esPagado && m.pagado_desde) {
+            pagoHtml = `<div class="tiempo sinpedido">⏱ sin pedido · ${timeSince(new Date(m.pagado_desde + 'Z'))}</div>`;
+          }
+
+          const sinPedido = !esPagado && m.estado === 'OCUPADO' && !m.tiene_pedido_activo && m.minutos_sin_pedido != null;
           let sinPedidoHtml = '';
           if (sinPedido) {
             sinPedidoHtml = `<div class="tiempo sinpedido">⏱ ${m.minutos_sin_pedido} min sin pedido</div>`;
@@ -747,6 +827,7 @@
               ${tiempoHtml}
             </div>
             <div class="info-bot">
+              ${pagoHtml}
               ${sinPedidoHtml}
               ${pendienteHtml}
             </div>
@@ -778,6 +859,65 @@
         if (r.ok) {
           toast('Mesa liberada', 'ok');
           loadMesas();
+        } else {
+          const e = await r.json();
+          toast(e.error || 'Error', 'err');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'err');
+      }
+    }
+
+    async function anularPedidoMesero() {
+      if (!posMesaData?.pedido_activo_id || !currentUser) return;
+      if (currentUser.rol !== 'admin' && currentUser.rol !== 'cajero') {
+        toast('Solo el administrador o el cajero pueden anular pedidos', 'err');
+        return;
+      }
+      const motivo = prompt(`Ingresa el motivo para anular el Pedido #${posMesaData.pedido_activo_id} (requerido):`);
+      if (!motivo || !motivo.trim()) {
+        toast('El motivo es requerido para anular el pedido', 'err');
+        return;
+      }
+      try {
+        const r = await fetch(`/api/admin/pedidos/${posMesaData.pedido_activo_id}/anular`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser.id })
+        });
+        const d = await r.json();
+        if (r.ok && d.ok) {
+          toast('Pedido anulado y mesa liberada', 'ok');
+          showMesasView();
+        } else {
+          toast(d.error || 'Error al anular el pedido', 'err');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'err');
+      }
+    }
+
+    async function liberarMesaMesero() {
+      if (!posMesaData || !currentUser) return;
+      if (posMesaData.pedido_activo_id) {
+        const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
+        if (puedeAnular) {
+          if (confirm(`Esta mesa tiene un pedido activo. Para liberarla se debe anular el pedido.\n\n¿Deseas anular el pedido y liberar la mesa?`)) {
+            anularPedidoMesero();
+          }
+        } else {
+          toast('No se puede liberar: la mesa tiene un pedido activo. Solo admin o cajero puede anularlo.', 'err');
+        }
+        return;
+      }
+      if (!confirm('¿Liberar esta mesa? Los clientes se van.')) return;
+      try {
+        const r = await fetch(`/api/mesas/${posMesaData.id}/liberar`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesero_id: currentUser.id })
+        });
+        if (r.ok) {
+          toast('Mesa liberada', 'ok');
+          showMesasView();
         } else {
           const e = await r.json();
           toast(e.error || 'Error', 'err');
@@ -837,7 +977,7 @@
           return `<div class="canal-pedido-mesero" onclick="abrirPedidoActivo(${p.mesa_id})">
             <div style="flex:1;">
               <div>#${p.id} — <strong>${p.cliente_nombre || 'Cliente'}</strong> <span style="font-size:0.65rem;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:10px;">${p.estado}</span></div>
-              <div class="det">${itemsCount} item(s) · $${total.toFixed(2)}${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}</div>
+              <div class="det">${itemsCount} item(s) · S/${total.toFixed(2)}${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}</div>
             </div>
             <span>Abrir →</span>
           </div>`;
@@ -983,7 +1123,7 @@
     }
 
     // ---- POS FLOW ----
-    function abrirPOS(mesa) {
+    async function abrirPOS(mesa) {
       posMesaId = mesa.id;
       posMesaData = mesa;
 
@@ -993,22 +1133,89 @@
       document.getElementById('posTableStatus').textContent = mesa.estado + (mesa.mesero_nombre ? ` · ${mesa.mesero_nombre}` : '');
       renderPosClienteBar();
 
+      if (mesa.estado === 'LIBRE') {
+        iniciarPedido();
+        return;
+      }
+
       const optionsEl = document.getElementById('mesaOptions');
       const orderSection = document.getElementById('orderSection');
       const cartBar = document.getElementById('cartBar');
 
+      let existingOrderHtml = '';
+      pedidoActivoItems = [];
+      if (mesa.pedido_activo_id) {
+        try {
+          const res = await fetch(`/api/pedidos/${mesa.pedido_activo_id}`);
+          if (res.ok) {
+            const pedido = await res.json();
+            pedidoActivoItems = (pedido.items || []).filter(i => i.estado !== 'CANCELADO');
+            if (pedidoActivoItems.length > 0) {
+              const itemsList = pedidoActivoItems.map((i, idx) => {
+                const sub = i.cantidad * (i.precio_unitario + (i.precio_adicional || 0));
+                let dets = '';
+                if (i.variante_nombre) dets += ` <small style="color:#64748b;">(${i.variante_nombre})</small>`;
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #F1F5F9;font-size:0.85rem;">
+                  <span>${i.cantidad}x ${i.producto_nombre}${dets}</span>
+                  <span style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-weight:600;">S/${sub.toFixed(2)}</span>
+                    <button onclick="sumarProductoOrden(${idx})" title="Agregar 1 más y enviar a cocina" style="background:#059669;color:white;border:none;border-radius:8px;width:28px;height:28px;font-size:1.1rem;font-weight:800;cursor:pointer;">+</button>
+                  </span>
+                </div>`;
+              }).join('');
+              const totalPedido = pedido.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+              existingOrderHtml = `
+                <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:16px;text-align:left;">
+                  <div style="font-weight:700;font-size:0.88rem;color:#334155;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                    <span>📋 Pedido actual <small style="color:#64748b;font-weight:normal;">(Atiende: ${pedido.mesero_nombre || mesa.mesero_nombre || 'N/A'})</small></span>
+                    <span style="color:#059669;font-weight:800;">S/${totalPedido.toFixed(2)}</span>
+                  </div>
+                  <div style="max-height:180px;overflow-y:auto;">${itemsList}</div>
+                </div>
+              `;
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      const precuentaBtn = mesa.pedido_activo_id
+        ? `<button class="opt-btn" onclick="imprimirPrecuentaMesero()">🖨️ Imprimir pre-cuenta</button>`
+        : '';
+
+      const actividadesBtn = pedidoActivoItems.length > 0 ? `
+          <button class="opt-btn" onclick="abrirMoverPedido()">↔️ Mover a otra mesa</button>
+          <button class="opt-btn" onclick="abrirUnirMesa()">🔗 Unir con mesa</button>
+        ` : '';
+
+      const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
+      const anularBtn = (mesa.pedido_activo_id && puedeAnular)
+        ? `<button class="opt-btn" style="color:#DC2626;border-color:#FCA5A5;" onclick="anularPedidoMesero()">🚫 Anular pedido</button>`
+        : '';
+
+      const liberarBtn = `
+          <button class="opt-btn" onclick="liberarMesaMesero()">🚪 Liberar mesa</button>
+        `;
+
       if (mesa.estado === 'LIBRE' || mesa.estado === 'RESERVADO') {
         optionsEl.innerHTML = `
-          <h3>Mesa ${mesa.nombre || mesa.numero} — ${mesa.estado}</h3>
+          ${existingOrderHtml}
           <button class="opt-btn primary" onclick="iniciarPedido()">📝 Nuevo pedido</button>
           ${mesa.estado === 'RESERVADO' ? `<button class="opt-btn" onclick="ocuparMesa(${mesa.id})">✅ Ocupar ahora</button>` : ''}
+          ${precuentaBtn}
+          <button class="opt-btn" onclick="showMesasView()">← Volver</button>
         `;
         orderSection.style.display = 'none';
         cartBar.style.display = 'none';
       } else if (mesa.estado === 'OCUPADO' || mesa.estado === 'CERRANDO') {
         optionsEl.innerHTML = `
-          <h3>Mesa ${mesa.nombre || mesa.numero} — ${mesa.estado}</h3>
-          <button class="opt-btn primary" onclick="iniciarPedido()">📝 Agregar pedido</button>
+          ${existingOrderHtml}
+          <button class="opt-btn primary" onclick="iniciarPedido()">📝 Agregar pedido (Atender)</button>
+          ${actividadesBtn}
+          ${precuentaBtn}
+          ${anularBtn}
+          ${liberarBtn}
           <button class="opt-btn" onclick="showMesasView()">← Volver</button>
         `;
         orderSection.style.display = 'none';
@@ -1089,7 +1296,7 @@
       for (const p of filtered) {
         const btn = document.createElement('button');
         btn.className = 'prod-btn';
-        btn.innerHTML = `<span class="name">${p.nombre}</span><span class="price">$${p.precio.toFixed(2)}</span>`;
+        btn.innerHTML = `<span class="name">${p.nombre}</span><span class="price">S/${p.precio.toFixed(2)}</span>`;
         btn.onclick = () => agregarItem(p);
         el.appendChild(btn);
       }
@@ -1141,7 +1348,7 @@
       selectedAgregados = {};
 
       document.getElementById('customizeTitle').textContent = prod.nombre;
-      let html = `<p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">$${prod.precio.toFixed(2)} base</p>`;
+      let html = `<p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">S/${prod.precio.toFixed(2)} base</p>`;
 
       // Variantes
       if (prod.variantes?.length) {
@@ -1158,7 +1365,7 @@
       // Modificadores
       if (prod.modificadores?.length) {
         prod.modificadores.forEach(m => {
-          html += `<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">${m.nombre}${m.requerido ? ' <span style="color:#ef4444;">*</span>' : ''}</strong>`;
+          html += `<div id="mod_wrap_${m.id}" data-dep="${m.depende_variante_id || ''}" style="margin-bottom:12px;${m.depende_variante_id ? 'display:none;' : ''}"><strong style="font-size:0.85rem;">${m.nombre}${m.requerido ? ' <span style="color:#ef4444;">*</span>' : ''}</strong>`;
           if (m.tipo === 'text') {
             html += `<input class="form-control" style="margin-top:4px;" id="mod_text_${m.id}" placeholder="Escribe...">`;
           } else {
@@ -1180,7 +1387,7 @@
         html += '<div style="margin-bottom:12px;"><strong style="font-size:0.85rem;">Agregados:</strong>';
         prod.agregados.forEach(a => {
           html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85rem;">
-            <span style="flex:1;">${a.nombre} <span style="color:#059669;">+$${a.precio.toFixed(2)}</span></span>
+            <span style="flex:1;">${a.nombre} <span style="color:#059669;">+S/${a.precio.toFixed(2)}</span></span>
             <button class="btn btn-outline btn-sm" onclick="changeAgregado(${a.id}, -1, ${a.precio})">−</button>
             <span id="agr_qty_${a.id}">0</span>
             <button class="btn btn-outline btn-sm" onclick="changeAgregado(${a.id}, 1, ${a.precio})">+</button>
@@ -1189,7 +1396,7 @@
         html += '</div>';
       }
 
-      html += '<div id="customizeTotal" style="text-align:right;font-size:1.2rem;font-weight:800;color:#059669;border-top:1px solid #e2e8f0;padding-top:8px;">Total: $' + prod.precio.toFixed(2) + '</div>';
+        html += '<div id="customizeTotal" style="text-align:right;font-size:1.2rem;font-weight:800;color:#059669;border-top:1px solid #e2e8f0;padding-top:8px;">Total: S/' + prod.precio.toFixed(2) + '</div>';
 
       document.getElementById('customizeBody').innerHTML = html;
       document.getElementById('customizeModal').classList.add('active');
@@ -1197,7 +1404,23 @@
 
     function selectVariante(jsonStr) {
       try { selectedVariante = JSON.parse(jsonStr.replace(/&#39;/g, "'")); } catch(e) { selectedVariante = JSON.parse(jsonStr); }
+      refreshModifierVisibility();
       updateCustomizeTotal();
+    }
+
+    function refreshModifierVisibility() {
+      const prod = customizeProduct;
+      if (!prod?.modificadores) return;
+      prod.modificadores.forEach(m => {
+        const wrap = document.getElementById('mod_wrap_' + m.id);
+        if (!wrap) return;
+        const visible = !m.depende_variante_id || (selectedVariante && selectedVariante.id == m.depende_variante_id);
+        wrap.style.display = visible ? '' : 'none';
+        if (!visible) {
+          delete selectedMods[m.id];
+          wrap.querySelectorAll('input').forEach(i => i.checked = false);
+        }
+      });
     }
 
     function selectOpcion(modId, el) {
@@ -1246,7 +1469,7 @@
         if (agr && qty > 0) adicional += agr.precio * qty;
       }
       const total = prod.precio + adicional;
-      document.getElementById('customizeTotal').textContent = 'Total: $' + total.toFixed(2);
+        document.getElementById('customizeTotal').textContent = 'Total: S/' + total.toFixed(2);
     }
 
     function closeCustomizeModal() {
@@ -1257,6 +1480,30 @@
     function confirmCustomize() {
       const prod = customizeProduct;
       if (!prod) return;
+
+      if (prod.variantes?.length && !selectedVariante) {
+        toast('Selecciona la presentación/guarnición', 'warn');
+        return;
+      }
+
+      // Validar modificadores requeridos visibles (incluye dependientes activos)
+      const faltantes = [];
+      for (const m of prod.modificadores || []) {
+        const visible = !m.depende_variante_id || (selectedVariante && selectedVariante.id == m.depende_variante_id);
+        if (!visible || !m.requerido) continue;
+        if (m.tipo === 'text') {
+          const txt = document.getElementById('mod_text_' + m.id)?.value || '';
+          if (!txt.trim()) faltantes.push(m.nombre);
+        } else {
+          const vals = selectedMods[m.id];
+          const ok = vals !== undefined && (Array.isArray(vals) ? vals.length > 0 : true);
+          if (!ok) faltantes.push(m.nombre);
+        }
+      }
+      if (faltantes.length) {
+        toast('Falta seleccionar: ' + faltantes.join(', '), 'warn');
+        return;
+      }
 
       const modificadores = prod.modificadores?.map(m => {
         const vals = selectedMods[m.id];
@@ -1317,11 +1564,13 @@
       item.cantidad = Math.max(0, item.cantidad + delta);
       if (item.cantidad <= 0) pedidoItems.splice(idx, 1);
       renderCart();
+      renderCartModal();
     }
 
     function eliminarItem(idx) {
       pedidoItems.splice(idx, 1);
       renderCart();
+      renderCartModal();
     }
 
     function abrirNota(idx) {
@@ -1347,10 +1596,15 @@
       const count = pedidoItems.reduce((s, i) => s + i.cantidad, 0);
       const total = pedidoItems.reduce((s, i) => s + i.cantidad * (i.precio + (i.precio_adicional || 0)), 0);
       document.getElementById('cartCount').textContent = `${count} producto${count !== 1 ? 's' : ''}`;
-      document.getElementById('cartTotal').textContent = `$${total.toFixed(2)}`;
+      document.getElementById('cartTotal').textContent = `S/${total.toFixed(2)}`;
     }
 
     function openCartModal() {
+      renderCartModal();
+      document.getElementById('cartModal').classList.add('active');
+    }
+
+    function renderCartModal() {
       const body = document.getElementById('cartModalBody');
       if (!pedidoItems.length) {
         body.innerHTML = '<p style="color:#6B7280;text-align:center;padding:24px;">Sin productos</p>';
@@ -1364,7 +1618,7 @@
               ${item.detalle ? `<div class="cart-item-nota" style="font-size:0.75rem;color:#64748b;">${item.detalle}</div>` : ''}
               ${item.notas ? `<div class="cart-item-nota">📝 ${item.notas}</div>` : ''}
             </div>
-            <span class="cart-item-price">$${(item.cantidad * precioTotal).toFixed(2)}</span>
+            <span class="cart-item-price">S/${(item.cantidad * precioTotal).toFixed(2)}</span>
             <div class="cart-item-actions">
               <button onclick="cambiarCantidad(${idx}, -1)">−</button>
               <button onclick="cambiarCantidad(${idx}, 1)">+</button>
@@ -1374,11 +1628,194 @@
           </div>`;
         }).join('');
       }
-      document.getElementById('cartModal').classList.add('active');
     }
 
     function closeCartModal() {
       document.getElementById('cartModal').classList.remove('active');
+    }
+
+    async function imprimirPrecuentaMesero() {
+      if (!posMesaData?.pedido_activo_id) {
+        toast('No hay pedido activo en esta mesa', 'warning');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/precuenta`, { method: 'POST' });
+        const data = await res.json();
+        toast(data.ok ? 'Pre-cuenta impresa' : 'Error al imprimir pre-cuenta', data.ok ? 'success' : 'warning');
+      } catch (e) {
+        toast('Error de conexión', 'error');
+      }
+    }
+
+    // ---- MOVER / UNIR / REPETIR ----
+    function abrirMoverPedido() { abrirSeleccionDestino('mover'); }
+    function abrirUnirMesa() { abrirSeleccionDestino('unir'); }
+
+    function abrirSeleccionDestino(accion) {
+      actividadDestino = accion;
+      let disponibles = allMesas.filter(m =>
+        !m.es_virtual &&
+        m.id !== posMesaId &&
+        m.estado !== 'INACTIVO'
+      );
+      if (accion === 'unir') {
+        disponibles = disponibles.filter(m => m.estado !== 'LIBRE');
+      }
+      const title = document.getElementById('destinoModalTitle');
+      const list = document.getElementById('destinoModalList');
+      title.textContent = accion === 'unir' ? '🔗 Unir con otra mesa' : '↔️ Mover a otra mesa';
+      if (!disponibles.length) {
+        list.innerHTML = '<p style="color:#6B7280;text-align:center;padding:12px;">No hay otras mesas disponibles</p>';
+        document.getElementById('destinoModal').classList.add('active');
+        return;
+      }
+      list.innerHTML = disponibles.map(m => {
+        const total = m.pedido_total || 0;
+        const tienePedido = m.pedido_activo_id && m.pedido_total != null;
+        return `<button class="opt-btn" style="justify-content:space-between;" onclick="elegirMesaDestino(${m.id}, '${accion}')">
+          <span>${m.nombre || 'Mesa ' + m.numero} — ${m.estado.toLowerCase()}</span>
+          <span style="font-weight:800;color:${tienePedido ? '#059669' : '#94A3B8'};">${tienePedido ? 'S/' + total.toFixed(2) : 'sin pedido'}</span>
+        </button>`;
+      }).join('');
+      document.getElementById('destinoModal').classList.add('active');
+    }
+
+    function elegirMesaDestino(id, accion) {
+      const destMesa = allMesas.find(m => m.id === id);
+      if (!destMesa) return;
+      if (accion === 'unir') {
+        confirmarUnir(destMesa);
+      } else {
+        const estaOcupada = destMesa.pedido_activo_id && destMesa.pedido_total != null;
+        const nombreDest = destMesa.nombre || 'Mesa ' + destMesa.numero;
+        if (estaOcupada) {
+          if (!confirm(`La mesa "${nombreDest}" está ocupada (S/${(destMesa.pedido_total || 0).toFixed(2)}). ¿Seguro que deseas mover productos a esta mesa? Los productos se sumarán a su pedido.`)) return;
+        }
+        abrirSeleccionItems(destMesa);
+      }
+    }
+
+    function closeDestinoModal() {
+      document.getElementById('destinoModal').classList.remove('active');
+      actividadDestino = null;
+    }
+
+    function abrirSeleccionItems(destMesa) {
+      mesaDestinoElegida = destMesa;
+      moverSeleccion = new Set(pedidoActivoItems.map((_, idx) => idx));
+      document.getElementById('destinoModal').classList.remove('active');
+      document.getElementById('moverItemsTitle').textContent = `Mover productos a ${destMesa.nombre || 'Mesa ' + destMesa.numero}`;
+      document.getElementById('moverItemsInfo').textContent = 'Selecciona los productos a mover. Esta cuenta no debe tener pagos registrados; los productos se sumarán al pedido de la mesa destino.';
+      document.getElementById('moverItemsList').innerHTML = pedidoActivoItems.map((it, idx) => {
+        const sub = it.cantidad * (it.precio_unitario + (it.precio_adicional || 0));
+        return `<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:0.85rem;">
+          <input type="checkbox" checked onchange="moverItemCheck(${idx}, this)">
+          <span style="flex:1;">${it.cantidad}x ${it.producto_nombre}${it.variante_nombre ? ' (' + it.variante_nombre + ')' : ''}</span>
+          <span style="font-weight:600;">S/${sub.toFixed(2)}</span>
+        </label>`;
+      }).join('');
+      document.getElementById('moverItemsModal').classList.add('active');
+    }
+
+    function moverItemCheck(idx, el) {
+      if (el.checked) moverSeleccion.add(idx);
+      else moverSeleccion.delete(idx);
+    }
+
+    function closeMoverItemsModal() {
+      document.getElementById('moverItemsModal').classList.remove('active');
+      mesaDestinoElegida = null;
+      moverSeleccion = new Set();
+    }
+
+    async function confirmarMoverItems(mode) {
+      if (!mesaDestinoElegida || !posMesaData?.pedido_activo_id) return;
+      let ids;
+      if (mode === 'todo') {
+        ids = pedidoActivoItems.map(i => i.id);
+      } else {
+        ids = pedidoActivoItems.filter((_, idx) => moverSeleccion.has(idx)).map(i => i.id);
+      }
+      if (!ids.length) { toast('Selecciona al menos un producto', 'warning'); return; }
+      try {
+        const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/mover`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_ids: ids, mesa_destino_id: mesaDestinoElegida.id, mesero_id: currentUser?.id || null })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast(`Productos movidos a ${mesaDestinoElegida.nombre || 'Mesa ' + mesaDestinoElegida.numero}`, 'success');
+          closeMoverItemsModal();
+          closeDestinoModal();
+          showMesasView();
+          await loadMesas();
+        } else {
+          toast(data.error || 'Error al mover productos', 'error');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'error');
+      }
+    }
+
+    async function confirmarUnir(destMesa) {
+      if (!posMesaData?.pedido_activo_id) return;
+      if (!confirm(`¿Unir todo el pedido de esta mesa con ${destMesa.nombre || 'Mesa ' + destMesa.numero}? La mesa actual quedará libre.`)) return;
+      try {
+        const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/unir`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesa_destino_id: destMesa.id, mesero_id: currentUser?.id || null })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast(`Pedido unido a ${destMesa.nombre || 'Mesa ' + destMesa.numero}`, 'success');
+          closeDestinoModal();
+          showMesasView();
+          await loadMesas();
+        } else {
+          toast(data.error || 'Error al unir mesas', 'error');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'error');
+      }
+    }
+
+    async function sumarProductoOrden(idx) {
+      const it = pedidoActivoItems[idx];
+      if (!it || !posMesaData?.pedido_activo_id) return;
+      const item = {
+        producto_id: it.producto_id,
+        nombre: it.producto_nombre,
+        cantidad: 1,
+        precio: it.precio_unitario,
+        precio_adicional: it.precio_adicional || 0,
+        variante_id: it.variante_id,
+        variante_nombre: it.variante_nombre,
+        modificadores: JSON.parse(it.modificadores_json || '[]'),
+        agregados: JSON.parse(it.agregados_json || '[]'),
+        detalle: it.detalle || '',
+        notas: it.notas || ''
+      };
+      if (!confirm(`¿Enviar +1 de "${it.producto_nombre}" a cocina?`)) return;
+      try {
+        const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [item], nota: null })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          toast(`+1 ${it.producto_nombre} enviado a cocina`, 'success');
+          const mesaRes = await fetch('/api/mesas');
+          const mesas = await mesaRes.json();
+          const fresh = mesas.find(m => m.id === posMesaId);
+          if (fresh) abrirPOS(fresh);
+          loadMesas();
+        } else {
+          toast(data.error || 'Error al agregar producto', 'error');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'error');
+      }
     }
 
     // ---- SEND ORDER ----
@@ -1390,19 +1827,27 @@
       if (!confirm('¿Enviar pedido a cocina?')) return;
 
       try {
-        const res = await fetch('/api/pedidos', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mesa_id: posMesaId,
-            mesero_id: currentUser?.id || null,
-            items: pedidoItems,
-            nota: null,
-            cliente_nombre: pedidoCliente?.nombre || null,
-            cliente_telefono: pedidoCliente?.telefono || null,
-            cliente_direccion: (pedidoCliente?.tipo === 'DELIVERY' ? pedidoCliente?.direccion : null) || null,
-            hora_recogida: (pedidoCliente?.tipo === 'PARA_LLEVAR' ? pedidoCliente?.hora : null) || null
-          })
-        });
+        let res;
+        if (posMesaData && posMesaData.pedido_activo_id) {
+          res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: pedidoItems, nota: null })
+          });
+        } else {
+          res = await fetch('/api/pedidos', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mesa_id: posMesaId,
+              mesero_id: currentUser?.id || null,
+              items: pedidoItems,
+              nota: null,
+              cliente_nombre: pedidoCliente?.nombre || null,
+              cliente_telefono: pedidoCliente?.telefono || null,
+              cliente_direccion: (pedidoCliente?.tipo === 'DELIVERY' ? pedidoCliente?.direccion : null) || null,
+              hora_recogida: (pedidoCliente?.tipo === 'PARA_LLEVAR' ? pedidoCliente?.hora : null) || null
+            })
+          });
+        }
 
         if (res.ok) {
           pedidoItems = [];
@@ -1412,6 +1857,7 @@
           document.getElementById('successOverlay').classList.add('active');
           setTimeout(() => document.getElementById('successOverlay').classList.remove('active'), 2500);
           await loadMesas();
+          showMesasView();
         } else {
           const err = await res.json();
           alert(err.error || 'Error al enviar pedido');

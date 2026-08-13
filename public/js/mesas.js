@@ -7,11 +7,15 @@ let areaFilter = null;
 let canalModalTipo = null;
 let clienteModalTipo = null;
 let clienteModalAccion = null;
+let mesaPendiente = null;
 
 async function initApp() {
   await loadMesas();
   await loadUsuarios();
   await loadAreas();
+
+  leerMesaDesdeURL();
+  if (mesaPendiente) setTimeout(abrirMesaPendiente, 400);
 
   const loginScreen = document.getElementById('loginScreen');
   const appContent = document.getElementById('appContent');
@@ -21,6 +25,25 @@ async function initApp() {
     appContent.style.display = 'block';
     updateUserInfo();
   }
+}
+
+function leerMesaDesdeURL() {
+  const params = new URLSearchParams(window.location.search);
+  const m = params.get('mesa');
+  if (m && !isNaN(parseInt(m))) mesaPendiente = parseInt(m);
+}
+
+async function abrirMesaPendiente() {
+  if (!mesaPendiente) return;
+  if (!currentUser) return;
+  const id = mesaPendiente;
+  mesaPendiente = null;
+  try {
+    await verPedidoExistente(id);
+  } catch (e) {
+    console.error(e);
+  }
+  if (window.location.search) history.replaceState({}, '', window.location.pathname);
 }
 
 async function loadMesas() {
@@ -164,27 +187,36 @@ function createMesaCard(mesa) {
     const descuento = mesa.pedido_descuento || 0;
     const pendiente = Math.max(0, total - descuento - pagado);
 
-    extraInfo = `<div class="mesa-total">$${total.toFixed(2)}</div>`;
+    extraInfo = `<div class="mesa-total">S/${total.toFixed(2)}</div>`;
     if (estadoEfectivo === 'PAGADO') {
       statusText = 'PAGADO';
       card.classList.add('PAGADO');
       extraInfo += '<div class="mesa-pagado-icon">💰</div>';
     } else {
-      infoFooter = `<div class="mesa-pendiente">Pendiente: $${pendiente.toFixed(2)}</div>`;
+      infoFooter = `<div class="mesa-pendiente">Pendiente: S/${pendiente.toFixed(2)}</div>`;
     }
   }
 
-  const tiempo = mesa.ocupado_desde ? timeSince(new Date(mesa.ocupado_desde + 'Z')) : '';
-  const ocupadoInfo = tiempo && (mesa.estado === 'OCUPADO' || mesa.estado === 'CERRANDO')
-    ? `<div class="mesa-tiempo">⏱ ${tiempo}</div>` : '';
+  const esPagado = estadoEfectivo === 'PAGADO';
+  const enAtencion = mesa.estado === 'OCUPADO' || mesa.estado === 'CERRANDO';
 
-  const sinPedido = mesa.estado === 'OCUPADO' && !mesa.tiene_pedido_activo && mesa.minutos_sin_pedido != null;
+  const tOcupado = mesa.ocupado_desde ? timeSince(new Date(mesa.ocupado_desde + 'Z')) : '';
+  const ocupadoInfo = (tOcupado && enAtencion)
+    ? `<div class="mesa-tiempo">⏱ ${tOcupado}</div>` : '';
+
+  let pagoInfo = '';
+  if (esPagado && mesa.pagado_desde) {
+    pagoInfo = `<div class="mesa-sinpedido">⏱ sin pedido · ${timeSince(new Date(mesa.pagado_desde + 'Z'))}</div>`;
+  }
+
+  const sinPedido = !esPagado && mesa.estado === 'OCUPADO' && !mesa.tiene_pedido_activo && mesa.minutos_sin_pedido != null;
   let sinPedidoInfo = '';
   if (sinPedido) {
     sinPedidoInfo = `<div class="mesa-sinpedido">⏱ ${mesa.minutos_sin_pedido} min sin pedido</div>`;
   }
 
-  const puedeLiberar = sinPedido && (currentUser?.rol === 'admin' || currentUser?.id === mesa.mesero_id);
+  const puedeLiberar = (sinPedido || esPagado || mesa.estado === 'RESERVADO')
+    && (currentUser?.rol === 'admin' || currentUser?.id === mesa.mesero_id);
 
   card.innerHTML = `
     <div class="info-top">${extraInfo}</div>
@@ -196,6 +228,7 @@ function createMesaCard(mesa) {
       ${ocupadoInfo}
     </div>
     <div class="info-bot">
+      ${pagoInfo}
       ${sinPedidoInfo}
       ${infoFooter}
       ${puedeLiberar ? `<button class="btn-liberar-rapido" onclick="event.stopPropagation(); liberarMesaRapida(${mesa.id})">Liberar</button>` : ''}
@@ -266,19 +299,26 @@ function openMesaModal(mesa) {
       <button class="btn btn-success btn-block" onclick="closeMesaModal(); verPedidoExistente(${mesa.id})">
         💰 Ver Pedido / Cobrar
       </button>
-      ${(currentUser?.rol === 'admin' || currentUser?.id === mesa.mesero_id) ? `
-        <button class="btn btn-danger btn-block" onclick="liberarMesa(${mesa.id})" style="margin-top:4px;">
-          Liberar Mesa
-        </button>
-      ` : ''}
+      <button class="btn btn-danger btn-block" onclick="liberarMesa(${mesa.id})" style="margin-top:4px;">
+        Liberar Mesa
+      </button>
     `;
   } else if (mesa.estado === 'RESERVADO') {
+    const tienePedido = !!mesa.pedido_activo_id;
     html = `
-      <p>Mesa reservada</p>
-      <button class="btn btn-success btn-block" onclick="ocuparReservada(${mesa.id})">
+      <p>Mesa reservada${tienePedido ? ' con pedido en curso' : ''}</p>
+      ${tienePedido ? `
+        <button class="btn btn-success btn-block" onclick="closeMesaModal(); verPedidoExistente(${mesa.id})">
+          💰 Ver Pedido / Cobrar
+        </button>
+      ` : ''}
+      <button class="btn btn-success btn-block" onclick="ocuparReservada(${mesa.id})" ${tienePedido ? 'style="margin-top:4px;"' : ''}>
         Ocupar mesa ahora
       </button>
-      <button class="btn btn-outline btn-block" onclick="liberarMesa(${mesa.id})">
+      <button class="btn btn-danger btn-block" onclick="liberarMesa(${mesa.id})" style="margin-top:4px;">
+        Liberar Mesa
+      </button>
+      <button class="btn btn-outline btn-block" onclick="cancelarReserva(${mesa.id})" style="margin-top:4px;">
         Cancelar reserva
       </button>
     `;
@@ -376,6 +416,12 @@ async function confirmarAccionMesa() {
 
 async function liberarMesa(mesaId) {  if (!currentUser) return showToast('Debe iniciar sesión', 'error');
 
+  const mesa = (await fetch('/api/mesas').then(r => r.json()).catch(() => [])).find(m => m.id === mesaId);
+  if (mesa && mesa.tiene_pedido_activo) {
+    showToast('La mesa tiene un pedido activo. Ábrelo y usa "Anular pedido" o cobra antes de liberar.', 'warning');
+    return;
+  }
+
   if (!confirm('¿Liberar esta mesa?')) return;
 
   try {
@@ -400,6 +446,30 @@ async function liberarMesa(mesaId) {  if (!currentUser) return showToast('Debe i
 
 function liberarMesaRapida(mesaId) {
   liberarMesa(mesaId);
+}
+
+async function cancelarReserva(mesaId) {  if (!currentUser) return showToast('Debe iniciar sesión', 'error');
+
+  if (!confirm('¿Cancelar la reserva de esta mesa?')) return;
+
+  try {
+    const res = await fetch(`/api/mesas/${mesaId}/cancelar-reserva`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mesero_id: currentUser.id })
+    });
+
+    if (res.ok) {
+      showToast('Reserva cancelada', 'success');
+      closeMesaModal();
+      await loadMesas();
+    } else {
+      const err = await res.json();
+      showToast(err.error || 'Error', 'error');
+    }
+  } catch (err) {
+    showToast('Error de conexión', 'error');
+  }
 }
 
 async function transferirMesa(mesaId) {
@@ -482,7 +552,7 @@ function renderPedidosActivos(pedidos) {
           <div class="cliente">#${p.id} — <strong>${p.cliente_nombre || 'Cliente'}</strong>
             <span class="badge badge-blue" style="margin-left:6px;">${p.estado}</span>
           </div>
-          <div class="detalle">${itemsCount} item(s) · $${total.toFixed(2)}${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}</div>
+          <div class="detalle">${itemsCount} item(s) · S/${total.toFixed(2)}${p.cliente_telefono ? ' · 📞 ' + p.cliente_telefono : ''}${p.cliente_direccion ? ' · 📍 ' + p.cliente_direccion : ''}</div>
         </div>
         <span style="font-size:0.8rem;">Abrir →</span>
       </div>`;
@@ -630,4 +700,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('mesa-updated', () => {
     loadMesas();
   });
+});
+
+document.addEventListener('pos-login-done', () => {
+  setTimeout(abrirMesaPendiente, 50);
 });

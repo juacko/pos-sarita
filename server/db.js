@@ -154,7 +154,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pedido_id INTEGER NOT NULL,
     monto REAL NOT NULL,
-    metodo TEXT NOT NULL CHECK(metodo IN ('efectivo','tarjeta','transferencia','otros','regalo','vale')),
+    metodo TEXT NOT NULL,
     propina REAL DEFAULT 0,
     referencia TEXT,
     notas TEXT,
@@ -195,6 +195,7 @@ db.exec(`
     notas_apertura TEXT,
     notas_cierre TEXT,
     opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    absorbe_desde DATETIME,
     closed_at DATETIME,
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
   );
@@ -204,11 +205,25 @@ db.exec(`
     tipo TEXT NOT NULL CHECK(tipo IN ('INGRESO','EGRESO')),
     concepto TEXT NOT NULL,
     monto REAL NOT NULL,
-    metodo_pago TEXT NOT NULL CHECK(metodo_pago IN ('efectivo','yape','plin','tarjeta','transferencia')),
+    metodo_pago TEXT NOT NULL,
     persona TEXT,
     usuario_id INTEGER,
     notas TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS pagos_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id INTEGER NOT NULL,
+    pago_id INTEGER,
+    accion TEXT NOT NULL,
+    motivo TEXT,
+    detalle TEXT,
+    usuario_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+    FOREIGN KEY (pago_id) REFERENCES pagos(id),
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
   );
 
@@ -258,6 +273,11 @@ function migrateColumns() {
   if (!pedCols.includes('cliente_telefono')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_telefono TEXT");
   if (!pedCols.includes('cliente_direccion')) db.exec("ALTER TABLE pedidos ADD COLUMN cliente_direccion TEXT");
   if (!pedCols.includes('hora_recogida')) db.exec("ALTER TABLE pedidos ADD COLUMN hora_recogida TEXT");
+  if (!pedCols.includes('motivo_cancelacion')) db.exec("ALTER TABLE pedidos ADD COLUMN motivo_cancelacion TEXT");
+  if (!pedCols.includes('anulado_por')) db.exec("ALTER TABLE pedidos ADD COLUMN anulado_por INTEGER");
+
+  const modCols = db.prepare("SELECT name FROM pragma_table_info('modificadores')").all().map(c => c.name);
+  if (!modCols.includes('depende_variante_id')) db.exec("ALTER TABLE modificadores ADD COLUMN depende_variante_id INTEGER");
 
   const csCols = db.prepare("SELECT name FROM pragma_table_info('caja_sesiones')").all().map(c => c.name);
   if (!csCols.includes('total_ventas')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN total_ventas REAL DEFAULT 0");
@@ -267,8 +287,117 @@ function migrateColumns() {
   if (!csCols.includes('total_pedidos')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN total_pedidos INTEGER DEFAULT 0");
   if (!csCols.includes('desglose_json')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN desglose_json TEXT");
   if (!csCols.includes('cerrada_por')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN cerrada_por INTEGER");
+  if (!csCols.includes('absorbe_desde')) db.exec("ALTER TABLE caja_sesiones ADD COLUMN absorbe_desde DATETIME");
 }
 migrateColumns();
+
+// ─── Migración: modificador "Tipo de pasta" dependiente de la guarnición "Pastas" ───
+function migrarTipoPastaCombos() {
+  const combos = db.prepare(`
+    SELECT p.id FROM productos p
+    JOIN categorias c ON c.id = p.categoria_id
+    WHERE c.nombre = 'Combos'
+  `).all();
+  for (const combo of combos) {
+    const varPasta = db.prepare("SELECT id FROM variantes WHERE producto_id = ? AND LOWER(nombre) = 'pastas'").get(combo.id);
+    if (!varPasta) continue;
+
+    // Modificadores tipo pasta existentes (incluye el antiguo "pasta" sin dependencia)
+    const pastaMods = db.prepare(
+      "SELECT id, nombre, depende_variante_id FROM modificadores WHERE producto_id = ? AND LOWER(nombre) IN ('tipo de pasta','pasta','pastas')"
+    ).all(combo.id);
+
+    // Priorizar el que ya es dependiente; si no, convertir el antiguo "pasta"
+    let keep = pastaMods.find(m => m.depende_variante_id == varPasta.id);
+    if (!keep && pastaMods.length) {
+      db.prepare("UPDATE modificadores SET nombre = 'Tipo de pasta', tipo = 'select', requerido = 1, depende_variante_id = ? WHERE id = ?")
+        .run(varPasta.id, pastaMods[0].id);
+      keep = { id: pastaMods[0].id };
+    }
+    if (!keep) {
+      const r = db.prepare("INSERT INTO modificadores (producto_id, nombre, tipo, requerido, max_opciones, depende_variante_id) VALUES (?, 'Tipo de pasta', 'select', 1, 1, ?)")
+        .run(combo.id, varPasta.id);
+      keep = { id: r.lastInsertRowid };
+      const insOpc = db.prepare('INSERT INTO opciones_mod (modificador_id, nombre, precio_adicional) VALUES (?, ?, ?)');
+      for (const [nombre, precio] of [['Pasta al Pesto', 0], ['Pasta Huancaína', 0], ['Pasta Alfredo', 0]]) {
+        insOpc.run(keep.id, nombre, precio);
+      }
+    }
+    // Eliminar duplicados (otros modificadores tipo pasta en el mismo combo)
+    for (const m of pastaMods) {
+      if (m.id == keep.id) continue;
+      db.prepare('DELETE FROM opciones_mod WHERE modificador_id = ?').run(m.id);
+      db.prepare('DELETE FROM modificadores WHERE id = ?').run(m.id);
+    }
+  }
+}
+migrarTipoPastaCombos();
+
+// ─── Migración: quitar CHECK de método de pago (métodos editables) ───
+function rebuildSinCheck(nombre, createSql) {
+  const info = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(nombre);
+  if (!info || !info.sql) return;
+  if (!/CHECK\s*\(/i.test(info.sql)) return;
+  try {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`ALTER TABLE ${nombre} RENAME TO ${nombre}_old`);
+    db.exec(createSql);
+    db.exec(`INSERT INTO ${nombre} SELECT * FROM ${nombre}_old`);
+    db.exec(`DROP TABLE ${nombre}_old`);
+    db.exec('PRAGMA foreign_keys = ON');
+  } catch (e) {
+    db.exec('PRAGMA foreign_keys = ON');
+    throw e;
+  }
+}
+rebuildSinCheck('pagos', `
+  CREATE TABLE pagos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id INTEGER NOT NULL,
+    monto REAL NOT NULL,
+    metodo TEXT NOT NULL,
+    propina REAL DEFAULT 0,
+    referencia TEXT,
+    notas TEXT,
+    usuario_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  )
+`);
+rebuildSinCheck('caja_movimientos', `
+  CREATE TABLE caja_movimientos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo TEXT NOT NULL CHECK(tipo IN ('INGRESO','EGRESO')),
+    concepto TEXT NOT NULL,
+    monto REAL NOT NULL,
+    metodo_pago TEXT NOT NULL,
+    persona TEXT,
+    usuario_id INTEGER,
+    notas TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  )
+`);
+
+// Tras renombrar, SQLite reescribe las FK de otras tablas hacia <nombre>_old;
+// reparar cualquier referencia colgante (p.ej. pagos_log.pago_id -> pagos_old).
+function repararFksHuerfanas(nombreViejo) {
+  const nombreCorrecto = nombreViejo.replace(/_old$/, '');
+  const re = new RegExp(`REFERENCES\\s+"${nombreViejo}"`, 'g');
+  const tablas = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL").all();
+  for (const t of tablas) {
+    if (!t.sql.includes(`"${nombreViejo}"`)) continue;
+    const sqlNuevo = t.sql.replace(re, `REFERENCES ${nombreCorrecto}`);
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec(`ALTER TABLE ${t.name} RENAME TO ${t.name}_aux`);
+    db.exec(sqlNuevo);
+    db.exec(`INSERT INTO ${t.name} SELECT * FROM ${t.name}_aux`);
+    db.exec(`DROP TABLE ${t.name}_aux`);
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+repararFksHuerfanas('pagos_old');
 
 const insertInitialData = db.transaction(() => {
   const count = db.prepare('SELECT COUNT(*) as c FROM usuarios').get();
@@ -343,13 +472,19 @@ const insertInitialData = db.transaction(() => {
 
   // Configuración por defecto
   const configDefaults = {
+    hora_corte: '23:00',
     modal_pago: JSON.stringify({
       mostrar_descuento: true,
       mostrar_vale: true,
       mostrar_propina: true,
       mostrar_notas: true,
       mostrar_regalo: true,
-      metodos: ['efectivo', 'tarjeta', 'transferencia', 'otros']
+      metodos: [
+        { key: 'efectivo', label: '💵', texto: 'Efectivo' },
+        { key: 'tarjeta', label: '💳', texto: 'Tarjeta' },
+        { key: 'transferencia', label: '📱', texto: 'Transferencia' },
+        { key: 'otros', label: '📋', texto: 'Otros' }
+      ]
     })
   };
   for (const [clave, valor] of Object.entries(configDefaults)) {

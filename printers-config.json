@@ -1,14 +1,14 @@
 {
   "caja": {
     "nombre": "Impresora Caja",
-    "nombre_impresora": "CAJA",
+    "nombre_impresora": "80mm Series Printer",
     "tipo": "windows",
     "habilitada": true,
-    "ancho_papel": 58
+    "ancho_papel": 80
   },
   "cocina": {
     "nombre": "Impresora Cocina",
-    "nombre_impresora": "COCINA2",
+    "nombre_impresora": "80mm Series Printer",
     "tipo": "windows",
     "habilitada": true,
     "ancho_papel": 80

@@ -1,9 +1,106 @@
 const { Router } = require('express');
 const db = require('../db');
 const printers = require('../printers');
+const pagos = require('../metodos-pago');
 
 function createPedidosRouter(io) {
   const router = Router();
+
+  // ---- HELPERS MOVIMIENTO ENTRE MESAS ----
+  function recalcularTotalPedido(pedidoId) {
+    const t = db.prepare(`
+      SELECT COALESCE(SUM(cantidad * (precio_unitario + COALESCE(precio_adicional, 0))), 0) as total
+      FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'
+    `).get(pedidoId).total;
+    db.prepare("UPDATE pedidos SET total = ?, updated_at = datetime('now') WHERE id = ?").run(t, pedidoId);
+    return t;
+  }
+
+  function emitPedidoYMesa(pedidoId, mesaId) {
+    if (pedidoId) io.emit('pedido:actualizado', db.prepare('SELECT * FROM pedidos WHERE id = ?').get(pedidoId));
+    if (mesaId) {
+      const m = db.prepare(`
+        SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre
+        FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+      `).get(mesaId);
+      io.emit('mesa:updated', m);
+      return m;
+    }
+    return null;
+  }
+
+  // Valida que los modificadores requeridos (visibles según la variante elegida) tengan selección
+  function validarOpcionesRequeridas(items) {
+    for (const item of items || []) {
+      if (!item.producto_id) continue;
+      const mods = db.prepare('SELECT * FROM modificadores WHERE producto_id = ? AND activo = 1').all(item.producto_id);
+      for (const m of mods) {
+        if (!m.requerido) continue;
+        const visible = !m.depende_variante_id || (item.variante_id && item.variante_id == m.depende_variante_id);
+        if (!visible) continue;
+        const selMod = (item.modificadores || []).find(x => x.id == m.id);
+        const tiene = m.tipo === 'text'
+          ? !!(selMod?.seleccion?.length && String(selMod.seleccion[0]?.nombre || '').trim())
+          : !!(selMod?.seleccion?.length);
+        if (!tiene) {
+          return `El producto "${item.nombre}" requiere seleccionar: ${m.nombre}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  function validarOrigenParaMovimiento(pedidoId) {
+    const ordenOrigen = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(pedidoId);
+    if (!ordenOrigen) throw { status: 404, error: 'Pedido no encontrado' };
+    if (ordenOrigen.estado === 'CERRADO' || ordenOrigen.estado === 'CANCELADO') {
+      throw { status: 409, error: 'El pedido ya está cerrado o cancelado' };
+    }
+    const conPagos = db.prepare('SELECT COUNT(*) as c FROM pagos WHERE pedido_id = ?').get(pedidoId).c;
+    if (conPagos > 0) {
+      throw { status: 409, error: 'La cuenta ya tiene pagos registrados, no se pueden mover sus productos' };
+    }
+    return ordenOrigen;
+  }
+
+  function obtenerDestinoYCrearOrdenSiFalta(mesaDestino, origen, mesero_id) {
+    let ordenDestino = null;
+    const pedidoVinculado = mesaDestino.pedido_activo_id
+      ? db.prepare('SELECT * FROM pedidos WHERE id = ?').get(mesaDestino.pedido_activo_id)
+      : null;
+    if (pedidoVinculado && pedidoVinculado.estado !== 'CERRADO' && pedidoVinculado.estado !== 'CANCELADO') {
+      ordenDestino = pedidoVinculado;
+    } else if (pedidoVinculado) {
+      db.prepare('UPDATE mesas SET pedido_activo_id = NULL WHERE id = ?').run(mesaDestino.id);
+    }
+
+    if (!ordenDestino) {
+      const mesero = mesero_id ? db.prepare('SELECT id, nombre FROM usuarios WHERE id = ?').get(mesero_id) : null;
+      const r = db.prepare(`
+        INSERT INTO pedidos (mesa_id, mesa_numero, mesero_id, mesero_nombre, estado, total, nota, cliente_nombre, cliente_telefono, cliente_direccion, hora_recogida)
+        VALUES (?, ?, ?, ?, 'ABIERTO', 0, ?, ?, ?, ?, ?)
+      `).run(
+        mesaDestino.id, mesaDestino.numero || mesaDestino.nombre,
+        mesero?.id || null, mesero?.nombre || null,
+        origen.nota || null, origen.cliente_nombre || null, origen.cliente_telefono || null,
+        origen.cliente_direccion || null, origen.hora_recogida || null
+      );
+      ordenDestino = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(r.lastInsertRowid);
+
+      if (mesaDestino.estado === 'LIBRE' || mesaDestino.estado === 'RESERVADO') {
+        db.prepare(`
+          UPDATE mesas SET estado = 'OCUPADO', mesero_id = ?, mesero_nombre = ?, pedido_activo_id = ?,
+            ocupado_desde = datetime('now'), version = version + 1, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(mesero?.id || null, mesero?.nombre || null, ordenDestino.id, mesaDestino.id);
+      } else {
+        db.prepare(`UPDATE mesas SET pedido_activo_id = ?, updated_at = datetime('now') WHERE id = ?`)
+          .run(ordenDestino.id, mesaDestino.id);
+      }
+    }
+    const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaDestino.id);
+    return { ordenDestino, mesa };
+  }
 
   router.get('/', (req, res) => {
     try {
@@ -40,10 +137,19 @@ function createPedidosRouter(io) {
       if (!mesa_id || !items || !items.length) {
         return res.status(400).json({ error: 'mesa_id e items son requeridos' });
       }
+      const errorOpciones = validarOpcionesRequeridas(items);
+      if (errorOpciones) return res.status(400).json({ error: errorOpciones });
 
       const pedido = db.transaction(() => {
-        const mesa = db.prepare('SELECT numero, nombre, estado FROM mesas WHERE id = ?').get(mesa_id);
+        const mesa = db.prepare('SELECT numero, nombre, estado, pedido_activo_id FROM mesas WHERE id = ?').get(mesa_id);
         if (!mesa) throw { status: 404, error: 'Mesa no encontrada' };
+
+        const pedidoActivo = db.prepare(
+          "SELECT id FROM pedidos WHERE mesa_id = ? AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')"
+        ).get(mesa_id);
+        if (pedidoActivo) {
+          throw { status: 409, error: `La mesa ya tiene un pedido activo (#${pedidoActivo.id}). Usa ese pedido o anúlalo antes de crear otro` };
+        }
 
         const mesero = mesero_id
           ? db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(mesero_id)
@@ -80,13 +186,23 @@ function createPedidosRouter(io) {
 
         db.prepare('UPDATE pedidos SET total = ? WHERE id = ?').run(total, pedidoId);
 
-        if (mesa.estado === 'LIBRE') {
+        if (mesa.estado === 'LIBRE' || mesa.estado === 'RESERVADO') {
           db.prepare(`
-            UPDATE mesas SET estado = 'OCUPADO', pedido_activo_id = ?, updated_at = datetime('now')
+            UPDATE mesas SET
+              estado = 'OCUPADO',
+              mesero_id = ?,
+              mesero_nombre = ?,
+              pedido_activo_id = ?,
+              ocupado_desde = datetime('now'),
+              updated_at = datetime('now')
             WHERE id = ?
-          `).run(pedidoId, mesa_id);
+          `).run(mesero_id || null, mesero?.nombre || null, pedidoId, mesa_id);
         } else {
-          db.prepare('UPDATE mesas SET pedido_activo_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
+          // Mesa ya ocupada: si el pedido anterior estaba cerrado (pagado), la mesa
+          // se retoma y el contador de ocupación debe reiniciarse.
+          const previo = db.prepare('SELECT estado FROM pedidos WHERE id = ?').get(mesa.pedido_activo_id);
+          const retomar = previo && previo.estado === 'CERRADO';
+          db.prepare(`UPDATE mesas SET pedido_activo_id = ?, ${retomar ? 'ocupado_desde = datetime(\'now\'), ' : ''}updated_at = datetime('now') WHERE id = ?`)
             .run(pedidoId, mesa_id);
         }
 
@@ -116,6 +232,8 @@ function createPedidosRouter(io) {
       if (!items || !items.length) {
         return res.status(400).json({ error: 'items son requeridos' });
       }
+      const errorOpciones = validarOpcionesRequeridas(items);
+      if (errorOpciones) return res.status(400).json({ error: errorOpciones });
 
       const result = db.transaction(() => {
         const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
@@ -149,6 +267,14 @@ function createPedidosRouter(io) {
 
         db.prepare('UPDATE pedidos SET total = total + ?, updated_at = datetime(\'now\') WHERE id = ?').run(total, req.params.id);
 
+        // Si el pedido ya estaba listo/entregado en cocina y llegan productos nuevos,
+        // reabrirlo para que vuelva a aparecer en la vista cocina con los items nuevos.
+        const estadoPrevio = db.prepare('SELECT estado FROM pedidos WHERE id = ?').get(req.params.id);
+        if (estadoPrevio && (estadoPrevio.estado === 'LISTO' || estadoPrevio.estado === 'ENTREGADO')) {
+          db.prepare("UPDATE pedidos SET estado = 'ABIERTO', updated_at = datetime('now') WHERE id = ?")
+            .run(req.params.id);
+        }
+
         const itemsData = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(req.params.id);
         const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
 
@@ -170,6 +296,170 @@ function createPedidosRouter(io) {
     }
   });
 
+  router.post('/:id/mover', (req, res) => {
+    try {
+      const { item_ids, mesa_destino_id, mesero_id } = req.body;
+      if (!mesa_destino_id) return res.status(400).json({ error: 'mesa_destino_id es requerido' });
+      if (!Array.isArray(item_ids) || !item_ids.length) {
+        return res.status(400).json({ error: 'item_ids son requeridos' });
+      }
+
+      const result = db.transaction(() => {
+        const ordenOrigen = validarOrigenParaMovimiento(req.params.id);
+        const mesaOrigen = db.prepare('SELECT * FROM mesas WHERE id = ?').get(ordenOrigen.mesa_id);
+
+        if (parseInt(mesa_destino_id) === ordenOrigen.mesa_id) {
+          throw { status: 409, error: 'La mesa destino es la misma' };
+        }
+        const mesaDestinoRaw = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesa_destino_id);
+        if (!mesaDestinoRaw) throw { status: 404, error: 'Mesa destino no encontrada' };
+        if (mesaDestinoRaw.es_virtual) throw { status: 409, error: 'No se puede mover a una mesa virtual (Delivery/Para llevar)' };
+        if (mesaDestinoRaw.estado === 'INACTIVO') throw { status: 409, error: 'La mesa destino está inactiva' };
+
+        const itemsAMover = db.prepare(
+          `SELECT * FROM pedido_items WHERE pedido_id = ? AND id IN (${item_ids.map(() => '?').join(',')}) AND estado != 'CANCELADO'`
+        ).all(req.params.id, ...item_ids);
+        if (!itemsAMover.length) throw { status: 400, error: 'No hay productos válidos para mover' };
+
+        const { ordenDestino, mesa: mesaDestino } = obtenerDestinoYCrearOrdenSiFalta(mesaDestinoRaw, ordenOrigen, mesero_id);
+
+        const updateItem = db.prepare('UPDATE pedido_items SET pedido_id = ? WHERE id = ?');
+        for (const it of itemsAMover) updateItem.run(ordenDestino.id, it.id);
+
+        recalcularTotalPedido(ordenOrigen.id);
+        recalcularTotalPedido(ordenDestino.id);
+
+        let ordenOrigenFinal = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(ordenOrigen.id);
+        let pedidoCancelado = false;
+        const itemsRestantes = db.prepare("SELECT COUNT(*) as c FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").get(ordenOrigen.id).c;
+        if (itemsRestantes === 0) {
+          db.prepare("UPDATE pedidos SET estado = 'CANCELADO', updated_at = datetime('now') WHERE id = ?").run(ordenOrigen.id);
+          ordenOrigenFinal = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(ordenOrigen.id);
+          pedidoCancelado = true;
+          if (mesaOrigen.pedido_activo_id == ordenOrigen.id) {
+            db.prepare(`UPDATE mesas SET pedido_activo_id = NULL, version = version + 1, updated_at = datetime('now') WHERE id = ?`)
+              .run(mesaOrigen.id);
+          }
+        }
+
+        db.prepare(`
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
+          VALUES (?, 'ITEMS_MOVIDOS', ?, ?)
+        `).run(mesaOrigen.id, mesero_id || null, `${itemsAMover.length} producto(s) movidos a Mesa ${mesaDestino.nombre || mesaDestino.numero}`);
+        db.prepare(`
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
+          VALUES (?, 'ITEMS_RECIBIDOS', ?, ?)
+        `).run(mesaDestino.id, mesero_id || null, `${itemsAMover.length} producto(s) recibidos de Mesa ${mesaOrigen.nombre || mesaOrigen.numero}`);
+
+        emitPedidoYMesa(ordenOrigen.id, mesaOrigen.id);
+        emitPedidoYMesa(ordenDestino.id, mesaDestino.id);
+
+        const itemsDestino = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(ordenDestino.id);
+        const mesaDestinoFull = db.prepare(`
+          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        `).get(mesaDestino.id);
+        if (itemsDestino.length) printers.printComanda(ordenDestino, itemsDestino, mesaDestinoFull);
+
+        return {
+          ok: true,
+          pedido_origen: ordenOrigenFinal,
+          pedido_destino: ordenDestino,
+          mesa_origen: db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaOrigen.id),
+          mesa_destino: mesaDestinoFull,
+          pedido_cancelado: pedidoCancelado,
+          items_movidos: itemsAMover.length
+        };
+      })();
+
+      res.json(result);
+    } catch (err) {
+      const status = err.status || 500;
+      res.status(status).json({ error: err.error || err.message });
+    }
+  });
+
+  router.post('/:id/unir', (req, res) => {
+    try {
+      const { mesa_destino_id, mesero_id } = req.body;
+      if (!mesa_destino_id) return res.status(400).json({ error: 'mesa_destino_id es requerido' });
+
+      const result = db.transaction(() => {
+        const ordenOrigen = validarOrigenParaMovimiento(req.params.id);
+        const mesaOrigen = db.prepare('SELECT * FROM mesas WHERE id = ?').get(ordenOrigen.mesa_id);
+
+        if (parseInt(mesa_destino_id) === ordenOrigen.mesa_id) {
+          throw { status: 409, error: 'La mesa destino es la misma' };
+        }
+        const mesaDestinoRaw = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesa_destino_id);
+        if (!mesaDestinoRaw) throw { status: 404, error: 'Mesa destino no encontrada' };
+        if (mesaDestinoRaw.es_virtual) throw { status: 409, error: 'No se puede unir a una mesa virtual' };
+        if (mesaDestinoRaw.estado === 'INACTIVO') throw { status: 409, error: 'La mesa destino está inactiva' };
+
+        const itemsAMover = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(ordenOrigen.id);
+        if (!itemsAMover.length) throw { status: 400, error: 'El pedido origen no tiene productos para unir' };
+
+        const { ordenDestino, mesa: mesaDestino } = obtenerDestinoYCrearOrdenSiFalta(mesaDestinoRaw, ordenOrigen, mesero_id);
+
+        const updateItem = db.prepare('UPDATE pedido_items SET pedido_id = ? WHERE id = ?');
+        for (const it of itemsAMover) updateItem.run(ordenDestino.id, it.id);
+
+        recalcularTotalPedido(ordenOrigen.id);
+        recalcularTotalPedido(ordenDestino.id);
+
+        db.prepare("UPDATE pedidos SET estado = 'CANCELADO', updated_at = datetime('now') WHERE id = ?").run(ordenOrigen.id);
+        const pedidoOrigenFinal = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(ordenOrigen.id);
+
+        const otrosActivos = db.prepare(
+          "SELECT COUNT(*) as c FROM pedidos WHERE mesa_id = ? AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')"
+        ).get(mesaOrigen.id).c;
+        if (otrosActivos === 0) {
+          db.prepare(`
+            UPDATE mesas SET estado = 'LIBRE', mesero_id = NULL, mesero_nombre = NULL,
+              pedido_activo_id = NULL, ocupado_desde = NULL, version = version + 1, updated_at = datetime('now')
+            WHERE id = ?
+          `).run(mesaOrigen.id);
+        } else {
+          if (mesaOrigen.pedido_activo_id == ordenOrigen.id) {
+            db.prepare(`UPDATE mesas SET pedido_activo_id = NULL, version = version + 1, updated_at = datetime('now') WHERE id = ?`)
+              .run(mesaOrigen.id);
+          }
+        }
+
+        db.prepare(`
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
+          VALUES (?, 'MESA_UNIDA', ?, ?)
+        `).run(mesaOrigen.id, mesero_id || null, `Orden unida a Mesa ${mesaDestino.nombre || mesaDestino.numero}`);
+        db.prepare(`
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
+          VALUES (?, 'PEDIDO_UNIDO', ?, ?)
+        `).run(mesaDestino.id, mesero_id || null, `Recibió ${itemsAMover.length} producto(s) de Mesa ${mesaOrigen.nombre || mesaOrigen.numero}`);
+
+        emitPedidoYMesa(ordenOrigen.id, mesaOrigen.id);
+        emitPedidoYMesa(ordenDestino.id, mesaDestino.id);
+
+        const itemsDestino = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(ordenDestino.id);
+        const mesaDestinoFull = db.prepare(`
+          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        `).get(mesaDestino.id);
+        if (itemsDestino.length) printers.printComanda(ordenDestino, itemsDestino, mesaDestinoFull);
+
+        return {
+          ok: true,
+          pedido_origen: pedidoOrigenFinal,
+          pedido_destino: ordenDestino,
+          mesa_origen: db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaOrigen.id),
+          mesa_destino: mesaDestinoFull,
+          items_unidos: itemsAMover.length
+        };
+      })();
+
+      res.json(result);
+    } catch (err) {
+      const status = err.status || 500;
+      res.status(status).json({ error: err.error || err.message });
+    }
+  });
+
   router.get('/cocina', (req, res) => {
     try {
       const pedidos = db.prepare(`
@@ -180,6 +470,36 @@ function createPedidosRouter(io) {
         WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION')
         ORDER BY p.created_at ASC
       `).all();
+
+      for (const pedido of pedidos) {
+        pedido.items = db.prepare(`
+          SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'
+        `).all(pedido.id);
+      }
+
+      res.json(pedidos);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/cocina/historial', (req, res) => {
+    try {
+      const { fecha } = req.query;
+      const d = fecha ? new Date(fecha + 'T00:00:00') : new Date();
+      const ini = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 00:00:00';
+      const fin = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 23:59:59';
+
+      const pedidos = db.prepare(`
+        SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre,
+               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO') as total_items
+        FROM pedidos p
+        JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
+        WHERE p.estado IN ('LISTO', 'ENTREGADO', 'CERRADO')
+          AND p.created_at >= ? AND p.created_at <= ?
+        ORDER BY p.created_at DESC
+      `).all(ini, fin);
 
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
@@ -291,16 +611,20 @@ function createPedidosRouter(io) {
   router.post('/:id/pagar', (req, res) => {
     try {
       const { metodo, monto, usuario_id, referencia, notas, propina } = req.body;
-      const metodosValidos = ['efectivo', 'tarjeta', 'transferencia', 'otros', 'regalo', 'vale'];
-
-      if (!metodo || !metodosValidos.includes(metodo)) {
-        return res.status(400).json({ error: 'Método de pago inválido' });
+      if (!metodo || !pagos.esMetodoValido(metodo)) {
+        return res.status(400).json({ error: 'Método de pago inválido o no habilitado' });
       }
+
       if (metodo !== 'regalo' && (monto == null || monto <= 0)) {
         return res.status(400).json({ error: 'Monto inválido' });
       }
 
       const result = db.transaction(() => {
+        const sesionCaja = db.prepare("SELECT id FROM caja_sesiones WHERE estado = 'ABIERTA' ORDER BY id DESC LIMIT 1").get();
+        if (!sesionCaja) {
+          throw { status: 409, error: 'No hay caja abierta para cobrar. Abra la caja antes de registrar el pago', code: 'CAJA_CERRADA' };
+        }
+
         const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
         if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
         if (pedido.estado === 'CERRADO') throw { status: 409, error: 'El pedido ya está cerrado' };
@@ -331,10 +655,10 @@ function createPedidosRouter(io) {
         }
 
         if (metodo === 'vale') {
-          if (monto > pendiente + 0.01) throw { status: 400, error: `El monto ($${monto.toFixed(2)}) excede el pendiente ($${pendiente.toFixed(2)})` };
+          if (monto > pendiente + 0.01) throw { status: 400, error: `El monto (S/${monto.toFixed(2)}) excede el pendiente (S/${pendiente.toFixed(2)})` };
           const valeRow = db.prepare('SELECT * FROM vales WHERE codigo = ? AND activo = 1').get(referencia);
           if (!valeRow) throw { status: 404, error: 'Vale no encontrado o inactivo' };
-          if (valeRow.monto_restante < monto - 0.01) throw { status: 400, error: `El vale solo tiene $${valeRow.monto_restante.toFixed(2)} disponibles` };
+          if (valeRow.monto_restante < monto - 0.01) throw { status: 400, error: `El vale solo tiene S/${valeRow.monto_restante.toFixed(2)} disponibles` };
 
           db.prepare('UPDATE vales SET monto_restante = monto_restante - ? WHERE id = ?').run(monto, valeRow.id);
           db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -349,7 +673,7 @@ function createPedidosRouter(io) {
         }
 
         if (monto > pendiente + 0.01) {
-          throw { status: 400, error: `El monto ($${monto.toFixed(2)}) excede el pendiente ($${pendiente.toFixed(2)})` };
+          throw { status: 400, error: `El monto (S/${monto.toFixed(2)}) excede el pendiente (S/${pendiente.toFixed(2)})` };
         }
 
         const propinaMonto = parseFloat(propina) || 0;
@@ -426,6 +750,29 @@ function createPedidosRouter(io) {
       if (mesaData) io.emit('mesa:updated', mesaData);
 
       res.json(pedido);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/:id/items/estado', (req, res) => {
+    const { estado } = req.body;
+    const validStates = ['PENDIENTE', 'COCINANDO', 'LISTO', 'ENTREGADO', 'CANCELADO'];
+
+    if (!validStates.includes(estado)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
+
+    try {
+      const pedido = db.prepare('SELECT id FROM pedidos WHERE id = ?').get(req.params.id);
+      if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+      db.prepare('UPDATE pedido_items SET estado = ? WHERE pedido_id = ? AND estado != ?')
+        .run(estado, req.params.id, 'CANCELADO');
+
+      const items = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != \'CANCELADO\'').all(req.params.id);
+      io.emit('item:actualizado', { pedido_id: Number(req.params.id) });
+      res.json({ ok: true, items });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin - POS Sarita</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <style>
     .admin-layout { display: flex; min-height: calc(100vh - 52px); }
@@ -140,12 +143,12 @@
 
   <div class="admin-layout">
     <nav class="admin-sidebar">
-      <a class="active" onclick="showSection('productos')">📦 Productos</a>
-      <a onclick="showSection('categorias')">🏷️ Categorías</a>
-      <a onclick="showSection('reportes')">📊 Reportes</a>
-      <a onclick="showSection('caja')">💰 Caja</a>
-      <a onclick="showSection('areas')">🗺️ Áreas y Mesas</a>
-      <a onclick="showSection('config')">⚙️ Configuración</a>
+      <a class="active" data-sec="productos" onclick="showSection('productos')">📦 Productos</a>
+      <a data-sec="categorias" onclick="showSection('categorias')">🏷️ Categorías</a>
+      <a data-sec="reportes" onclick="showSection('reportes')">📊 Reportes</a>
+      <a data-sec="caja" onclick="showSection('caja')">💰 Caja</a>
+      <a data-sec="areas" onclick="showSection('areas')">🗺️ Áreas y Mesas</a>
+      <a data-sec="config" onclick="showSection('config')">⚙️ Configuración</a>
     </nav>
 
     <div class="admin-content">
@@ -170,15 +173,33 @@
 
       <!-- REPORTES -->
       <div id="sec-reportes" class="section" style="display:none;">
-        <h2>📊 Reporte de ventas</h2>
-        <div id="reporteContent"><p class="empty-state">Cargando...</p></div>
+        <div class="toolbar">
+          <h2 style="margin:0;flex:1;">📊 Reportes</h2>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:16px;background:#F1F5F9;border-radius:10px;padding:4px;">
+          <button id="reporteTabVentas" class="caja-tab caja-tab-active" onclick="switchReporteTab('ventas')">📈 Ventas</button>
+          <button id="reporteTabSesiones" class="caja-tab" onclick="switchReporteTab('sesiones')">💰 Sesiones de caja</button>
+        </div>
+        <div id="reporteVentas">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:0.75rem;color:#64748b;">Fecha</label>
+              <input id="corteFecha" type="date" class="form-control" style="padding:6px 10px;" onchange="loadReportes()">
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="loadReportesSesionActiva()" id="btnReporteSesion" style="margin-top:14px;">💰 Sesión de caja activa</button>
+          </div>
+          <div id="reporteContent"><p class="empty-state">Cargando...</p></div>
+        </div>
+        <div id="reporteSesiones" style="display:none;">
+          <div id="sesionesResumen" style="margin-bottom:16px;"></div>
+          <div id="sesionesContent"><p class="empty-state">Cargando sesiones...</p></div>
+        </div>
       </div>
 
       <!-- CAJA -->
       <div id="sec-caja" class="section" style="display:none;">
         <div class="toolbar">
           <h2 style="margin:0;flex:1;">💰 Caja</h2>
-          <input type="date" id="cajaFecha" class="search-input" onchange="loadCaja()">
           <button class="btn btn-outline btn-sm" onclick="loadCaja()">🔄 Actualizar</button>
           <button class="btn btn-outline btn-sm" onclick="imprimirMovimientos()">🖨️ Imprimir movimientos</button>
         </div>
@@ -188,6 +209,7 @@
           <button id="cajaTabFlujo" class="caja-tab caja-tab-active" onclick="switchCajaTab('flujo')">📊 Flujo de Caja</button>
           <button id="cajaTabMovimientos" class="caja-tab" onclick="switchCajaTab('movimientos')">🔄 Movimientos</button>
           <button id="cajaTabCierre" class="caja-tab" onclick="switchCajaTab('cierre')">🔒 Cierre</button>
+          <button id="cajaTabAnulaciones" class="caja-tab" onclick="switchCajaTab('anulaciones')">🚫 Anular pedido</button>
         </div>
 
         <!-- TAB: FLUJO -->
@@ -214,16 +236,10 @@
               </div>
               <div class="form-group">
                 <label>Método de pago</label>
-                <select id="movMetodo" class="form-control">
-                  <option value="efectivo">💵 Efectivo</option>
-                  <option value="yape">📱 Yape</option>
-                  <option value="plin">📱 Plin</option>
-                  <option value="tarjeta">💳 Tarjeta</option>
-                  <option value="transferencia">🏦 Transferencia</option>
-                </select>
+                <select id="movMetodo" class="form-control"></select>
               </div>
               <div class="form-group">
-                <label>Monto ($)</label>
+                <label>Monto (S/)</label>
                 <input id="movMonto" type="number" step="0.01" min="0.01" class="form-control" placeholder="0.00">
               </div>
               <div class="form-group">
@@ -261,6 +277,11 @@
           <div id="corteSesionBar"></div>
           <div id="corteContent"><p class="empty-state">Cargando...</p></div>
         </div>
+
+        <!-- TAB: ANULAR PEDIDO -->
+        <div id="cajaAnulaciones" class="caja-panel" style="display:none;">
+          <div id="anularContent"><p class="empty-state">Cargando...</p></div>
+        </div>
       </div>
 
       <!-- AREAS Y MESAS -->
@@ -297,8 +318,21 @@
           <div style="font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:10px;">Secciones visibles</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:20px;" id="cfgModalSecciones"></div>
 
-          <div style="font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:10px;">Métodos de pago visibles</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;" id="cfgModalMetodos"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-size:0.85rem;font-weight:600;color:#334155;">Métodos de pago visibles</div>
+            <button class="btn btn-outline btn-sm" onclick="agregarMetodoConfig()">➕ Agregar método</button>
+          </div>
+          <div id="cfgModalMetodosAddForm" style="display:none;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:10px;padding:12px;margin-bottom:12px;">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <input id="cfgMetodoNuevoTexto" class="form-control" style="flex:1;min-width:160px;" placeholder="Nombre del nuevo método (ej: Yape)">
+              <input id="cfgMetodoNuevoLabel" class="form-control" style="width:70px;text-align:center;" placeholder="🙂" maxlength="6" title="Emoji/ícono">
+              <input id="cfgMetodoNuevoKey" class="form-control" style="flex:0.6;min-width:140px;" placeholder="clave (ej: yape)">
+              <button class="btn btn-primary btn-sm" onclick="guardarMetodoNuevo()">✔ Guardar</button>
+              <button class="btn btn-outline btn-sm" onclick="cancelarMetodoNuevo()">✕</button>
+            </div>
+            <div style="font-size:0.72rem;color:#94A3B8;margin-top:6px;">La «clave» es el identificador interno (se conserva en pagos históricos). Debe ser única.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px;" id="cfgModalMetodos"></div>
         </div>
 
         <div id="cfgOtrosWrap"></div>
@@ -316,7 +350,7 @@
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group"><label>Nombre</label><input id="prodNombre" class="form-control" placeholder="Nombre del producto"></div>
-          <div class="form-group"><label>Precio base ($)</label><input id="prodPrecio" type="number" step="0.5" class="form-control"></div>
+          <div class="form-group"><label>Precio base (S/)</label><input id="prodPrecio" type="number" step="0.5" class="form-control"></div>
         </div>
         <div class="form-group"><label>Descripción</label><textarea id="prodDesc" class="form-control" rows="2" placeholder="Descripción corta"></textarea></div>
         <div class="form-row">
@@ -334,7 +368,7 @@
           <div id="variantesList"></div>
           <div class="inline-form">
             <input id="varNombre" placeholder="Ej: Grande">
-            <input id="varPrecio" type="number" step="1" placeholder="+$ precio" style="width:100px;">
+            <input id="varPrecio" type="number" step="1" placeholder="+S/ precio" style="width:100px;">
             <button onclick="addVariante()">+ Agregar</button>
           </div>
         </div>
@@ -350,6 +384,9 @@
           <div class="inline-form">
             <input id="modNombre" placeholder="Ej: Término de carne">
             <select id="modTipo"><option value="select">Seleccionar uno</option><option value="multi">Varios</option><option value="text">Texto libre</option></select>
+            <select id="modDepende" style="max-width:160px;" title="Mostrar solo si se elige esta presentación">
+              <option value="">Sin dependencia</option>
+            </select>
             <label style="font-size:0.8rem;display:flex;align-items:center;gap:4px;">
               <input id="modRequerido" type="checkbox"> Requerido
             </label>
@@ -367,7 +404,7 @@
           <div id="agregadosList"></div>
           <div class="inline-form">
             <input id="agrNombre" placeholder="Ej: Queso extra">
-            <input id="agrPrecio" type="number" step="1" placeholder="$ precio" style="width:100px;">
+            <input id="agrPrecio" type="number" step="1" placeholder="S/ precio" style="width:100px;">
             <button onclick="addAgregado()">+ Agregar</button>
           </div>
         </div>
@@ -409,7 +446,7 @@
         <div id="modalOpcionesList"></div>
         <div class="inline-form">
           <input id="opcNombre" placeholder="Nombre de la opción">
-          <input id="opcPrecio" type="number" step="1" placeholder="+$ precio" style="width:100px;">
+          <input id="opcPrecio" type="number" step="1" placeholder="+S/ precio" style="width:100px;">
           <button id="btnAddOpcion" onclick="addOpcion()">+ Agregar</button>
         </div>
       </div>
@@ -430,7 +467,76 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('modalCierreCaja')">Cerrar</button>
-        <button class="btn btn-success" onclick="confirmarCierreCaja()">✅ Confirmar cierre</button>
+        <button class="btn btn-success" id="btnConfirmarCierre" onclick="confirmarCierreCaja()">✅ Confirmar cierre</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DETALLE SESIÓN DE CAJA -->
+  <div class="modal-overlay admin-modal" id="modalSesionCaja" onclick="if(event.target===this)closeModal('modalSesionCaja')">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header">
+        <h2>💰 Detalle de sesión</h2>
+        <button class="modal-close" onclick="closeModal('modalSesionCaja')">&times;</button>
+      </div>
+      <div class="modal-body" id="sesionCajaBody" style="max-height:70vh;overflow-y:auto;">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalSesionCaja')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ANULAR PEDIDO -->
+  <div class="modal-overlay admin-modal" id="modalAnularPedido" onclick="if(event.target===this)closeModal('modalAnularPedido')">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <h2>🚫 Anular pedido</h2>
+        <button class="modal-close" onclick="closeModal('modalAnularPedido')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="anularPedidoInfo"></div>
+        <div class="form-group">
+          <label>Motivo de anulación (requerido)</label>
+          <select id="anularMotivo" class="form-control">
+            <option value="">— Selecciona un motivo —</option>
+            <option>Error al registrar el pedido</option>
+            <option>Reclamo del cliente</option>
+            <option>El cliente se retiró</option>
+            <option>Producto no disponible</option>
+            <option>Pedido duplicado</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Detalle (opcional)</label>
+          <textarea id="anularDetalle" class="form-control" rows="2" placeholder="Comentarios adicionales..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalAnularPedido')">Cancelar</button>
+        <button class="btn btn-sm" style="background:#DC2626;color:white;" onclick="confirmarAnularPedido()">🚫 Anular pedido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR PAGOS -->
+  <div class="modal-overlay admin-modal" id="modalEditarPagos" onclick="if(event.target===this)closeModal('modalEditarPagos')">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <h2>💳 Editar pagos — Pedido #<span id="adminEditarPagosId"></span></h2>
+        <button class="modal-close" onclick="closeModal('modalEditarPagos')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="adminEditarPagosInfo"></div>
+        <div id="adminEditarPagosList"></div>
+        <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 14px;margin-top:12px;">
+          <div style="font-weight:700;font-size:0.85rem;color:#92400E;margin-bottom:4px;">⚠️ Eliminar un pago = devolución</div>
+          <div style="font-size:0.78rem;color:#78350F;">Quitar un pago anula el pedido completo, genera un EGRESO en caja y devuelve la mesa. Requiere motivo.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modalEditarPagos')">Cerrar</button>
       </div>
     </div>
   </div>
@@ -494,6 +600,8 @@
     let areasData = [];
     let mesasData = [];
     let currentUser = null;
+    let cajaTabActual = 'flujo';
+    let reporteTabActual = 'ventas';
 
     // Load user from localStorage
     try {
@@ -506,42 +614,129 @@
       document.querySelectorAll('.section').forEach(el => el.style.display = 'none');
       document.querySelectorAll('.admin-sidebar a').forEach(el => el.classList.remove('active'));
       document.getElementById('sec-' + s).style.display = 'block';
-      event.target.classList.add('active');
+      const enlace = document.querySelector(`.admin-sidebar a[data-sec="${s}"]`);
+      if (enlace) enlace.classList.add('active');
       if (s === 'productos') loadProductos();
       if (s === 'categorias') loadCategorias();
-      if (s === 'reportes') loadReportes();
-      if (s === 'caja') loadCaja();
+      if (s === 'reportes') { reporteTabActual = 'ventas'; switchReporteTab('ventas'); }
+      if (s === 'caja') { cajaTabActual = 'flujo'; switchCajaTab('flujo'); }
       if (s === 'areas') loadAreasAdmin();
       if (s === 'config') loadConfiguracion();
     }
 
+    // Deep-link: abrir directo a una seccion via #hash (ej: /admin.html#caja)
+    const _seccionHash = (location.hash || '').replace('#', '');
+    if (_seccionHash && document.getElementById('sec-' + _seccionHash)) {
+      showSection(_seccionHash);
+    }
+
+    // Cargar config al inicio para labels de métodos en reportes/caja/editar pagos
+    loadConfiguracion();
+
     // ---- CONFIGURACION ----
     let configGlobal = null;
+
+    const METODO_DEFS = {
+      efectivo: { label: '💵', texto: 'Efectivo', color: '#059669' },
+      tarjeta: { label: '💳', texto: 'Tarjeta', color: '#3B82F6' },
+      transferencia: { label: '📱', texto: 'Transferencia', color: '#8B5CF6' },
+      otros: { label: '📋', texto: 'Otros', color: '#6B7280' },
+      yape: { label: '📲', texto: 'Yape', color: '#7C3AED' },
+      plin: { label: '📲', texto: 'Plin', color: '#2563EB' },
+      regalo: { label: '🎁', texto: 'Regalo', color: '#EC4899' },
+      vale: { label: '🎟️', texto: 'Vale', color: '#F59E0B' }
+    };
+
+    // Métodos visibles actuales (mezcla config viva + defaults) para renderizar desgloses
+    function metodosConfigurables() {
+      const raw = configGlobal?.modal_pago?.metodos;
+      const extras = ['regalo', 'vale', 'yape', 'plin'];
+      if (Array.isArray(raw) && raw.length) {
+        const out = raw.map(m => {
+          const key = typeof m === 'string' ? m : m.key;
+          const def = METODO_DEFS[key] || {};
+          return { key, label: (m && m.label) || def.label || '💳', texto: (m && m.texto) || def.texto || key, color: def.color || '#64748B' };
+        });
+        for (const k of extras) {
+          if (!out.some(o => o.key === k)) {
+            const def = METODO_DEFS[k];
+            out.push({ key: k, label: def.label, texto: def.texto, color: def.color });
+          }
+        }
+        return out;
+      }
+      return ['efectivo', 'tarjeta', 'transferencia', 'otros', 'yape', 'plin', 'vale', 'regalo'].map(k => ({
+        key: k, ...METODO_DEFS[k]
+      }));
+    }
+
+    function textoMetodo(key) {
+      const m = metodosConfigurables().find(x => x.key === key);
+      return m ? m.texto : key;
+    }
+
+    function metodosValidadosParaBackend() {
+      const raw = (configGlobal?.modal_pago?.metodos) || [];
+      return raw.map(m => typeof m === 'string' ? m : m.key);
+    }
 
     async function loadConfiguracion() {
       try {
         const res = await fetch('/api/admin/configuracion');
         configGlobal = await res.json();
         renderConfigModalPago();
+        renderConfigHoraCorte();
       } catch (e) {
         showToast('Error al cargar configuración', 'error');
       }
+    }
+
+    function renderConfigHoraCorte() {
+      const wrap = document.getElementById('cfgOtrosWrap');
+      const hora = configGlobal?.hora_corte || '23:00';
+      wrap.innerHTML = `
+        <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">⏱️ Corte de día (reportes)</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">El día operativo va desde la hora de corte del día anterior hasta la hora de corte del día seleccionado. Todo pago después de la hora de corte pertenece al día siguiente. Útil si el restaurante cierra de noche.</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfigHoraCorte()">💾 Guardar</button>
+          </div>
+          <div class="form-group" style="max-width:220px;margin-bottom:0;">
+            <label>Hora de corte (HH:MM)</label>
+            <input id="cfgHoraCorte" type="time" class="form-control" value="${hora}">
+          </div>
+        </div>`;
+    }
+
+    async function saveConfigHoraCorte() {
+      const hora = document.getElementById('cfgHoraCorte')?.value;
+      if (!hora || !/^\d{2}:\d{2}$/.test(hora)) return showToast('Ingresa una hora válida (HH:MM)', 'warning');
+      try {
+        const res = await fetch('/api/admin/configuracion/hora_corte', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor: hora })
+        });
+        if (res.ok) {
+          showToast('Hora de corte guardada', 'success');
+          configGlobal.hora_corte = hora;
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     function renderConfigModalPago() {
       const cfg = configGlobal?.modal_pago || {};
       const secciones = [
         { key: 'mostrar_descuento', label: '🏷️ Descuento', desc: 'Aplicar descuentos al cobrar' },
-        { key: 'mostrar_vale', label: '🎫 Vale de consumo', desc: 'Usar vales en el cobro' },
+        { key: 'mostrar_vale', label: '🎟️ Vale de consumo', desc: 'Usar vales en el cobro' },
         { key: 'mostrar_propina', label: '💡 Propina', desc: 'Botones rápidos y monto de propina' },
         { key: 'mostrar_notas', label: '📝 Notas / Referencia', desc: 'Referencia y notas del pago' },
         { key: 'mostrar_regalo', label: '🎁 Regalo / Obsequio', desc: 'Marcar pendiente como obsequio' }
-      ];
-      const metodos = [
-        { key: 'efectivo', label: '💵 Efectivo' },
-        { key: 'tarjeta', label: '💳 Tarjeta' },
-        { key: 'transferencia', label: '📱 Transferencia' },
-        { key: 'otros', label: '📋 Otros' }
       ];
 
       const secEl = document.getElementById('cfgModalSecciones');
@@ -557,28 +752,87 @@
       }).join('');
 
       const metEl = document.getElementById('cfgModalMetodos');
-      metEl.innerHTML = metodos.map(m => {
-        const checked = (cfg.metodos || []).includes(m.key);
-        return `<div style="border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
-          <label class="toggle"><input type="checkbox" data-cfg-metodo="${m.key}" ${checked ? 'checked' : ''}><span class="slider"></span></label>
-          <div style="font-weight:600;font-size:0.85rem;">${m.label}</div>
-        </div>`;
-      }).join('');
+      const metodos = normalizeMetodosCfg(cfg.metodos);
+      metEl.innerHTML = metodos.map(m => `
+        <div style="border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;background:#fff;">
+          <span style="font-size:1.1rem;">${m.label}</span>
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:0.85rem;">${m.texto}</div>
+            <div style="font-size:0.7rem;color:#94A3B8;">clave: ${m.key}${m.especial ? ' · especial' : ''}</div>
+          </div>
+          <button class="btn btn-sm" style="background:#FEE2E2;color:#DC2626;padding:5px 9px;font-size:0.75rem;" onclick="quitarMetodoConfig('${m.key}')" ${m.especial ? 'disabled title="Método especial (regalo/vale) requerido"' : ''}>🗑 Quitar</button>
+        </div>`).join('') || '<p style="color:#94A3B8;font-size:0.85rem;">Sin métodos configurados.</p>';
+    }
+
+    function normalizeMetodosCfg(raw) {
+      const defs = { efectivo: '💵', tarjeta: '💳', transferencia: '📱', otros: '📋', regalo: '🎁', vale: '🎟️', yape: '📲', plin: '📲' };
+      const textos = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', otros: 'Otros', regalo: 'Regalo', vale: 'Vale', yape: 'Yape', plin: 'Plin' };
+      if (!Array.isArray(raw) || !raw.length) {
+        return ['efectivo', 'tarjeta', 'transferencia', 'otros'].map(k => ({ key: k, label: defs[k], texto: textos[k] }));
+      }
+      return raw.map(m => {
+        if (typeof m === 'string') return { key: m, label: defs[m] || '💳', texto: textos[m] || m };
+        return {
+          key: m.key,
+          label: m.label || defs[m.key] || '💳',
+          texto: m.texto || textos[m.key] || m.key,
+          especial: m.especial || m.key === 'regalo' || m.key === 'vale'
+        };
+      });
+    }
+
+    let nuevoMetodoAbierto = false;
+    function agregarMetodoConfig() {
+      const form = document.getElementById('cfgModalMetodosAddForm');
+      if (!form) return;
+      nuevoMetodoAbierto = true;
+      form.style.display = 'block';
+      document.getElementById('cfgMetodoNuevoTexto').focus();
+    }
+    function cancelarMetodoNuevo() {
+      nuevoMetodoAbierto = false;
+      const form = document.getElementById('cfgModalMetodosAddForm');
+      if (form) form.style.display = 'none';
+    }
+    function guardarMetodoNuevo() {
+      const texto = (document.getElementById('cfgMetodoNuevoTexto').value || '').trim();
+      const label = (document.getElementById('cfgMetodoNuevoLabel').value || '💳').trim();
+      let key = (document.getElementById('cfgMetodoNuevoKey').value || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+      if (!texto) return showToast('Escribe el nombre del método', 'warning');
+      if (!key) return showToast('La clave es obligatoria y debe ser única', 'warning');
+      const cfg = configGlobal?.modal_pago || {};
+      const metodos = normalizeMetodosCfg(cfg.metodos);
+      if (metodos.some(m => m.key === key)) return showToast('Ya existe un método con esa clave', 'warning');
+      metodos.push({ key, label, texto });
+      cfg.metodos = metodos;
+      configGlobal.modal_pago = cfg;
+      renderConfigModalPago();
+      cancelarMetodoNuevo();
+      showToast('Método agregado. Guarda los cambios.', 'success');
+    }
+    function quitarMetodoConfig(key) {
+      const cfg = configGlobal?.modal_pago || {};
+      const metodos = normalizeMetodosCfg(cfg.metodos).filter(m => m.key !== key);
+      if (!metodos.length && !['regalo', 'vale'].some(k => metodos.some(m => m.key === k))) {
+        return showToast('Debe quedar al menos un método de pago', 'warning');
+      }
+      cfg.metodos = metodos;
+      configGlobal.modal_pago = cfg;
+      renderConfigModalPago();
+      showToast('Método quitado. Guarda los cambios.', 'success');
     }
 
     async function saveConfiguracion() {
       const cfg = configGlobal?.modal_pago || {};
-      const secciones = ['mostrar_descuento', 'mostrar_vale', 'mostrar_propina', 'mostrar_notas', 'mostrar_regalo', 'mostrar_dividir'];
+      const secciones = ['mostrar_descuento', 'mostrar_vale', 'mostrar_propina', 'mostrar_notas', 'mostrar_regalo'];
       for (const key of secciones) {
         const el = document.querySelector(`[data-cfg-sec="${key}"]`);
         cfg[key] = el ? el.checked : true;
       }
-      const metodos = [];
-      document.querySelectorAll('[data-cfg-metodo]').forEach(el => {
-        if (el.checked) metodos.push(el.dataset.cfgMetodo);
-      });
-      if (!metodos.length) return showToast('Debe dejar al menos un método de pago visible', 'warning');
-      cfg.metodos = metodos;
+      const metodos = normalizeMetodosCfg(cfg.metodos);
+      if (!metodos.filter(m => !m.especial).length) return showToast('Debe dejar al menos un método de pago visible', 'warning');
+      cfg.metodos = metodos.map(({ key, label, texto }) => ({ key, label, texto }));
+      if (nuevoMetodoAbierto) cancelarMetodoNuevo();
 
       try {
         const res = await fetch('/api/admin/configuracion/modal_pago', {
@@ -597,33 +851,41 @@
     }
 
     // ---- CAJA SUB-TABS ----
-    let cajaTabActual = 'flujo';
     function switchCajaTab(tab) {
       cajaTabActual = tab;
-      document.querySelectorAll('.caja-tab').forEach(el => el.classList.remove('caja-tab-active'));
+      document.querySelectorAll('#sec-caja .caja-tab').forEach(el => el.classList.remove('caja-tab-active'));
       document.querySelectorAll('.caja-panel').forEach(el => el.style.display = 'none');
       document.getElementById('cajaTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('caja-tab-active');
-      const panelId = tab === 'flujo' ? 'cajaFlujo' : tab === 'movimientos' ? 'cajaMovimientos' : 'cajaCierre';
+      const panelId = tab === 'flujo' ? 'cajaFlujo' : tab === 'movimientos' ? 'cajaMovimientos' : tab === 'cierre' ? 'cajaCierre' : 'cajaAnulaciones';
       document.getElementById(panelId).style.display = 'block';
+      if (tab === 'flujo') loadCajaFlujo();
+      else if (tab === 'movimientos') loadMovimientos();
+      else if (tab === 'cierre') loadCorteCaja();
+      else loadPedidosAnulables();
     }
 
     async function loadCaja() {
-      const fecha = document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
       if (cajaTabActual === 'flujo') {
-        loadCajaFlujo(fecha);
+        loadCajaFlujo();
       } else if (cajaTabActual === 'movimientos') {
-        loadMovimientos(fecha);
+        loadMovimientos();
       } else {
-        loadCorteCaja(fecha);
+        loadCorteCaja();
       }
     }
 
-    async function loadCajaFlujo(fecha) {
-      fecha = fecha || document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+    async function loadCajaFlujo() {
       try {
-        const res = await fetch('/api/admin/caja/flujo?fecha=' + fecha);
+        const res = await fetch('/api/admin/caja/flujo');
         const data = await res.json();
         renderCajaFlujoBar(data.sesion);
+        if (!data.sesion) {
+          document.getElementById('cajaFlujoResumen').innerHTML = '';
+          document.getElementById('cajaFlujoDesglose').innerHTML = '';
+          document.getElementById('cajaFlujoAnalisis').innerHTML = '';
+          document.getElementById('cajaFlujoTimeline').innerHTML = '<p class="empty-state">Abre una caja para ver su flujo y movimientos</p>';
+          return;
+        }
         renderCajaFlujoResumen(data);
         renderCajaFlujoDesglose(data);
         renderCajaFlujoAnalisis(data);
@@ -642,7 +904,7 @@
             <span style="font-size:1.2rem;">✅</span>
             <div>
               <div style="font-weight:700;color:#059669;font-size:0.95rem;">Caja abierta</div>
-              <div style="font-size:0.8rem;color:#64748b;">Fondo: $${(sesion.fondo_inicial || 0).toFixed(2)} — ${sesion.usuario_nombre || 'N/A'} — ${apertura}</div>
+              <div style="font-size:0.8rem;color:#64748b;">Fondo: S/${(sesion.fondo_inicial || 0).toFixed(2)} — ${sesion.usuario_nombre || 'N/A'} — ${apertura}</div>
             </div>
           </div>
           <button class="btn btn-sm" style="background:#DC2626;color:white;" onclick="cerrarCaja()">Cerrar caja</button>
@@ -672,18 +934,18 @@
       const totalPedidos = data.total_pedidos || 0;
 
       const cards = [
-        { label: 'Fondo inicial', value: `$${fondo.toFixed(2)}`, color: '#64748B', icon: '🏦' },
-        { label: 'Total cobrado', value: `$${totalGeneral.toFixed(2)}`, color: '#059669', icon: '💰' },
-        { label: 'Ticket promedio', value: `$${ticketPromedio.toFixed(2)}`, color: '#3B82F6', icon: '🧾' },
+        { label: 'Fondo inicial', value: `S/${fondo.toFixed(2)}`, color: '#64748B', icon: '🏦' },
+        { label: 'Total cobrado', value: `S/${totalGeneral.toFixed(2)}`, color: '#059669', icon: '💰' },
+        { label: 'Ticket promedio', value: `S/${ticketPromedio.toFixed(2)}`, color: '#3B82F6', icon: '🧾' },
         { label: 'Pedidos cerrados', value: `${totalPedidos}`, color: '#0D9488', icon: '📋' },
       ];
-      if (propina > 0) cards.push({ label: 'Propinas', value: `$${propina.toFixed(2)}`, color: '#F97316', icon: '💡' });
-      if (efectivoEsperado != null) cards.push({ label: 'Efectivo esperado (caja)', value: `$${efectivoEsperado.toFixed(2)}`, color: '#059669', icon: '💵' });
-      cards.push({ label: 'Movimientos', value: `+$${movIng.toFixed(2)} / -$${movEgr.toFixed(2)}`, color: '#3B82F6', icon: '🔄' });
+      if (propina > 0) cards.push({ label: 'Propinas', value: `S/${propina.toFixed(2)}`, color: '#F97316', icon: '💡' });
+      if (efectivoEsperado != null) cards.push({ label: 'Efectivo esperado (caja)', value: `S/${efectivoEsperado.toFixed(2)}`, color: '#059669', icon: '💵' });
+      cards.push({ label: 'Movimientos', value: `+S/${movIng.toFixed(2)} / -S/${movEgr.toFixed(2)}`, color: '#3B82F6', icon: '🔄' });
       if (cancelados.total > 0) cards.push({ label: 'Cancelados', value: `${cancelados.total}`, color: '#EF4444', icon: '🚫' });
-      if (data.descuentos?.total > 0) cards.push({ label: 'Descuentos', value: `${data.descuentos.total} (−$${(data.descuentos.monto_estimado || 0).toFixed(2)})`, color: '#DC2626', icon: '🏷️' });
-      if (data.vales_usados?.total > 0) cards.push({ label: 'Vales usados', value: `$${data.vales_usados.suma.toFixed(2)}`, color: '#F59E0B', icon: '🎫' });
-      if (data.regalos?.total > 0) cards.push({ label: 'Regalos', value: `$${data.regalos.suma.toFixed(2)}`, color: '#EC4899', icon: '🎁' });
+      if (data.descuentos?.total > 0) cards.push({ label: 'Descuentos', value: `${data.descuentos.total} (−S/${(data.descuentos.monto_estimado || 0).toFixed(2)})`, color: '#DC2626', icon: '🏷️' });
+      if (data.vales_usados?.total > 0) cards.push({ label: 'Vales usados', value: `S/${data.vales_usados.suma.toFixed(2)}`, color: '#F59E0B', icon: '🎫' });
+      if (data.regalos?.total > 0) cards.push({ label: 'Regalos', value: `S/${data.regalos.suma.toFixed(2)}`, color: '#EC4899', icon: '🎁' });
 
       let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">';
       for (const c of cards) {
@@ -698,32 +960,34 @@
 
     function renderCajaFlujoDesglose(data) {
       const el = document.getElementById('cajaFlujoDesglose');
-      const metodos = [
-        { key: 'efectivo', label: '💵 Efectivo', color: '#059669' },
-        { key: 'tarjeta', label: '💳 Tarjeta', color: '#3B82F6' },
-        { key: 'transferencia', label: '📱 Transferencia', color: '#8B5CF6' },
-        { key: 'yape', label: '📱 Yape', color: '#7C3AED' },
-        { key: 'plin', label: '📱 Plin', color: '#2563EB' },
-        { key: 'otros', label: '📋 Otros', color: '#6B7280' },
-        { key: 'vale', label: '🎫 Vales', color: '#F59E0B' },
-        { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
-      ];
-      let hasData = false;
+      const metodosMeta = metodosConfigurables();
+      const entries = Object.entries(data.desglose || {});
       const totalGeneral = data.total_general || 0;
+      if (!entries.length) { el.innerHTML = ''; return; }
+      let hasData = false;
       let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:12px;">';
-      for (const m of metodos) {
-        const d = data.desglose?.[m.key];
-        if (!d || d.cantidad === 0) continue;
+      for (const [key, d] of entries) {
+        const meta = metodosMeta.find(mtm => mtm.key === key) || { label: key, color: '#64748B' };
+        const total = d.total || 0;
+        if (total === 0 && !d.cantidad) continue;
         hasData = true;
-        const pct = totalGeneral > 0 ? ((d.total / totalGeneral) * 100).toFixed(0) : 0;
-        h += `<div style="background:white;padding:10px 14px;border-radius:8px;border-left:3px solid ${m.color};font-size:0.85rem;">
-          <div style="font-weight:600;color:${m.color};">${m.label} <span style="font-weight:400;color:#94A3B8;">${pct}%</span></div>
-          <div style="font-size:1.05rem;font-weight:800;">$${d.total.toFixed(2)}</div>
-          <div style="font-size:0.7rem;color:#94A3B8;">${d.cantidad} pago(s)${d.total_propina > 0 ? ` · propina $${d.total_propina.toFixed(2)}` : ''}</div>
+        h += `<div style="background:white;padding:10px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${meta.color};">
+          <div style="font-size:0.7rem;color:#64748b;">${meta.label} ${meta.texto || ''}</div>
+          <div style="font-size:1.1rem;font-weight:800;color:${meta.color};">S/${total.toFixed(2)}</div>
+          <div style="font-size:0.7rem;color:#94a3b8;">${d.cantidad || 0} pago(s)</div>
         </div>`;
       }
       h += '</div>';
-      el.innerHTML = hasData ? h : '';
+      if (!hasData) h = '<p style="color:#94A3B8;font-size:0.85rem;">Sin pagos en esta sesión.</p>';
+
+      let resumen = '';
+      if (totalGeneral > 0) {
+        resumen = `<div style="display:flex;justify-content:space-between;align-items:center;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+          <span style="font-weight:600;font-size:0.85rem;color:#166534;">💰 Total cobrado (sesión activa)</span>
+          <span style="font-weight:800;font-size:1.1rem;color:#059669;">S/${totalGeneral.toFixed(2)}</span>
+        </div>`;
+      }
+      el.innerHTML = resumen + h;
     }
 
     function renderCajaFlujoAnalisis(data) {
@@ -743,7 +1007,7 @@
             h += `<div style="margin-bottom:8px;">
               <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:2px;">
                 <span style="font-weight:600;">${t.nombre}</span>
-                <span style="color:#64748b;">${t.cantidad} ud · $${t.total.toFixed(2)}</span>
+                <span style="color:#64748b;">${t.cantidad} ud · S/${t.total.toFixed(2)}</span>
               </div>
               <div style="background:#F1F5F9;border-radius:6px;height:8px;overflow:hidden;">
                 <div style="width:${w}%;height:100%;background:#059669;border-radius:6px;"></div>
@@ -760,8 +1024,8 @@
           for (const v of porHora) {
             const hgt = maxTotal > 0 ? Math.max(4, (v.total / maxTotal) * 100) : 4;
             h += `<div style="flex:1;text-align:center;">
-              <div style="background:#3B82F6;border-radius:4px 4px 0 0;height:${hgt}%;margin:0 auto;min-height:4px;max-width:26px;position:relative;" title="$${v.total.toFixed(2)} (${v.cantidad} pagos)">
-                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:#64748b;white-space:nowrap;">$${Math.round(v.total)}</div>
+              <div style="background:#3B82F6;border-radius:4px 4px 0 0;height:${hgt}%;margin:0 auto;min-height:4px;max-width:26px;position:relative;" title="S/${v.total.toFixed(2)} (${v.cantidad} pagos)">
+                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:#64748b;white-space:nowrap;">S/${Math.round(v.total)}</div>
               </div>
               <div style="font-size:0.62rem;color:#94A3B8;margin-top:4px;">${v.hora}h</div>
             </div>`;
@@ -795,9 +1059,9 @@
         const hora = new Date(ev.hora).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
         const montoColor = ev.tipo === 'EGRESO' ? '#DC2626' : '#059669';
         const montoPrefix = ev.tipo === 'EGRESO' ? '-' : '+';
-        const metodoIcon = metodoIcons[ev.metodo] || '📋';
+        const metodoIcon = (metodosConfigurables().find(mm => mm.key === ev.metodo) || {}).label || '📋';
         let extra = '';
-        if (ev.propina > 0) extra += `<span style="color:#F97316;font-size:0.7rem;margin-left:4px;">+propina $${ev.propina.toFixed(2)}</span>`;
+        if (ev.propina > 0) extra += `<span style="color:#F97316;font-size:0.7rem;margin-left:4px;">+propina S/${ev.propina.toFixed(2)}</span>`;
         if (ev.referencia) extra += `<span style="color:#94A3B8;font-size:0.7rem;margin-left:4px;">Ref: ${ev.referencia}</span>`;
         if (ev.notas) extra += `<span style="color:#94A3B8;font-size:0.7rem;margin-left:4px;">📝 ${ev.notas}</span>`;
 
@@ -811,11 +1075,11 @@
                 ${extra}
               </div>
               <div style="text-align:right;">
-                <div style="font-weight:800;color:${montoColor};font-size:0.95rem;">${ev.tipo !== 'APERTURA' && ev.tipo !== 'CIERRE' ? montoPrefix + '$' + ev.monto.toFixed(2) : ev.tipo === 'CIERRE' && ev.sobrante != null && Math.abs(ev.sobrante) > 0.01 ? (ev.sobrante > 0 ? '+$' : '-$') + Math.abs(ev.sobrante).toFixed(2) : '$' + ev.monto.toFixed(2)}</div>
+                <div style="font-weight:800;color:${montoColor};font-size:0.95rem;">${ev.tipo !== 'APERTURA' && ev.tipo !== 'CIERRE' ? montoPrefix + 'S/' + ev.monto.toFixed(2) : ev.tipo === 'CIERRE' && ev.sobrante != null && Math.abs(ev.sobrante) > 0.01 ? (ev.sobrante > 0 ? '+S/' : '-S/') + Math.abs(ev.sobrante).toFixed(2) : 'S/' + ev.monto.toFixed(2)}</div>
                 <div class="caja-timeline-meta">${hora} — ${metodoIcon} ${ev.metodo} — ${ev.persona || ''}</div>
               </div>
             </div>
-            ${ev.saldo != null ? `<div style="font-size:0.7rem;color:#94A3B8;margin-top:4px;text-align:right;">Saldo: $${ev.saldo.toFixed(2)}</div>` : ''}
+            ${ev.saldo != null ? `<div style="font-size:0.7rem;color:#94A3B8;margin-top:4px;text-align:right;">Saldo: S/${ev.saldo.toFixed(2)}</div>` : ''}
           </div>
         </div>`;
       }
@@ -896,7 +1160,7 @@
         h += `<tr>
           <td><strong>${p.nombre}</strong><br><small style="color:#94a3b8;">${p.descripcion || ''}</small></td>
           <td>${p.categoria_nombre || '-'}</td>
-          <td><strong>$${p.precio.toFixed(2)}</strong></td>
+          <td><strong>S/${p.precio.toFixed(2)}</strong></td>
           <td>${p.variantes?.length || 0}</td>
           <td>${p.modificadores?.length || 0}</td>
           <td>${p.agregados?.length || 0}</td>
@@ -936,6 +1200,12 @@
       renderModificadores(p.modificadores || []);
       renderAgregados(p.agregados || []);
 
+      const depSel = document.getElementById('modDepende');
+      depSel.innerHTML = '<option value="">Sin dependencia</option>';
+      for (const v of (p.variantes || [])) {
+        depSel.innerHTML += `<option value="${v.id}">${v.nombre}</option>`;
+      }
+
       document.getElementById('modalProducto').classList.add('active');
     }
 
@@ -965,7 +1235,7 @@
       if (!variantes.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin variantes</p>'; return; }
       el.innerHTML = variantes.map(v => `
         <div class="sub-item">
-          <span><strong>${v.nombre}</strong> ${v.precio_adicional > 0 ? '+$' + v.precio_adicional.toFixed(2) : ''}</span>
+          <span><strong>${v.nombre}</strong> ${v.precio_adicional > 0 ? '+S/' + v.precio_adicional.toFixed(2) : ''}</span>
           <div class="actions">
             <button class="del" onclick="deleteVariante(${v.id})">✕</button>
           </div>
@@ -983,33 +1253,48 @@
       document.getElementById('varPrecio').value = '';
       await loadProductos();
       const p = productosCompleto.find(x => x.id === editingProductoId);
-      if (p) renderVariantes(p.variantes || []);
+      if (p) {
+        renderVariantes(p.variantes || []);
+        const depSel = document.getElementById('modDepende');
+        depSel.innerHTML = '<option value="">Sin dependencia</option>';
+        for (const v of (p.variantes || [])) depSel.innerHTML += `<option value="${v.id}">${v.nombre}</option>`;
+      }
     }
 
     async function deleteVariante(id) {
       await fetch('/api/admin/variantes/' + id, { method: 'DELETE' });
       await loadProductos();
       const p = productosCompleto.find(x => x.id === editingProductoId);
-      if (p) renderVariantes(p.variantes || []);
+      if (p) {
+        renderVariantes(p.variantes || []);
+        const depSel = document.getElementById('modDepende');
+        depSel.innerHTML = '<option value="">Sin dependencia</option>';
+        for (const v of (p.variantes || [])) depSel.innerHTML += `<option value="${v.id}">${v.nombre}</option>`;
+      }
     }
 
     // ---- MODIFICADORES ----
     function renderModificadores(mods) {
       const el = document.getElementById('modificadoresList');
       if (!mods.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin modificadores</p>'; return; }
-      el.innerHTML = mods.map(m => `
+      const p = productosCompleto.find(x => x.id === editingProductoId);
+      const variantes = p?.variantes || [];
+      const nombreVariante = (id) => variantes.find(v => v.id === id)?.nombre || '';
+      el.innerHTML = mods.map(m => {
+        const depNombre = m.depende_variante_id ? nombreVariante(m.depende_variante_id) : '';
+        return `
         <div class="sub-item">
           <span>
             <strong>${m.nombre}</strong>
-            <small style="color:#64748b;">(${m.tipo}${m.requerido ? ', requerido' : ''})</small>
+            <small style="color:#64748b;">(${m.tipo}${m.requerido ? ', requerido' : ''}${depNombre ? ', solo con: ' + depNombre : ''})</small>
             ${m.opciones?.length ? '<br><small style="color:#94a3b8;">' + m.opciones.map(o => o.nombre + (o.precio_adicional > 0 ? ' +$' + o.precio_adicional : '')).join(', ') + '</small>' : ''}
           </span>
           <div class="actions">
             <button class="edit" onclick="openModOpcionesModal(${m.id})">📋</button>
             <button class="del" onclick="deleteModificador(${m.id})">✕</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
     }
 
     async function deleteModificador(id) {
@@ -1025,8 +1310,9 @@
       const nombre = document.getElementById('modNombre').value;
       const tipo = document.getElementById('modTipo').value;
       const requerido = document.getElementById('modRequerido').checked ? 1 : 0;
+      const depende_variante_id = parseInt(document.getElementById('modDepende').value) || null;
       if (!nombre) return alert('Nombre del modificador requerido');
-      const r = await fetch('/api/admin/modificadores', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ producto_id: editingProductoId, nombre, tipo, requerido }) });
+      const r = await fetch('/api/admin/modificadores', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ producto_id: editingProductoId, nombre, tipo, requerido, depende_variante_id }) });
       const mod = await r.json();
       document.getElementById('modNombre').value = '';
       document.getElementById('modRequerido').checked = false;
@@ -1052,7 +1338,7 @@
       if (!opcs.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin opciones</p>'; return; }
       el.innerHTML = opcs.map(o => `
         <div class="sub-item">
-          <span><strong>${o.nombre}</strong> ${o.precio_adicional > 0 ? '+$' + o.precio_adicional.toFixed(2) : ''}</span>
+          <span><strong>${o.nombre}</strong> ${o.precio_adicional > 0 ? '+S/' + o.precio_adicional.toFixed(2) : ''}</span>
           <div class="actions">
             <button class="del" onclick="deleteOpcion(${o.id})">✕</button>
           </div>
@@ -1088,7 +1374,7 @@
       if (!agrs.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8;">Sin agregados</p>'; return; }
       el.innerHTML = agrs.map(a => `
         <div class="sub-item">
-          <span><strong>${a.nombre}</strong> — $${a.precio.toFixed(2)} (máx: ${a.maximo})</span>
+          <span><strong>${a.nombre}</strong> — S/${a.precio.toFixed(2)} (máx: ${a.maximo})</span>
           <div class="actions">
             <button class="del" onclick="deleteAgregado(${a.id})">✕</button>
           </div>
@@ -1120,48 +1406,102 @@
     async function loadReportes() {
       const el = document.getElementById('reporteContent');
       try {
-        const fecha = document.getElementById('corteFecha')?.value || new Date().toISOString().split('T')[0];
+        const fechaEl = document.getElementById('corteFecha');
+        if (fechaEl && !fechaEl.value) {
+          const hoy = new Date();
+          fechaEl.value = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+        }
+        const fecha = fechaEl?.value;
         const r1 = await fetch('/api/admin/pedidos/reporte?fecha=' + fecha);
         const data = await r1.json();
         const r2 = await fetch('/api/admin/pedidos/reporte/detalle?fecha=' + fecha);
         const detalle = await r2.json();
-        let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
-          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-            <div style="font-size:0.8rem;color:#64748b;">Ventas</div>
-            <div style="font-size:1.8rem;font-weight:800;color:#059669;">$${(data.totalVentas || 0).toFixed(2)}</div>
-          </div>
-          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-            <div style="font-size:0.8rem;color:#64748b;">Pedidos</div>
-            <div style="font-size:1.8rem;font-weight:800;">${data.cantidad || 0}</div>
-          </div>
-        </div>`;
-        if (data.pedidos && data.pedidos.length) {
-          h += '<div class="table-wrap"><table><thead><tr><th>#</th><th>Mesa</th><th>Hora</th><th>Total</th><th>Estado</th><th>Acción</th></tr></thead><tbody>';
-          for (const p of data.pedidos) {
-            const badgeClass = p.estado === 'CERRADO' ? 'badge-green' : p.estado === 'CANCELADO' ? 'badge-red' : 'badge-blue';
-            h += `<tr>
-              <td>${p.id}</td>
-              <td>${p.mesa_nombre}</td>
-              <td>${new Date(p.created_at + 'Z').toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'})}</td>
-              <td><strong>$${(p.total || 0).toFixed(2)}</strong></td>
-              <td><span class="badge ${badgeClass}">${p.estado}</span></td>
-              <td><button class="btn btn-outline btn-sm" onclick="reimprimirPedidoAdmin(${p.id})">🖨️</button></td>
-            </tr>`;
-          }
-          h += '</tbody></table></div>';
-        } else {
-          h += '<p class="empty-state">Sin pedidos en esta fecha</p>';
-        }
-        if (detalle.length) {
-          h += '<h3 style="margin:24px 0 12px;font-size:1rem;">Detalle por producto</h3>';
-          h += '<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>';
-          for (const d of detalle) {
-            h += `<tr><td>${d.producto_nombre}</td><td>${d.total_vendido}</td><td>$${(d.total_ingresos || 0).toFixed(2)}</td></tr>`;
-          }
-          h += '</tbody></table></div>';
-        }
-        el.innerHTML = h;
+        renderReporteVentas(el, data, detalle);
       } catch (e) { el.innerHTML = '<p class="empty-state">Error al cargar reportes</p>'; }
+    }
+
+    async function loadReportesSesionActiva() {
+      const el = document.getElementById('reporteContent');
+      try {
+        const r1 = await fetch('/api/admin/pedidos/reporte?rango=sesion');
+        const data = await r1.json();
+        if (!r1.ok) return el.innerHTML = `<p class="empty-state">${data.error || 'No hay sesión de caja abierta'}</p>`;
+        const r2 = await fetch('/api/admin/pedidos/reporte/detalle?rango=sesion');
+        const detalle = await r2.json();
+        renderReporteVentas(el, data, detalle, 'sesion');
+      } catch (e) { el.innerHTML = '<p class="empty-state">Error de conexión</p>'; }
+    }
+
+    function renderReporteVentas(el, data, detalle, fuente) {
+      const desg = data.desglose || {};
+      const labelsMeta = {};
+      for (const mt of metodosConfigurables()) labelsMeta[mt.key] = `${mt.label} ${mt.texto}`;
+      const desgloseHtml = Object.entries(desg)
+        .filter(([k, v]) => v && (v.cantidad > 0 || v.total > 0))
+        .map(([k, v]) => `
+          <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+            <div style="font-size:0.8rem;color:#64748b;">${labelsMeta[k] || k}</div>
+            <div style="font-size:1.8rem;font-weight:800;color:#0F172A;">S/${(v.total || 0).toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94A3B8;">${v.cantidad || 0} pago(s)</div>
+          </div>
+        `).join('') || '<p style="color:#94A3B8;font-size:0.85rem;">Sin pagos en el periodo</p>';
+      const corte = data.rango?.corte || '23:00';
+      const cancelados = data.cancelados || { total: 0, suma: 0 };
+      const fuenteTxt = fuente === 'sesion' ? '💰 Sesión de caja' : `📅 Día (corte ${corte})`;
+      let h = `<div style="margin-bottom:8px;font-size:0.75rem;color:#94A3B8;">
+        ${fuenteTxt} · Periodo: ${data.rango?.inicio || ''} → ${data.rango?.fin || ''} · ${cancelados.total} pedido(s) cancelado(s) (S/${(cancelados.suma || 0).toFixed(2)})
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+        <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+          <div style="font-size:0.8rem;color:#64748b;">Ventas (por pagos)</div>
+          <div style="font-size:1.8rem;font-weight:800;color:#059669;">S/${(data.totalVentas || 0).toFixed(2)}</div>
+        </div>
+        <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+          <div style="font-size:0.8rem;color:#64748b;">Propinas</div>
+          <div style="font-size:1.8rem;font-weight:800;">S/${(data.totalPropina || 0).toFixed(2)}</div>
+        </div>
+        <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+          <div style="font-size:0.8rem;color:#64748b;">Pedidos con pago</div>
+          <div style="font-size:1.8rem;font-weight:800;">${data.cantidad || 0}</div>
+        </div>
+      </div>
+      <div style="font-size:0.85rem;font-weight:600;color:#334155;margin:0 0 10px;">Desglose por método (cuadra con caja)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">${desgloseHtml}</div>`;
+      if (data.pedidos && data.pedidos.length) {
+        h += '<div class="table-wrap"><table><thead><tr><th>#</th><th>Mesa</th><th>Hora pago</th><th>Total</th><th>Pagado periodo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>';
+        for (const p of data.pedidos) {
+          const badgeClass = p.estado === 'CERRADO' ? 'badge-green' : p.estado === 'CANCELADO' ? 'badge-red' : 'badge-blue';
+          const acciones = [
+            `<button class="btn btn-outline btn-sm" title="Ver detalle" onclick="verPedidoAdmin(${p.id})">👁️</button>`,
+            `<button class="btn btn-outline btn-sm" title="Reimprimir" onclick="reimprimirPedidoAdmin(${p.id})">🖨️</button>`
+          ];
+          if (p.estado === 'CERRADO') {
+            acciones.push(`<button class="btn btn-outline btn-sm" title="Editar pagos" onclick="abrirModalEditarPagosAdmin(${p.id})">💳</button>`);
+            acciones.push(`<button class="btn btn-outline btn-sm" title="Eliminar pedido" onclick="eliminarPedidoAdmin(${p.id})" style="color:#DC2626;border-color:#FCA5A5;">🗑️</button>`);
+          }
+          h += `<tr>
+            <td>${p.id}</td>
+            <td>${p.mesa_nombre}</td>
+            <td>${new Date(p.created_at + 'Z').toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'})}</td>
+            <td><strong>S/${(p.total || 0).toFixed(2)}</strong></td>
+            <td>S/${(p.total_pagado_periodo || 0).toFixed(2)}</td>
+            <td><span class="badge ${badgeClass}">${p.estado}</span></td>
+            <td style="white-space:nowrap;">${acciones.join(' ')}</td>
+          </tr>`;
+        }
+        h += '</tbody></table></div>';
+      } else {
+        h += '<p class="empty-state">Sin pedidos con pago en esta fecha</p>';
+      }
+      if (detalle.length) {
+        h += '<h3 style="margin:24px 0 12px;font-size:1rem;">Detalle por producto</h3>';
+        h += '<div class="table-wrap"><table><thead><tr><th>Producto</th><th>Vendidos</th><th>Ingresos</th></tr></thead><tbody>';
+        for (const d of detalle) {
+          h += `<tr><td>${d.producto_nombre}</td><td>${d.total_vendido}</td><td>S/${(d.total_ingresos || 0).toFixed(2)}</td></tr>`;
+        }
+        h += '</tbody></table></div>';
+      }
+      el.innerHTML = h;
     }
 
     async function reimprimirPedidoAdmin(pedidoId) {
@@ -1172,13 +1512,393 @@
       } catch (e) { alert('Error de conexión'); }
     }
 
+    let adminEditarPagosData = null;
+
+    async function verPedidoAdmin(pedidoId) {
+      try {
+        const res = await fetch('/api/pedidos/' + pedidoId);
+        if (!res.ok) return alert('No se pudo cargar el pedido');
+        const p = await res.json();
+        const items = (p.items || []).map(i => {
+          const sub = i.cantidad * (i.precio_unitario + (i.precio_adicional || 0));
+          return `<tr><td>${i.cantidad}x ${i.producto_nombre}</td><td style="text-align:right;">S/${sub.toFixed(2)}</td></tr>`;
+        }).join('');
+        const pagos = (p.pagos || []).map(pg => {
+          return `<tr><td>${textoMetodo(pg.metodo)}</td><td style="text-align:right;">S/${pg.monto.toFixed(2)}</td><td>${pg.created_at || ''}</td></tr>`;
+        }).join('');
+        alert([
+          'Pedido #' + p.id + ' · ' + (p.mesa_nombre || '') + '\n',
+          'Estado: ' + p.estado,
+          'Total: S/' + (p.total || 0).toFixed(2),
+          '',
+          'ITEMS:',
+          items,
+          'PAGOS:',
+          pagos || '(sin pagos)'
+        ].join('\n').replace(/<[^>]+>/g, ''));
+      } catch (e) { alert('Error de conexión'); }
+    }
+
+    function textoMetodoAdminEdit(key) {
+      const m = metodosConfigurables().find(x => x.key === key);
+      return m ? `${m.label} ${m.texto}` : key;
+    }
+
+    const ADMIN_PAGO_LABELS = new Proxy({}, {
+      get: function (_, prop) { return textoMetodo(prop); }
+    });
+
+    async function abrirModalEditarPagosAdmin(pedidoId) {
+      try {
+        const res = await fetch('/api/pedidos/' + pedidoId);
+        if (!res.ok) return showToast('No se pudo cargar el pedido', 'error');
+        adminEditarPagosData = await res.json();
+        document.getElementById('adminEditarPagosId').textContent = adminEditarPagosData.id;
+        renderAdminEditarPagos();
+        document.getElementById('modalEditarPagos').classList.add('active');
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    function renderAdminEditarPagos() {
+      const p = adminEditarPagosData;
+      const total = (p.items || []).reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+      const descRow = p.descuentos || [];
+      const descFijo = descRow.filter(d => d.tipo === 'monto_fijo').reduce((s, d) => s + d.valor, 0);
+      const descPct = descRow.filter(d => d.tipo === 'porcentaje').reduce((s, d) => s + d.valor, 0);
+      const totalFinal = Math.max(0, total * (1 - descPct / 100) - descFijo);
+      const pagos = p.pagos || [];
+      const pagado = pagos.reduce((s, pg) => s + pg.monto, 0);
+
+      document.getElementById('adminEditarPagosInfo').innerHTML = `
+        <div style="background:var(--gray-light);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:0.85rem;">
+          <div style="display:flex;justify-content:space-between;"><span>Total</span><span style="font-weight:700;">S/${totalFinal.toFixed(2)}</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>Pagado</span><span style="font-weight:700;color:#059669;">S/${pagado.toFixed(2)}</span></div>
+        </div>`;
+
+      document.getElementById('adminEditarPagosList').innerHTML = pagos.length
+        ? pagos.map(pg => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;background:#fff;">
+              <div style="flex:1;">
+                <div style="font-weight:700;font-size:0.9rem;">${ADMIN_PAGO_LABELS[pg.metodo] || pg.metodo} — S/${pg.monto.toFixed(2)}${pg.propina > 0 ? ` <small style="color:#64748b;">+ propina S/${pg.propina.toFixed(2)}</small>` : ''}</div>
+                <div style="font-size:0.75rem;color:#64748b;">${pg.created_at || ''}${pg.usuario_nombre ? ' · ' + pg.usuario_nombre : ''}</div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="cambiarMetodoPagoAdmin(${pg.id})">✏️</button>
+              <button class="btn btn-outline btn-sm" style="color:#DC2626;border-color:#FCA5A5;" onclick="quitarPagoAdmin(${pg.id}, ${pg.monto})">🗑️</button>
+            </div>`).join('')
+        : '<p style="color:#64748b;text-align:center;padding:10px;">Sin pagos registrados</p>';
+    }
+
+    async function cambiarMetodoPagoAdmin(pagoId) {
+      const metodos = metodosConfigurables();
+      const actual = (adminEditarPagosData.pagos || []).find(pg => pg.id === pagoId)?.metodo;
+      const opciones = metodos.map(m => `${m.key}:${m.texto}`).join(', ');
+      const entrada = prompt('Nuevo método (' + opciones + '):', actual);
+      if (!entrada) return;
+      const metodo = entrada.trim().toLowerCase();
+      if (!metodos.some(m => m.key === metodo) && !['regalo', 'vale'].includes(metodo)) return showToast('Método inválido', 'error');
+      const motivo = prompt('Motivo (opcional):');
+      if (motivo === null) return;
+      try {
+        const res = await fetch(`/api/admin/pedidos/${adminEditarPagosData.id}/pagos/${pagoId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ metodo, motivo: (motivo || '').trim() || null, usuario_id: currentUser?.id })
+        });
+        const data = await res.json();
+        if (res.ok) { showToast('Método actualizado', 'ok'); await abrirModalEditarPagosAdmin(adminEditarPagosData.id); }
+        else showToast(data.error || 'Error', 'error');
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function quitarPagoAdmin(pagoId, monto) {
+      if (!confirm(`⚠️ Quitar este pago (S/${monto.toFixed(2)}) es una DEVOLUCIÓN: anulará el pedido #${adminEditarPagosData.id} completo, registrará un EGRESO en caja y liberará la mesa.`)) return;
+      const motivo = prompt('Motivo de la devolución (requerido):');
+      if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'error');
+      try {
+        const res = await fetch(`/api/admin/pedidos/${adminEditarPagosData.id}/pagos/${pagoId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser?.id })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          showToast('Pedido anulado (devolución)', 'ok');
+          closeModal('modalEditarPagos');
+          loadReportes();
+        } else showToast(data.error || 'Error', 'error');
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function eliminarPedidoAdmin(pedidoId) {
+      if (!confirm(`⚠️ Eliminar el pedido #${pedidoId} devolverá el total como EGRESO en caja, anulará el pedido y liberará la mesa.`)) return;
+      const motivo = prompt('Motivo de la eliminación (requerido):');
+      if (!motivo || !motivo.trim()) return showToast('El motivo es requerido', 'error');
+      try {
+        const res = await fetch('/api/admin/pedidos/' + pedidoId + '/eliminar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: motivo.trim(), usuario_id: currentUser?.id })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) { showToast('Pedido eliminado (devolución)', 'ok'); loadReportes(); }
+        else showToast(data.error || 'Error', 'error');
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    // ---- REPORTE: SESIONES DE CAJA ----
+    function switchReporteTab(tab) {
+      reporteTabActual = tab;
+      document.querySelectorAll('#sec-reportes .caja-tab').forEach(el => el.classList.remove('caja-tab-active'));
+      document.getElementById('reporteTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('caja-tab-active');
+      document.getElementById('reporteVentas').style.display = tab === 'ventas' ? 'block' : 'none';
+      document.getElementById('reporteSesiones').style.display = tab === 'sesiones' ? 'block' : 'none';
+      if (tab === 'ventas') loadReportes();
+      else loadSesionesCaja();
+    }
+
+    function formatFechaHora(iso) {
+      if (!iso) return '-';
+      try {
+        const d = new Date(iso + 'Z');
+        return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' +
+               d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+      } catch (e) { return iso; }
+    }
+
+    async function loadSesionesCaja() {
+      const resumenEl = document.getElementById('sesionesResumen');
+      const contentEl = document.getElementById('sesionesContent');
+      try {
+        const res = await fetch('/api/admin/caja/sesiones');
+        const sesiones = await res.json();
+        if (!sesiones.length) {
+          resumenEl.innerHTML = '';
+          contentEl.innerHTML = '<p class="empty-state">Aún no hay sesiones de caja cerradas</p>';
+          return;
+        }
+        const totalVentas = sesiones.reduce((s, x) => s + (x.total_ventas || 0), 0);
+        const totalPropinas = sesiones.reduce((s, x) => s + (x.propinas || 0), 0);
+        const totalPedidos = sesiones.reduce((s, x) => s + (x.total_pedidos || 0), 0);
+        resumenEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;">
+          <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #059669;">
+            <div style="font-size:0.75rem;color:#64748b;">Sesiones cerradas</div>
+            <div style="font-size:1.5rem;font-weight:800;">${sesiones.length}</div>
+          </div>
+          <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #3B82F6;">
+            <div style="font-size:0.75rem;color:#64748b;">Ventas acumuladas</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#059669;">S/${totalVentas.toFixed(2)}</div>
+          </div>
+          <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #F97316;">
+            <div style="font-size:0.75rem;color:#64748b;">Propinas acumuladas</div>
+            <div style="font-size:1.5rem;font-weight:800;color:#F97316;">S/${totalPropinas.toFixed(2)}</div>
+          </div>
+          <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #0D9488;">
+            <div style="font-size:0.75rem;color:#64748b;">Pedidos cerrados</div>
+            <div style="font-size:1.5rem;font-weight:800;">${totalPedidos}</div>
+          </div>
+        </div>`;
+
+        let h = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Apertura</th><th>Cierre</th><th>Cajero</th><th>Fondo</th><th>Ventas</th><th>Propinas</th><th>Pedidos</th><th>Efectivo esperado</th><th>Contado</th><th>Δ</th><th></th></tr></thead><tbody>';
+        for (const s of sesiones) {
+          const delta = s.sobrante_faltante == null ? '-' : (s.sobrante_faltante > 0 ? '+' : '') + s.sobrante_faltante.toFixed(2);
+          const deltaColor = (s.sobrante_faltante || 0) >= 0 ? '#059669' : '#DC2626';
+          h += `<tr>
+            <td>${s.id}</td>
+            <td>${formatFechaHora(s.opened_at)}</td>
+            <td>${formatFechaHora(s.closed_at)}</td>
+            <td>${s.usuario_nombre || '-'}</td>
+            <td>S/${(s.fondo_inicial || 0).toFixed(2)}</td>
+            <td style="font-weight:700;color:#059669;">S/${(s.total_ventas || 0).toFixed(2)}</td>
+            <td>S/${(s.propinas || 0).toFixed(2)}</td>
+            <td>${s.total_pedidos || 0}</td>
+            <td>S/${(s.efectivo_esperado == null ? 0 : s.efectivo_esperado).toFixed(2)}</td>
+            <td>S/${(s.efectivo_contado == null ? 0 : s.efectivo_contado).toFixed(2)}</td>
+            <td style="font-weight:700;color:${deltaColor};">${delta}</td>
+            <td><button class="btn btn-outline btn-sm" onclick="verSesionCaja(${s.id})">👁 Ver</button></td>
+          </tr>`;
+        }
+        h += '</tbody></table></div>';
+        contentEl.innerHTML = h;
+      } catch (e) {
+        contentEl.innerHTML = '<p class="empty-state">Error al cargar sesiones de caja</p>';
+      }
+    }
+
+    async function verSesionCaja(id) {
+      try {
+        const res = await fetch('/api/admin/caja/sesiones/' + id);
+        const data = await res.json();
+        renderSesionCajaModal(data);
+      } catch (e) {
+        showToast('Error al cargar la sesión', 'error');
+      }
+    }
+
+    function renderSesionCajaModal(data) {
+      const s = data.sesion;
+      const desglose = data.desglose || {};
+      const metodos = metodosConfigurables();
+      const delta = s.sobrante_faltante == null ? '-' : (s.sobrante_faltante > 0 ? '+' : '') + s.sobrante_faltante.toFixed(2);
+      const deltaColor = (s.sobrante_faltante || 0) >= 0 ? '#059669' : '#DC2626';
+
+      let h = `<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <strong style="color:#334155;">Sesión #${s.id}</strong>
+          <span class="badge badge-green">CERRADA</span>
+        </div>
+        <div style="font-size:0.85rem;color:#475569;line-height:1.7;">
+          <div>🔓 Apertura: ${formatFechaHora(s.opened_at)} — ${s.usuario_nombre || 'N/A'} (Fondo: S/${(s.fondo_inicial || 0).toFixed(2)})</div>
+          <div>🔒 Cierre: ${formatFechaHora(s.closed_at)} — ${s.cerrado_por_nombre || s.usuario_nombre || 'N/A'}</div>
+          <div>📋 Pedidos: <strong>${s.total_pedidos || 0}</strong> · 💰 Ventas: <strong style="color:#059669;">S/${(s.total_ventas || 0).toFixed(2)}</strong> · 💡 Propinas: <strong style="color:#F97316;">S/${(s.propinas || 0).toFixed(2)}</strong></div>
+          <div>💵 Efectivo esperado: S/${(s.efectivo_esperado == null ? 0 : s.efectivo_esperado).toFixed(2)} · Contado: S/${(s.efectivo_contado == null ? 0 : s.efectivo_contado).toFixed(2)} · Δ <strong style="color:${deltaColor};">${delta}</strong></div>
+          ${s.notas_apertura ? '<div>📝 Apertura: ' + s.notas_apertura + '</div>' : ''}
+          ${s.notas_cierre ? '<div>📝 Cierre: ' + s.notas_cierre + '</div>' : ''}
+        </div>
+      </div>`;
+
+      let hasDesg = false;
+      let desg = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">';
+      for (const m of metodos) {
+        const d = desglose[m.key];
+        if (!d || (d.total || 0) === 0) continue;
+        hasDesg = true;
+        desg += `<div style="background:white;padding:10px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:4px solid ${m.color};">
+          <div style="font-size:0.7rem;color:#64748b;">${m.label}</div>
+          <div style="font-size:1.1rem;font-weight:800;color:${m.color};">S/${(d.total || 0).toFixed(2)}</div>
+          <div style="font-size:0.7rem;color:#94a3b8;">${d.cantidad || 0} pago(s)</div>
+        </div>`;
+      }
+      desg += '</div>';
+      if (hasDesg) h += desg;
+
+      if (data.movimientos && data.movimientos.length) {
+        h += '<h3 style="font-size:0.9rem;color:#334155;margin:0 0 8px;">🔄 Movimientos</h3><div class="table-wrap" style="margin-bottom:14px;"><table><thead><tr><th>Hora</th><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Método</th><th>Persona</th></tr></thead><tbody>';
+        for (const mv of data.movimientos) {
+          h += `<tr>
+            <td>${formatFechaHora(mv.created_at).split(' ')[1]}</td>
+            <td>${mv.tipo === 'INGRESO' ? '<span class="badge badge-green">INGRESO</span>' : '<span class="badge badge-red">EGRESO</span>'}</td>
+            <td>${mv.concepto}${mv.notas ? '<br><small style="color:#94a3b8;">' + mv.notas + '</small>' : ''}</td>
+            <td style="font-weight:700;color:${mv.tipo === 'INGRESO' ? '#059669' : '#DC2626'};">${mv.tipo === 'INGRESO' ? '+' : '-'}S/${mv.monto.toFixed(2)}</td>
+            <td>${mv.metodo_pago}</td>
+            <td style="font-size:0.8rem;color:#64748b;">${mv.persona || '-'}</td>
+          </tr>`;
+        }
+        h += '</tbody></table></div>';
+      }
+
+      if (data.pagos && data.pagos.length) {
+        h += '<h3 style="font-size:0.9rem;color:#334155;margin:0 0 8px;">💵 Pagos registrados</h3><div class="table-wrap"><table><thead><tr><th>Hora</th><th>#Pedido</th><th>Método</th><th>Monto</th><th>Propina</th><th>Cajero</th></tr></thead><tbody>';
+        for (const pg of data.pagos) {
+          h += `<tr>
+            <td>${formatFechaHora(pg.created_at).split(' ')[1]}</td>
+            <td>#${pg.pedido_id}</td>
+            <td>${pg.metodo}</td>
+            <td style="font-weight:700;">S/${pg.monto.toFixed(2)}</td>
+            <td>S/${(pg.propina || 0).toFixed(2)}</td>
+            <td style="font-size:0.8rem;color:#64748b;">${pg.cajero_nombre || '-'}</td>
+          </tr>`;
+        }
+        h += '</tbody></table></div>';
+      }
+
+      if (!hasDesg && !data.movimientos?.length && !data.pagos?.length) {
+        h += '<p class="empty-state">Sesión sin movimientos registrados</p>';
+      }
+
+      document.getElementById('sesionCajaBody').innerHTML = h;
+      document.getElementById('modalSesionCaja').classList.add('active');
+    }
+
+    // ---- CAJA: ANULAR PEDIDO ----
+    let anularPedidoActual = null;
+
+    async function loadPedidosAnulables() {
+      const el = document.getElementById('anularContent');
+      try {
+        const res = await fetch('/api/admin/pedidos/anulables');
+        const pedidos = await res.json();
+        if (!pedidos.length) {
+          el.innerHTML = '<p class="empty-state">No hay pedidos activos para anular</p>';
+          return;
+        }
+        let h = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Mesa</th><th>Hora</th><th>Items</th><th>Total</th><th>Pagado</th><th>Estado</th><th></th></tr></thead><tbody>';
+        for (const p of pedidos) {
+          const hora = new Date(p.created_at + 'Z').toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+          const badgeClass = p.estado === 'ENTREGADO' ? 'badge-yellow' : p.estado === 'EN_PREPARACION' ? 'badge-blue' : p.estado === 'LISTO' ? 'badge-yellow' : 'badge-blue';
+          h += `<tr>
+            <td>${p.id}</td>
+            <td>${p.mesa_nombre || (p.mesa_numero ? 'Mesa ' + p.mesa_numero : '—')}${p.es_virtual ? ' <small style="color:#94a3b8;">(virtual)</small>' : ''}</td>
+            <td>${hora}</td>
+            <td>${p.items}</td>
+            <td><strong>S/${(p.total || 0).toFixed(2)}</strong></td>
+            <td style="color:${(p.pagado || 0) > 0 ? '#F59E0B' : '#94a3b8'};">S/${(p.pagado || 0).toFixed(2)}</td>
+            <td><span class="badge ${badgeClass}">${p.estado}</span></td>
+            <td><button class="btn btn-sm" style="background:#DC2626;color:white;" onclick="abrirModalAnular(${p.id})">🚫 Anular</button></td>
+          </tr>`;
+        }
+        h += '</tbody></table></div>';
+        el.innerHTML = h;
+      } catch (e) {
+        el.innerHTML = '<p class="empty-state">Error al cargar pedidos</p>';
+      }
+    }
+
+    async function abrirModalAnular(id) {
+      try {
+        const res = await fetch('/api/admin/pedidos/anulables');
+        const pedidos = await res.json();
+        const p = pedidos.find(x => x.id === id);
+        if (!p) return showToast('Pedido no encontrado', 'error');
+        anularPedidoActual = p;
+        const mesaNombre = p.mesa_nombre || (p.mesa_numero ? 'Mesa ' + p.mesa_numero : 'Sin mesa');
+        const warning = (p.pagado || 0) > 0
+          ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:0.85rem;color:#92400E;">⚠️ Este pedido ya tiene pagos registrados (S/${(p.pagado || 0).toFixed(2)}). Si el dinero fue devuelto, registra un movimiento EGRESO en Caja para compensar.</div>`
+          : '';
+        document.getElementById('anularPedidoInfo').innerHTML = `
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:0.85rem;line-height:1.7;color:#334155;">
+            <strong>Pedido #${p.id}</strong> — ${mesaNombre} · ${p.estado}<br>
+            Items: <strong>${p.items}</strong> · Total: <strong style="color:#059669;">S/${(p.total || 0).toFixed(2)}</strong> · Pagado: <strong style="color:${(p.pagado || 0) > 0 ? '#F59E0B' : '#94a3b8'};">S/${(p.pagado || 0).toFixed(2)}</strong>
+          </div>${warning}`;
+        document.getElementById('anularMotivo').value = '';
+        document.getElementById('anularDetalle').value = '';
+        document.getElementById('modalAnularPedido').classList.add('active');
+      } catch (e) {
+        showToast('Error al cargar el pedido', 'error');
+      }
+    }
+
+    async function confirmarAnularPedido() {
+      if (!anularPedidoActual) return;
+      const motivo = document.getElementById('anularMotivo').value;
+      if (!motivo) return showToast('Selecciona un motivo de anulación', 'warning');
+      const detalle = document.getElementById('anularDetalle').value.trim();
+      const texto = detalle ? motivo + ' — ' + detalle : motivo;
+      if (!confirm('¿Anular el pedido #' + anularPedidoActual.id + '?\nMotivo: ' + texto)) return;
+      try {
+        const res = await fetch('/api/admin/pedidos/' + anularPedidoActual.id + '/anular', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ motivo: texto, usuario_id: currentUser?.id || null })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          closeModal('modalAnularPedido');
+          showToast('Pedido anulado', 'success');
+          loadPedidosAnulables();
+        } else {
+          showToast(data.error || 'No se pudo anular el pedido', 'error');
+        }
+      } catch (e) {
+        showToast('Error de conexión', 'error');
+      }
+    }
+
     // ---- CORTE DE CAJA (Cierre tab) ----
-    async function loadCorteCaja(fecha) {
-      fecha = fecha || document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+    async function loadCorteCaja() {
       const el = document.getElementById('corteContent');
       const barEl = document.getElementById('corteSesionBar');
       try {
-        const res = await fetch('/api/admin/corte-caja?fecha=' + fecha);
+        const res = await fetch('/api/admin/corte-caja');
         const data = await res.json();
 
         // Sesion bar
@@ -1188,7 +1908,7 @@
           barEl.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
             <div>
               <span style="font-weight:600;color:#059669;">✅ Caja abierta</span>
-              <span style="font-size:0.8rem;color:#6B7280;margin-left:12px;">Fondo: $${(s.fondo_inicial || 0).toFixed(2)} — Abierta por: ${s.usuario_nombre || 'N/A'} a las ${apertura}</span>
+              <span style="font-size:0.8rem;color:#6B7280;margin-left:12px;">Fondo: S/${(s.fondo_inicial || 0).toFixed(2)} — Abierta por: ${s.usuario_nombre || 'N/A'} a las ${apertura}</span>
             </div>
             <button class="btn btn-sm" style="background:#DC2626;color:white;" onclick="cerrarCaja()">Cerrar caja</button>
           </div>`;
@@ -1199,22 +1919,15 @@
           </div>`;
         }
 
-        const metodos = [
-          { key: 'efectivo', label: '💵 Efectivo', color: '#059669' },
-          { key: 'tarjeta', label: '💳 Tarjeta', color: '#3B82F6' },
-          { key: 'transferencia', label: '📱 Transferencia', color: '#8B5CF6' },
-          { key: 'otros', label: '📋 Otros', color: '#6B7280' },
-          { key: 'vale', label: '🎫 Vales', color: '#F59E0B' },
-          { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
-        ];
+        const metodos = metodosConfigurables();
 
         let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;">`;
         for (const m of metodos) {
           const d = data.desglose[m.key] || { cantidad: 0, total: 0 };
           if (d.cantidad === 0) continue;
           h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid ${m.color};">
-            <div style="font-size:0.75rem;color:#64748b;">${m.label}</div>
-            <div style="font-size:1.4rem;font-weight:800;color:${m.color};">$${d.total.toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#64748b;">${m.label} ${m.texto || ''}</div>
+            <div style="font-size:1.4rem;font-weight:800;color:${m.color};">S/${d.total.toFixed(2)}</div>
             <div style="font-size:0.75rem;color:#94a3b8;">${d.cantidad} pago(s)</div>
           </div>`;
         }
@@ -1224,24 +1937,24 @@
         if (data.total_propina > 0) {
           h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;border-left:4px solid #F97316;">
             <div style="font-size:0.75rem;color:#64748b;">💡 Propinas totales</div>
-            <div style="font-size:1.4rem;font-weight:800;color:#F97316;">$${data.total_propina.toFixed(2)}</div>
+            <div style="font-size:1.4rem;font-weight:800;color:#F97316;">S/${data.total_propina.toFixed(2)}</div>
           </div>`;
         }
 
         h += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px;">
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
             <div style="font-size:0.8rem;color:#64748b;">TOTAL COBRADO</div>
-            <div style="font-size:2rem;font-weight:800;color:#059669;">$${data.total_general.toFixed(2)}</div>
+            <div style="font-size:2rem;font-weight:800;color:#059669;">S/${data.total_general.toFixed(2)}</div>
           </div>
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
             <div style="font-size:0.8rem;color:#64748b;">PEDIDOS CERRADOS</div>
             <div style="font-size:2rem;font-weight:800;">${data.total_pedidos}</div>
-            <div style="font-size:0.75rem;color:#94a3b8;">Suma: $${data.suma_pedidos.toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">Suma: S/${data.suma_pedidos.toFixed(2)}</div>
           </div>
           <div style="background:white;padding:20px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center;">
             <div style="font-size:0.8rem;color:#64748b;">TICKET PROMEDIO</div>
-            <div style="font-size:2rem;font-weight:800;color:#3B82F6;">$${(data.ticket_promedio || 0).toFixed(2)}</div>
-            <div style="font-size:0.75rem;color:#94a3b8;">${data.cancelados?.total > 0 ? `🚫 Cancelados: ${data.cancelados.total} (−$${(data.cancelados.suma || 0).toFixed(2)})` : 'Sin cancelados'}</div>
+            <div style="font-size:2rem;font-weight:800;color:#3B82F6;">S/${(data.ticket_promedio || 0).toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94a3b8;">${data.cancelados?.total > 0 ? `🚫 Cancelados: ${data.cancelados.total} (−S/${(data.cancelados.suma || 0).toFixed(2)})` : 'Sin cancelados'}</div>
           </div>
         </div>`;
 
@@ -1251,27 +1964,27 @@
             <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🏷️ Descuentos aplicados</div>
             <div style="display:flex;gap:16px;font-size:0.85rem;">
               <span>Total descuentos: <strong style="color:#DC2626;">${data.descuentos.total}</strong></span>
-              <span>Monto estimado: <strong>$${(data.descuentos.monto_estimado || 0).toFixed(2)}</strong></span>
+              <span>Monto estimado: <strong>S/${(data.descuentos.monto_estimado || 0).toFixed(2)}</strong></span>
             </div>
           </div>`;
         }
         if (data.vales_usados && data.vales_usados.total > 0) {
           h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
             <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🎫 Vales utilizados</div>
-            <div style="font-size:0.85rem;">${data.vales_usados.total} vale(s) — Total: <strong>$${data.vales_usados.suma.toFixed(2)}</strong></div>
+            <div style="font-size:0.85rem;">${data.vales_usados.total} vale(s) — Total: <strong>S/${data.vales_usados.suma.toFixed(2)}</strong></div>
           </div>`;
         }
         if (data.regalos && data.regalos.total > 0) {
           h += `<div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);margin-bottom:16px;">
             <div style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">🎁 Regalos/Obsequios</div>
-            <div style="font-size:0.85rem;">${data.regalos.total} regalo(s) — Total: <strong>$${data.regalos.suma.toFixed(2)}</strong></div>
+            <div style="font-size:0.85rem;">${data.regalos.total} regalo(s) — Total: <strong>S/${data.regalos.suma.toFixed(2)}</strong></div>
           </div>`;
         }
 
         const diff = data.suma_pedidos - data.total_general;
         if (Math.abs(diff) > 0.01) {
           h += `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.85rem;">
-            ⚠️ Diferencia: $${diff.toFixed(2)} (suma pedidos vs suma pagos)
+            ⚠️ Diferencia: S/${diff.toFixed(2)} (suma pedidos vs suma pagos)
           </div>`;
         }
 
@@ -1285,7 +1998,7 @@
             h += `<div style="margin-bottom:8px;">
               <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:2px;">
                 <span style="font-weight:600;">${t.nombre}</span>
-                <span style="color:#64748b;">${t.cantidad} ud · $${t.total.toFixed(2)}</span>
+                <span style="color:#64748b;">${t.cantidad} ud · S/${t.total.toFixed(2)}</span>
               </div>
               <div style="background:#F1F5F9;border-radius:6px;height:8px;overflow:hidden;">
                 <div style="width:${w}%;height:100%;background:#059669;border-radius:6px;"></div>
@@ -1304,8 +2017,8 @@
           for (const v of porHora) {
             const hgt = maxTotal > 0 ? Math.max(4, (v.total / maxTotal) * 100) : 4;
             h += `<div style="flex:1;text-align:center;">
-              <div style="background:#3B82F6;border-radius:4px 4px 0 0;height:${hgt}%;margin:0 auto;min-height:4px;max-width:26px;position:relative;" title="$${v.total.toFixed(2)} (${v.cantidad} pagos)">
-                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:#64748b;white-space:nowrap;">$${Math.round(v.total)}</div>
+              <div style="background:#3B82F6;border-radius:4px 4px 0 0;height:${hgt}%;margin:0 auto;min-height:4px;max-width:26px;position:relative;" title="S/${v.total.toFixed(2)} (${v.cantidad} pagos)">
+                <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:#64748b;white-space:nowrap;">S/${Math.round(v.total)}</div>
               </div>
               <div style="font-size:0.62rem;color:#94A3B8;margin-top:4px;">${v.hora}h</div>
             </div>`;
@@ -1320,13 +2033,14 @@
     }
 
     async function abrirCaja() {
-      const fondo = prompt('Fondo inicial de caja ($):', '500');
+      if (!currentUser) return showToast('Inicia sesión para abrir la caja', 'error');
+      const fondo = prompt('Fondo inicial de caja (S/):', '500');
       if (fondo === null) return;
       try {
         const res = await fetch('/api/admin/caja/abrir', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ usuario_id: 1, fondo_inicial: parseFloat(fondo) || 0 })
+          body: JSON.stringify({ usuario_id: currentUser.id, fondo_inicial: parseFloat(fondo) || 0 })
         });
         if (res.ok) {
           showToast('Caja abierta', 'success');
@@ -1345,6 +2059,26 @@
         const sesion = data;
         if (!sesion) return showToast('No hay sesión de caja abierta', 'warning');
 
+        let bloqueantes = [];
+        try {
+          const bres = await fetch('/api/admin/caja/bloqueantes');
+          const bdata = await bres.json();
+          bloqueantes = bdata.mesas || [];
+        } catch (e) { /* sin red: seguir sin validacion */ }
+
+        const body = document.getElementById('cierreCajaBody');
+        const btnConfirmar = document.getElementById('btnConfirmarCierre');
+
+        if (bloqueantes.length > 0) {
+          body.innerHTML = renderBloqueosCierre(bloqueantes);
+          btnConfirmar.disabled = true;
+          btnConfirmar.textContent = '⛔ Resolver mesas pendientes';
+          document.getElementById('modalCierreCaja').classList.add('active');
+          return;
+        }
+        btnConfirmar.disabled = false;
+        btnConfirmar.textContent = '✅ Confirmar cierre';
+
         const fondo = sesion.fondo_inicial || 0;
         const pagosEfectivo = sesion.pagos_efectivo || 0;
         const totalVentas = sesion.total_ventas || 0;
@@ -1360,34 +2094,23 @@
           else egresosEfectivo += mv.monto;
         }
 
-        const body = document.getElementById('cierreCajaBody');
-
-        const metodosCierre = [
-          { key: 'efectivo', label: '💵 Efectivo', color: '#059669' },
-          { key: 'tarjeta', label: '💳 Tarjeta', color: '#3B82F6' },
-          { key: 'transferencia', label: '📱 Transferencia', color: '#8B5CF6' },
-          { key: 'yape', label: '📱 Yape', color: '#7C3AED' },
-          { key: 'plin', label: '📱 Plin', color: '#2563EB' },
-          { key: 'otros', label: '📋 Otros', color: '#6B7280' },
-          { key: 'vale', label: '🎫 Vales', color: '#F59E0B' },
-          { key: 'regalo', label: '🎁 Regalos', color: '#EC4899' }
-        ];
+        const metodosCierre = metodosConfigurables();
 
         let desgloseHtml = '';
         for (const m of metodosCierre) {
           const d = desglose[m.key];
           if (!d || d.cantidad === 0) continue;
           desgloseHtml += `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #F1F5F9;font-size:0.85rem;">
-            <span>${m.label} <small style="color:#94A3B8;">(${d.cantidad} pago${d.cantidad !== 1 ? 's' : ''}${d.total_propina > 0 ? ` · propina $${d.total_propina.toFixed(2)}` : ''})</small></span>
-            <span style="font-weight:700;color:${m.color};">$${d.total.toFixed(2)}</span>
+            <span>${m.label} ${m.texto || ''} <small style="color:#94A3B8;">(${d.cantidad} pago${d.cantidad !== 1 ? 's' : ''}${d.total_propina > 0 ? ` · propina S/${d.total_propina.toFixed(2)}` : ''})</small></span>
+            <span style="font-weight:700;color:${m.color};">S/${d.total.toFixed(2)}</span>
           </div>`;
         }
 
         let html = `
           <div style="text-align:center;margin-bottom:20px;">
             <div style="font-size:0.8rem;color:#64748b;">Efectivo esperado en caja</div>
-            <div style="font-size:2.2rem;font-weight:800;color:#059669;">$${esperado.toFixed(2)}</div>
-            <div style="font-size:0.75rem;color:#94A3B8;">${totalPedidos} pedidos · Ventas: $${totalVentas.toFixed(2)} · Propinas: $${propinas.toFixed(2)}</div>
+            <div style="font-size:2.2rem;font-weight:800;color:#059669;">S/${esperado.toFixed(2)}</div>
+            <div style="font-size:0.75rem;color:#94A3B8;">${totalPedidos} pedidos · Ventas: S/${totalVentas.toFixed(2)} · Propinas: S/${propinas.toFixed(2)}</div>
           </div>
 
           <div style="background:#F8FAFC;border-radius:10px;padding:16px;margin-bottom:16px;">
@@ -1398,19 +2121,19 @@
           <div style="background:#F0FDF4;border-radius:10px;padding:16px;margin-bottom:16px;">
             <div style="font-size:0.8rem;font-weight:600;color:#059669;margin-bottom:10px;">📐 Fórmula de cálculo (efectivo)</div>
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
-              <span>Fondo inicial</span><span style="font-weight:600;">$${fondo.toFixed(2)}</span>
+              <span>Fondo inicial</span><span style="font-weight:600;">S/${fondo.toFixed(2)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
-              <span style="color:#059669;">+ Pagos en efectivo</span><span style="font-weight:600;color:#059669;">$${pagosEfectivo.toFixed(2)}</span>
+              <span style="color:#059669;">+ Pagos en efectivo</span><span style="font-weight:600;color:#059669;">S/${pagosEfectivo.toFixed(2)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
-              <span style="color:#059669;">+ Ingresos (movimientos)</span><span style="font-weight:600;color:#059669;">$${ingresosEfectivo.toFixed(2)}</span>
+              <span style="color:#059669;">+ Ingresos (movimientos)</span><span style="font-weight:600;color:#059669;">S/${ingresosEfectivo.toFixed(2)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #D1FAE5;font-size:0.9rem;">
-              <span style="color:#DC2626;">- Egresos (movimientos)</span><span style="font-weight:600;color:#DC2626;">$${egresosEfectivo.toFixed(2)}</span>
+              <span style="color:#DC2626;">- Egresos (movimientos)</span><span style="font-weight:600;color:#DC2626;">S/${egresosEfectivo.toFixed(2)}</span>
             </div>
             <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:0.95rem;font-weight:700;">
-              <span>= Efectivo esperado</span><span>$${esperado.toFixed(2)}</span>
+              <span>= Efectivo esperado</span><span>S/${esperado.toFixed(2)}</span>
             </div>
           </div>`;
 
@@ -1423,7 +2146,7 @@
             const prefix = mv.tipo === 'INGRESO' ? '+' : '-';
             html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:white;border-radius:6px;margin-bottom:4px;font-size:0.85rem;">
               <div>
-                <span style="color:${color};font-weight:600;">${prefix}$${mv.monto.toFixed(2)}</span>
+                <span style="color:${color};font-weight:600;">${prefix}S/${mv.monto.toFixed(2)}</span>
                 <span style="color:#64748b;margin-left:6px;">${mv.concepto}</span>
                 <span style="color:#9CA3AF;margin-left:4px;font-size:0.75rem;">${hora}</span>
               </div>
@@ -1459,8 +2182,8 @@
             el.style.background = '#FEF2F2';
             el.style.color = '#DC2626';
             const label = diff > 0 ? 'SOBRANTE' : 'FALTANTE';
-            el.innerHTML = `<div style="font-size:1.1rem;font-weight:700;">⚠️ ${label}: $${Math.abs(diff).toFixed(2)}</div>
-              <div style="font-size:0.8rem;margin-top:4px;">Esperado: $${esperado.toFixed(2)} | Contado: $${contado.toFixed(2)}</div>`;
+            el.innerHTML = `<div style="font-size:1.1rem;font-weight:700;">⚠️ ${label}: S/${Math.abs(diff).toFixed(2)}</div>
+              <div style="font-size:0.8rem;margin-top:4px;">Esperado: S/${esperado.toFixed(2)} | Contado: S/${contado.toFixed(2)}</div>`;
           }
         });
 
@@ -1473,25 +2196,103 @@
     async function confirmarCierreCaja() {
       const contado = document.getElementById('cierreContado').value;
       if (contado === '' || parseFloat(contado) < 0) return showToast('Ingresa el efectivo contado', 'warning');
+      if (!currentUser) return showToast('Inicia sesión para cerrar la caja', 'error');
 
       try {
         const res = await fetch('/api/admin/caja/cerrar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ efectivo_contado: parseFloat(contado), usuario_id: currentUser?.id || 1 })
+          body: JSON.stringify({ efectivo_contado: parseFloat(contado), usuario_id: currentUser.id })
         });
         if (res.ok) {
           const d = await res.json();
           closeModal('modalCierreCaja');
           const dif = Math.abs(d.sobrante_faltante);
-          let msg = `Caja cerrada · Ventas: $${(d.total_ventas || 0).toFixed(2)} · Esperado: $${d.efectivo_esperado.toFixed(2)} | Contado: $${d.efectivo_contado.toFixed(2)}`;
+          let msg = `Caja cerrada · Ventas: S/${(d.total_ventas || 0).toFixed(2)} · Esperado: S/${d.efectivo_esperado.toFixed(2)} | Contado: S/${d.efectivo_contado.toFixed(2)}`;
           if (dif > 0.01) {
-            msg += ` | ${d.sobrante_faltante > 0 ? 'SOBRANTE' : 'FALTANTE'}: $${dif.toFixed(2)}`;
+            msg += ` | ${d.sobrante_faltante > 0 ? 'SOBRANTE' : 'FALTANTE'}: S/${dif.toFixed(2)}`;
           } else {
             msg += ' | Cuadrada ✅';
           }
           showToast(msg, dif > 0.01 ? 'warning' : 'success');
           loadCaja();
+        } else {
+          const err = await res.json();
+          if (err.mesas && err.mesas.length > 0) {
+            const body = document.getElementById('cierreCajaBody');
+            body.innerHTML = renderBloqueosCierre(err.mesas);
+            const btnConfirmar = document.getElementById('btnConfirmarCierre');
+            btnConfirmar.disabled = true;
+            btnConfirmar.textContent = '⛔ Resolver mesas pendientes';
+            return;
+          }
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    function renderBloqueosCierre(mesas) {
+      const rows = mesas.map(m => {
+        let desc = '';
+        let accion = '';
+        if (m.tipo === 'COBRAR') {
+          desc = `💵 Cobro pendiente: <b>S/${m.pendiente.toFixed(2)}</b>${m.reservada ? ' <small>(mesa reservada)</small>' : ''}`;
+          accion = `<a class="btn btn-sm" style="background:#2563EB;color:white;text-decoration:none;flex-shrink:0;" href="/index.html?mesa=${m.id}" target="_blank">💵 Ir a cobrar</a>`;
+        } else if (m.tipo === 'LIBERAR') {
+          desc = '♻️ Ya está pagada, falta liberar la mesa';
+          accion = `<button class="btn btn-sm" style="background:#059669;color:white;" onclick="liberarMesaBloqueo(${m.id})">Liberar</button>`;
+        } else {
+          desc = '📍 Mesa reservada sin atender';
+          accion = `<button class="btn btn-sm" style="background:#D97706;color:white;" onclick="cancelarReservaBloqueo(${m.id})">Cancelar reserva</button>`;
+        }
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 10px;background:white;border:1px solid #FECACA;border-radius:8px;margin-bottom:6px;">
+          <div style="min-width:0;">
+            <div style="font-weight:700;font-size:0.88rem;">Mesa ${m.numero}${m.nombre ? ' — ' + m.nombre : ''}</div>
+            <div style="font-size:0.78rem;color:#DC2626;">${desc}${m.mesero_nombre ? ` · ${m.mesero_nombre}` : ''}</div>
+          </div>
+          ${accion}
+        </div>`;
+      }).join('');
+
+      return `
+        <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="font-size:1.1rem;">⛔</span>
+            <span style="font-weight:700;color:#B91C1C;">No se puede cerrar la caja</span>
+          </div>
+          <div style="font-size:0.8rem;color:#DC2626;margin-bottom:10px;">${mesas.length} mesa${mesas.length !== 1 ? 's' : ''} sin liberar o con cobro pendiente. Resuélvelas para continuar:</div>
+          ${rows}
+          <button class="btn btn-sm" style="background:#7C3AED;color:white;margin-top:10px;width:100%;" onclick="cerrarCaja()">🔄 Verificar de nuevo</button>
+        </div>`;
+    }
+
+    async function liberarMesaBloqueo(mesaId) {
+      try {
+        const res = await fetch(`/api/mesas/${mesaId}/liberar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesero_id: currentUser?.id || 1 })
+        });
+        if (res.ok) {
+          showToast('Mesa liberada', 'success');
+          cerrarCaja();
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    async function cancelarReservaBloqueo(mesaId) {
+      try {
+        const res = await fetch(`/api/mesas/${mesaId}/cancelar-reserva`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesero_id: currentUser?.id || 1 })
+        });
+        if (res.ok) {
+          showToast('Reserva cancelada', 'success');
+          cerrarCaja();
         } else {
           const err = await res.json();
           showToast(err.error || 'Error', 'error');
@@ -1503,10 +2304,17 @@
     let movimientosFilter = '';
     let movimientosData = [];
 
-    async function loadMovimientos(fecha) {
-      fecha = fecha || document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
+    async function loadMovimientos() {
       try {
-        const res = await fetch('/api/admin/caja/movimientos?fecha=' + fecha);
+        const select = document.getElementById('movMetodo');
+        if (select && !select.options.length) {
+          const metodosMov = ['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'];
+          const metodosCfg = metodosConfigurables().filter(m => !metodosMov.includes(m.key));
+          select.innerHTML = [...new Set([...metodosMov, ...metodosCfg.map(m => m.key)])]
+            .map(k => { const m = metodosConfigurables().find(x => x.key === k); return `<option value="${k}">${m ? m.label + ' ' + m.texto : k}</option>`; })
+            .join('');
+        }
+        const res = await fetch('/api/admin/caja/movimientos');
         movimientosData = await res.json();
         renderMovimientosResumen();
         renderMovimientosHistorial();
@@ -1515,11 +2323,15 @@
       }
     }
 
+    function labelMovimiento(met) {
+      const m = metodosConfigurables().find(x => x.key === met);
+      return m ? `${m.label} ${m.texto}`.trim() : met;
+    }
+
     function renderMovimientosResumen() {
       const el = document.getElementById('movResumen');
       let totalIngresos = 0, totalEgresos = 0;
       const porMetodo = {};
-      const metodosLabel = { efectivo: '💵 Efectivo', yape: '📱 Yape', plin: '📱 Plin', tarjeta: '💳 Tarjeta', transferencia: '🏦 Transferencia' };
 
       for (const mv of movimientosData) {
         if (mv.tipo === 'INGRESO') totalIngresos += mv.monto;
@@ -1532,15 +2344,15 @@
       let h = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:12px;">
         <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #059669;">
           <div style="font-size:0.75rem;color:#64748b;">Total Ingresos</div>
-          <div style="font-size:1.4rem;font-weight:800;color:#059669;">+$${totalIngresos.toFixed(2)}</div>
+          <div style="font-size:1.4rem;font-weight:800;color:#059669;">+S/${totalIngresos.toFixed(2)}</div>
         </div>
         <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid #DC2626;">
           <div style="font-size:0.75rem;color:#64748b;">Total Egresos</div>
-          <div style="font-size:1.4rem;font-weight:800;color:#DC2626;">-$${totalEgresos.toFixed(2)}</div>
+          <div style="font-size:1.4rem;font-weight:800;color:#DC2626;">-S/${totalEgresos.toFixed(2)}</div>
         </div>
         <div style="background:white;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:4px solid ${saldo >= 0 ? '#3B82F6' : '#EF4444'};">
           <div style="font-size:0.75rem;color:#64748b;">Saldo del día</div>
-          <div style="font-size:1.4rem;font-weight:800;color:${saldo >= 0 ? '#3B82F6' : '#EF4444'};">$${saldo.toFixed(2)}</div>
+          <div style="font-size:1.4rem;font-weight:800;color:${saldo >= 0 ? '#3B82F6' : '#EF4444'};">S/${saldo.toFixed(2)}</div>
         </div>
       </div>`;
 
@@ -1548,7 +2360,7 @@
         h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">`;
         for (const [met, val] of Object.entries(porMetodo)) {
           h += `<div style="background:white;padding:8px 12px;border-radius:8px;font-size:0.8rem;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-            <strong>${metodosLabel[met] || met}</strong>: <span style="color:#059669;">+$${val.ingresos.toFixed(2)}</span> / <span style="color:#DC2626;">-$${val.egresos.toFixed(2)}</span>
+            <strong>${labelMovimiento(met)}</strong>: <span style="color:#059669;">+S/${val.ingresos.toFixed(2)}</span> / <span style="color:#DC2626;">-S/${val.egresos.toFixed(2)}</span>
           </div>`;
         }
         h += `</div>`;
@@ -1558,7 +2370,6 @@
 
     function renderMovimientosHistorial() {
       const el = document.getElementById('movHistorial');
-      const metodosLabel = { efectivo: '💵', yape: '📱 Yape', plin: '📱 Plin', tarjeta: '💳', transferencia: '🏦' };
 
       let filtered = movimientosData;
       if (movimientosFilter) filtered = movimientosData.filter(m => m.tipo === movimientosFilter);
@@ -1580,8 +2391,8 @@
           <td>${hora}</td>
           <td>${tipoBadge}</td>
           <td>${mv.concepto}${mv.notas ? '<br><small style="color:#94a3b8;">' + mv.notas + '</small>' : ''}</td>
-          <td style="font-weight:700;color:${montoColor};">${montoPrefix}$${mv.monto.toFixed(2)}</td>
-          <td>${metodosLabel[mv.metodo_pago] || mv.metodo_pago}</td>
+          <td style="font-weight:700;color:${montoColor};">${montoPrefix}S/${mv.monto.toFixed(2)}</td>
+          <td>${labelMovimiento(mv.metodo_pago)}</td>
           <td>${mv.persona || '-'}</td>
           <td style="font-size:0.8rem;color:#64748b;">${mv.usuario_nombre || '-'}</td>
           <td><button class="btn btn-outline btn-sm" style="color:#DC2626;font-size:0.75rem;" onclick="eliminarMovimiento(${mv.id})">✕</button></td>
@@ -1640,9 +2451,8 @@
     }
 
     async function imprimirMovimientos() {
-      const fecha = document.getElementById('cajaFecha')?.value || new Date().toISOString().split('T')[0];
       try {
-        const res = await fetch('/api/admin/caja/movimientos/imprimir?fecha=' + fecha);
+        const res = await fetch('/api/admin/caja/movimientos/imprimir');
         const data = await res.json();
         showToast(data.ok ? 'Resumen impreso' : 'Error al imprimir', data.ok ? 'success' : 'warning');
       } catch (e) { showToast('Error de conexión', 'error'); }
@@ -1683,6 +2493,8 @@
           ? mesasDeArea.map(m => `<span style="display:inline-flex;align-items:center;gap:4px;background:${m.estado === 'INACTIVO' ? '#FEE2E2' : '#F1F5F9'};border-radius:8px;padding:4px 10px;font-size:0.8rem;font-weight:600;">
               ${m.nombre || 'Mesa ' + m.numero}
               ${m.estado === 'INACTIVO' ? '<span style="font-size:0.65rem;color:#DC2626;">INACTIVA</span>' : ''}
+              ${(m.estado === 'OCUPADO' || m.estado === 'CERRANDO' || m.estado === 'RESERVADO') && !m.tiene_pedido_activo
+                ? `<button onclick="liberarMesaAdmin(${m.id})" style="border:none;background:transparent;color:#DC2626;cursor:pointer;font-size:0.85rem;" title="Liberar mesa">🚪</button>` : ''}
               <button onclick="openMesaModal(${m.id})" style="border:none;background:transparent;color:#64748B;cursor:pointer;font-size:0.85rem;" title="Editar mesa">✏️</button>
               ${m.estado === 'INACTIVO'
                 ? `<button onclick="toggleMesaEstado(${m.id}, 'LIBRE')" style="border:none;background:transparent;color:#059669;cursor:pointer;font-size:0.85rem;" title="Activar mesa">🟢</button>`
@@ -1728,6 +2540,24 @@
     }
 
     let editingMesaId = null;
+
+    async function liberarMesaAdmin(mesaId) {
+      if (!confirm('¿Liberar esta mesa?')) return;
+      try {
+        const res = await fetch(`/api/mesas/${mesaId}/liberar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesero_id: currentUser?.id || 1 })
+        });
+        if (res.ok) {
+          showToast('Mesa liberada', 'success');
+          loadAreasAdmin();
+        } else {
+          const err = await res.json();
+          showToast(err.error || 'Error al liberar', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
 
     function openMesaModal(id) {
       editingMesaId = id || null;

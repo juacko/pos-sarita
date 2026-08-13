@@ -12,6 +12,7 @@ function createMesasRouter(io) {
           (SELECT COUNT(*) FROM pedidos WHERE mesa_id = m.id AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')) as tiene_pedido_activo,
           (SELECT total FROM pedidos WHERE id = m.pedido_activo_id) as pedido_total,
           (SELECT COALESCE(SUM(pg.monto), 0) FROM pagos pg WHERE pg.pedido_id = m.pedido_activo_id) as pedido_pagado,
+          (SELECT MAX(pg.created_at) FROM pagos pg WHERE pg.pedido_id = m.pedido_activo_id) as pagado_desde,
           (SELECT COALESCE(SUM(CASE WHEN d.tipo = 'porcentaje' THEN (p.total * d.valor / 100) ELSE d.valor END), 0)
             FROM descuentos d JOIN pedidos p ON p.id = d.pedido_id WHERE d.pedido_id = m.pedido_activo_id) as pedido_descuento,
           CASE WHEN EXISTS (
@@ -232,9 +233,9 @@ function createMesasRouter(io) {
 
     try {
       const result = db.transaction(() => {
-        const mesa = db.prepare('SELECT estado, version FROM mesas WHERE id = ?').get(mesaId);
+        const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
         if (!mesa) throw { status: 404, error: 'Mesa no existe' };
-        if (mesa.estado !== 'LIBRE') {
+        if (mesa.estado !== 'LIBRE' && mesa.estado !== 'RESERVADO') {
           throw { status: 409, error: `Mesa en estado ${mesa.estado}`, code: 'NOT_AVAILABLE' };
         }
 
@@ -246,7 +247,7 @@ function createMesasRouter(io) {
             ocupado_desde = datetime('now'),
             version = version + 1,
             updated_at = datetime('now')
-          WHERE id = ? AND version = ? AND estado = 'LIBRE'
+          WHERE id = ? AND version = ? AND estado IN ('LIBRE', 'RESERVADO')
         `).run(mesero_id, mesero.nombre, mesaId, mesa.version);
 
         if (info.changes === 0) {
@@ -296,7 +297,7 @@ function createMesasRouter(io) {
           }
         }
 
-        if (mesa.estado !== 'OCUPADO' && mesa.estado !== 'CERRANDO') {
+        if (mesa.estado !== 'OCUPADO' && mesa.estado !== 'CERRANDO' && mesa.estado !== 'RESERVADO') {
           throw { status: 409, error: `No se puede liberar una mesa en estado ${mesa.estado}` };
         }
 
@@ -382,6 +383,69 @@ function createMesasRouter(io) {
           INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
           VALUES (?, 'RESERVADA', ?, ?)
         `).run(mesaId, mesero_id, `Reservada para ${cliente_nombre} a las ${hora || 'N/A'}`);
+
+        return db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
+      })();
+
+      io.emit('mesa:updated', result);
+      res.json(result);
+    } catch (err) {
+      const status = err.status || 500;
+      res.status(status).json({ error: err.error || err.message, code: err.code });
+    } finally {
+      releaseTableLock(mesaId);
+    }
+  });
+
+  router.post('/:id/cancelar-reserva', (req, res) => {
+    const mesaId = parseInt(req.params.id);
+    const { mesero_id } = req.body;
+
+    if (!mesero_id) return res.status(400).json({ error: 'mesero_id es requerido' });
+
+    const lockAcquired = acquireTableLock(mesaId, mesero_id)
+      .catch(e => e);
+    if (lockAcquired instanceof Error) {
+      const err = lockAcquired;
+      return res.status(409).json({ error: err.error, code: err.code });
+    }
+
+    try {
+      const result = db.transaction(() => {
+        const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
+        if (!mesa) throw { status: 404, error: 'Mesa no existe' };
+
+        if (mesa.estado !== 'RESERVADO') {
+          throw { status: 409, error: `No se puede cancelar la reserva de una mesa en estado ${mesa.estado}` };
+        }
+
+        if (mesa.mesero_id !== mesero_id) {
+          const usuario = db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(mesero_id);
+          if (!usuario || usuario.rol !== 'admin') {
+            throw { status: 403, error: 'Solo el mesero asignado o un admin pueden cancelar la reserva' };
+          }
+        }
+
+        const info = db.prepare(`
+          UPDATE mesas SET
+            estado = 'LIBRE',
+            mesero_id = NULL,
+            mesero_nombre = NULL,
+            pedido_activo_id = NULL,
+            ocupado_desde = NULL,
+            version = version + 1,
+            updated_at = datetime('now')
+          WHERE id = ? AND version = ?
+        `).run(mesaId, mesa.version);
+
+        if (info.changes === 0) {
+          throw { status: 409, error: 'Conflicto de versión', code: 'VERSION_CONFLICT' };
+        }
+
+        db.prepare(`
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
+          VALUES (?, 'RESERVA_CANCELADA', ?, 'Reserva cancelada')
+        `).run(mesaId, mesero_id);
 
         return db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
       })();
