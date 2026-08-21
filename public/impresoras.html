@@ -149,7 +149,7 @@
       </div>
       <div class="config-card-body">
         <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">
-          Seleccionar impresora para comandas
+          Seleccionar impresora para comandas de cocina
         </label>
         <select id="selectCocina" class="printer-selector"></select>
         <div id="statusCocina" class="printer-status waiting">⚙️ Sin probar</div>
@@ -158,6 +158,26 @@
           <button class="btn btn-success btn-sm" onclick="guardarConfig()">💾 Guardar configuración</button>
         </div>
         <div id="testResultCocina"></div>
+      </div>
+    </div>
+
+    <!-- IMPRESORA BARRA -->
+    <div class="config-card" id="cardBarra" style="display:none;">
+      <div class="config-card-header">
+        <span>🍹 Impresora de Barra (Bebidas/Cócteles)</span>
+        <span class="badge badge-blue">80mm</span>
+      </div>
+      <div class="config-card-body">
+        <label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:4px;">
+          Seleccionar impresora para comandas de barra
+        </label>
+        <select id="selectBarra" class="printer-selector"></select>
+        <div id="statusBarra" class="printer-status waiting">⚙️ Sin probar</div>
+        <div class="btn-group">
+          <button class="btn btn-primary btn-sm" onclick="testPrinter('barra')">🖨️ Probar impresión</button>
+          <button class="btn btn-success btn-sm" onclick="guardarConfig()">💾 Guardar configuración</button>
+        </div>
+        <div id="testResultBarra"></div>
       </div>
     </div>
 
@@ -187,6 +207,7 @@
       document.getElementById('loadingMsg').style.display = 'block';
       document.getElementById('cardCaja').style.display = 'none';
       document.getElementById('cardCocina').style.display = 'none';
+      document.getElementById('cardBarra').style.display = 'none';
 
       try {
         const res = await fetch('/api/printers/detect');
@@ -211,9 +232,11 @@
         document.getElementById('loadingMsg').style.display = 'none';
         document.getElementById('cardCaja').style.display = 'block';
         document.getElementById('cardCocina').style.display = 'block';
+        document.getElementById('cardBarra').style.display = 'block';
 
         renderSelect('selectCaja', 'caja');
         renderSelect('selectCocina', 'cocina');
+        renderSelect('selectBarra', 'barra');
 
       } catch (e) {
         document.getElementById('loadingMsg').innerHTML = `
@@ -286,8 +309,9 @@
     async function guardarConfig() {
       const cajaName = document.getElementById('selectCaja').value;
       const cocinaName = document.getElementById('selectCocina').value;
+      const barraName = document.getElementById('selectBarra').value;
 
-      if (!cajaName && !cocinaName) {
+      if (!cajaName && !cocinaName && !barraName) {
         alert('Selecciona al menos una impresora');
         return;
       }
@@ -295,6 +319,7 @@
       const config = {};
       if (cajaName) config.caja = { nombre_impresora: cajaName, habilitada: true };
       if (cocinaName) config.cocina = { nombre_impresora: cocinaName, habilitada: true };
+      if (barraName) config.barra = { nombre_impresora: barraName, habilitada: true };
 
       try {
         const res = await fetch('/api/printers/config', {
@@ -307,6 +332,7 @@
           configActual = await res.json();
           renderSelect('selectCaja', 'caja');
           renderSelect('selectCocina', 'cocina');
+          renderSelect('selectBarra', 'barra');
         } else {
           alert('❌ Error al guardar');
         }

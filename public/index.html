@@ -39,9 +39,15 @@
 
   <!-- MAIN APP -->
   <div id="appContent" style="display:none;">
-    <div class="header">
+    <div class="header" id="mainHeader" style="flex-wrap: wrap; gap: 12px;">
       <h1>POS Sarita</h1>
-      <div class="header-info">
+      <div class="header-info" style="flex-wrap: wrap; gap: 8px;">
+        <button id="btnCajaHeader" class="btn btn-sm btn-caja-header" onclick="abrirModalCajaRapida()" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;">
+          🟢 Caja: S/ 0.00
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="abrirModalStockRapido()" style="font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+          📦 Stock Cocina
+        </button>
         <span id="userInfo"></span>
         <a href="/mesero.html" class="btn btn-outline btn-sm">👨‍🍳 Meseros</a>
         <a href="/admin.html" class="btn btn-outline btn-sm">⚙️ Admin</a>
@@ -51,11 +57,10 @@
 
     <!-- Mesa Grid View -->
     <div id="mesasView">
-      <div style="padding:12px 24px 0;display:flex;justify-content:space-between;align-items:center;">
-        <h2 style="font-size:1rem;color:var(--gray-dark);">Selecciona una mesa</h2>
-        <div style="display:flex;gap:6px;">
-          <a href="/impresoras.html" class="btn btn-outline btn-sm">🖨️ Impresoras</a>
+      <div style="padding:12px 24px 0;display:flex;justify-content:flex-end;align-items:center; flex-wrap: wrap; gap: 10px;">
+        <div style="display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end;">
           <button class="btn btn-outline btn-sm" onclick="toggleVistaPagados()">📋 Pagados</button>
+          <button id="toggleCanalesBtn" class="btn btn-outline btn-sm" onclick="toggleCanales()">🛵 Ocultar Canales</button>
           <button class="btn btn-outline btn-sm" onclick="loadMesas()">🔄 Refrescar</button>
         </div>
       </div>
@@ -66,46 +71,60 @@
     </div>
 
     <!-- POS Layout -->
-    <div id="posView" style="display:none;">
-      <div class="header" style="position:static;">
-        <div>
-          <span style="font-weight:700;">Mesa <span id="posMesaNumero"></span></span>
-          <span id="posMesaInfo" style="margin-left:12px;font-size:0.8rem;color:var(--gray);"></span>
+    <div id="posView" style="display:none; height:100vh; overflow:hidden;">
+      <div class="header pos-table-header">
+        <div class="pos-table-header-left">
+          <button class="btn-back-header" onclick="showMesasView()" title="Volver a mesas">
+            <span class="back-icon">←</span> <span class="back-text">Mesas</span>
+          </button>
+          <div class="pos-table-title-group">
+            <span class="pos-table-title">🍽️ <span id="posMesaNumero">Mesa</span></span>
+            <span id="posMesaInfo" class="pos-table-sub"></span>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="showMesasView()">← Volver a mesas</button>
+        <div class="pos-table-header-right">
+          <button id="btnCajaHeaderPOS" class="btn btn-sm btn-caja-header" onclick="abrirModalCajaRapida()" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;">
+            🟢 Caja: S/ 0.00
+          </button>
+          <span id="userInfoPOS" class="hide-on-mobile" style="font-size:0.85rem; color:var(--text-muted); font-weight:600;"></span>
+          <a href="/admin.html" class="btn btn-outline btn-sm hide-on-mobile" title="Panel Admin">⚙️ Admin</a>
         </div>
       </div>
       <div id="posClienteBar" style="display:none;background:#EFF6FF;border-bottom:1px solid #BFDBFE;padding:8px 24px;font-size:0.85rem;color:#1E40AF;"></div>
 
-      <div class="pos-layout">
-        <div class="pos-left">
+      <div class="pos-layout" style="height:calc(100vh - 54px); overflow:hidden;">
+        <div class="pos-left" style="height:100%; overflow-y:auto; box-sizing:border-box;">
           <div id="categoriaTabs" class="categoria-tabs"></div>
+          <div style="padding: 10px 16px 0 16px;">
+            <input id="searchProductosInput" type="text" class="form-control" placeholder="🔍 Buscar producto por nombre..." oninput="renderProductos()" style="width:100%; border-radius:10px; padding:10px 16px; font-size:1rem; border:1px solid #CBD5E1;">
+          </div>
           <div id="productosGrid" class="productos-grid"></div>
         </div>
 
-        <div class="pos-right">
-          <div class="pos-right-header">
-            <h2>Pedido Actual</h2>
+        <div class="pos-right" style="height:100%; overflow-y:auto; box-sizing:border-box; padding:14px 16px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div style="flex:1; display:flex; flex-direction:column; min-height:0;">
+            <div class="pos-right-header" style="padding:4px 0 8px; margin-bottom:6px;">
+              <h2 style="font-size:1.05rem; margin:0;">Pedido Actual</h2>
+            </div>
+            <div class="pos-right-items" id="pedidoItems" style="flex:1; overflow-y:auto; padding:0;">
+              <p style="color:var(--gray);font-size:0.875rem;text-align:center;padding:40px 0;">
+                Agrega productos al pedido
+              </p>
+            </div>
           </div>
-          <div class="pos-right-items" id="pedidoItems">
-            <p style="color:var(--gray);font-size:0.875rem;text-align:center;padding:40px 0;">
-              Agrega productos al pedido
-            </p>
-          </div>
-          <div class="pos-right-total">
-            <div class="total-line">
+          <div class="pos-right-total" style="padding:10px 0 0; border-top:1px solid var(--border);">
+            <div class="total-line" style="margin-bottom:8px;">
               <span>TOTAL</span>
               <span id="totalPedido">S/0.00</span>
             </div>
-            <div class="form-group" style="margin-bottom:8px;">
-              <label>Nota del pedido</label>
-              <textarea id="notaPedido" class="form-control" rows="2" placeholder="Nota para cocina..."></textarea>
+            <div class="form-group" style="margin-bottom:6px;">
+              <label style="font-size:0.75rem; font-weight:600;">Nota del pedido</label>
+              <textarea id="notaPedido" class="form-control" rows="2" placeholder="Nota para cocina..." style="font-size:0.82rem;"></textarea>
             </div>
-            <button class="btn btn-success btn-block" onclick="enviarPedido()">
+            <button class="btn btn-success btn-block" onclick="enviarPedido()" style="padding:11px; font-weight:800; font-size:0.95rem;">
               Enviar a Cocina
             </button>
-            <button class="btn btn-outline btn-block" onclick="cancelarPedido()" style="margin-top:4px;">
+            <button class="btn btn-outline btn-block" onclick="cancelarPedido()" style="margin-top:4px; padding:7px; font-size:0.85rem;">
               Cancelar pedido
             </button>
           </div>
@@ -114,68 +133,105 @@
     </div>
 
     <!-- Pedido View (resumen de pedido activo) -->
-    <div id="pedidoView" style="display:none;">
-      <div class="header" style="position:static;">
-        <div>
-          <span style="font-weight:700;">Mesa <span id="pedidoViewMesaNumero"></span></span>
-          <span id="pedidoViewInfo" style="margin-left:12px;font-size:0.8rem;color:var(--gray);"></span>
+    <div id="pedidoView" style="display:none; height:100vh; overflow:hidden;">
+      <div class="header pos-table-header">
+        <div class="pos-table-header-left">
+          <button class="btn-back-header" onclick="showMesasView()" title="Volver a mesas">
+            <span class="back-icon">←</span> <span class="back-text">Mesas</span>
+          </button>
+          <div class="pos-table-title-group">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="pos-table-title">🍽️ <span id="pedidoViewMesaNumero">Mesa</span></span>
+              <span id="pedidoViewEstado" class="badge badge-blue"></span>
+            </div>
+            <span id="pedidoViewInfo" class="pos-table-sub"></span>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="showMesasView()">← Volver a mesas</button>
+        <div class="pos-table-header-right">
+          <button id="btnCajaHeaderPedido" class="btn btn-sm btn-caja-header" onclick="abrirModalCajaRapida()" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;">
+            🟢 Caja: S/ 0.00
+          </button>
+          <span id="userInfoPedido" class="hide-on-mobile" style="font-size:0.85rem; color:var(--text-muted); font-weight:600;"></span>
+          <a href="/admin.html" class="btn btn-outline btn-sm hide-on-mobile" title="Panel Admin">⚙️ Admin</a>
         </div>
       </div>
 
-      <div class="pos-layout">
-        <div class="pos-left" style="display:flex;flex-direction:column;">
-          <div style="padding:8px 0;">
-            <h2 style="font-size:1rem;margin-bottom:4px;">Pedido #<span id="pedidoViewId"></span></h2>
-            <span id="pedidoViewEstado" class="badge badge-blue"></span>
+      <div class="pos-layout" style="height:calc(100vh - 54px); overflow:hidden;">
+        <div class="pos-left" style="display:flex;flex-direction:column;padding:14px 18px;overflow-y:auto;height:100%;box-sizing:border-box;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <h2 style="font-size:1.05rem;margin:0;">Comanda #<span id="pedidoViewId"></span></h2>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="abrirPOSFromPedido()" style="font-weight:700;padding:6px 12px;">
+              ➕ Agregar más productos
+            </button>
           </div>
-          <div id="pedidoViewCliente" style="display:none;background:#EFF6FF;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:0.8rem;color:#1E40AF;"></div>
-          <div id="pedidoViewItems" style="flex:1;overflow-y:auto;"></div>
-          <div id="pedidoViewPagos" style="border-top:1px solid #E5E7EB;padding-top:8px;margin-top:8px;"></div>
+          <div id="pedidoViewCliente" style="display:none;background:#EFF6FF;border-radius:8px;padding:6px 10px;margin-bottom:8px;font-size:0.8rem;color:#1E40AF;"></div>
+          
+          <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;display:flex;justify-content:space-between;">
+            <span>Platos y Bebidas Pedidos</span>
+            <small style="color:var(--primary);font-weight:600;">(Toca el botón ⋮ en cualquier plato para editar)</small>
+          </div>
+          <div id="pedidoViewItems" style="flex:1;overflow-y:auto;border-radius:10px;background:var(--surface);border:1px solid var(--border);padding:4px 12px;"></div>
+          <div id="pedidoViewPagos" style="border-top:1px solid var(--border);padding-top:6px;margin-top:8px;"></div>
         </div>
 
-        <div class="pos-right">
-          <div class="pos-right-header">
-            <h2>Resumen</h2>
-          </div>
-          <div class="pos-right-items">
-            <div id="pedidoViewResumen"></div>
-          </div>
-          <div class="pos-right-total">
-            <div class="total-line">
-              <span>TOTAL</span>
-              <span id="pedidoViewTotal">S/0.00</span>
+        <div class="pos-right" style="padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between;overflow-y:auto;height:100%;box-sizing:border-box;gap:6px;">
+          <div>
+            <!-- Resumen Total y Pendiente -->
+            <div style="background:var(--bg-main);border-radius:10px;padding:8px 12px;border:1px solid var(--border);margin-bottom:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">
+                <span style="font-size:0.75rem;color:var(--text-muted);font-weight:700;">TOTAL DE CUENTA</span>
+                <span id="pedidoViewTotal" style="font-size:1.55rem;font-weight:800;color:var(--text-dark);font-family:var(--font-display);line-height:1.1;">S/0.00</span>
+              </div>
+              <div id="pedidoViewPendiente" style="display:flex;justify-content:space-between;align-items:baseline;color:var(--danger);border-top:1px dashed var(--border);padding-top:3px;margin-top:3px;">
+                <span style="font-size:0.75rem;font-weight:700;">POR COBRAR:</span>
+                <span id="pedidoViewPendienteMonto" style="font-size:1.1rem;font-weight:800;">S/0.00</span>
+              </div>
             </div>
-            <div id="pedidoViewPendiente" class="total-line" style="font-size:1rem;color:var(--red);display:none;">
-              <span>Pendiente</span>
-              <span id="pedidoViewPendienteMonto">S/0.00</span>
-            </div>
-            <div id="pedidoViewActions">
-              <button class="btn btn-outline btn-block" id="btnAgregarMas" onclick="abrirPOSFromPedido()">
-                ➕ Agregar productos
+
+            <!-- Botones de Acción Primaria -->
+            <button class="btn btn-success btn-block" id="btnCobrarPedido" onclick="abrirModalCobro()" style="padding:10px;font-size:0.95rem;font-weight:800;margin-bottom:4px;box-shadow:var(--shadow-md);">
+              💰 COBRAR PEDIDO
+            </button>
+            <button class="btn btn-outline btn-block" id="btnAgregarMas" onclick="abrirPOSFromPedido()" style="padding:7px;font-size:0.85rem;font-weight:700;margin-bottom:6px;">
+              ➕ Agregar productos a la comanda
+            </button>
+          </div>
+
+          <!-- Cuadrícula de Acciones Secundarias (2 Columnas compactas, cero scroll) -->
+          <div style="border-top:1px solid var(--border);padding-top:6px;">
+            <div style="font-size:0.68rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Opciones de Mesa y Pedido</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;" id="pedidoViewOpcionesGrid">
+              <button class="btn btn-outline btn-sm" id="btnDividirCuenta" onclick="abrirModalDividirCuenta()" style="font-weight:700;padding:6px 2px;font-size:0.8rem;color:#0284C7;border-color:#BAE6FD;grid-column:span 2;">
+                🔀 Dividir Cuenta (Por platos o partes)
               </button>
-              <button class="btn btn-success btn-block" id="btnCobrarPedido" onclick="abrirModalCobro()">
-                💰 COBRAR
+              <button class="btn btn-outline btn-sm" id="btnPrecuenta" onclick="imprimirPrecuenta()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;">
+                🖨️ Pre-cuenta
               </button>
-              <button class="btn btn-danger btn-block" id="btnLiberarMesa" onclick="liberarMesaDesdePedido()" style="display:none;margin-top:4px;">
-                🚪 Liberar Mesa (clientes se van)
+              <button class="btn btn-outline btn-sm" id="btnYapeRapido" onclick="abrirCobroYapePOS()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;color:#742B90;border-color:#D8B4E2;">
+                📱 Cobro Yape
               </button>
-              <button class="btn btn-outline btn-block" id="btnAnularPedido" onclick="anularPedidoDesdePOS()" style="margin-top:4px;color:#DC2626;border-color:#FCA5A5;display:none;">
+              <button class="btn btn-outline btn-sm" id="btnMoverMesa" onclick="abrirMoverMesaPOS()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;">
+                🚚 Mover mesa
+              </button>
+              <button class="btn btn-outline btn-sm" id="btnUnirMesa" onclick="abrirUnirMesaPOS()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;">
+                🪑 Unir mesa
+              </button>
+              <button class="btn btn-outline btn-sm" id="btnAnularPedido" onclick="anularPedidoDesdePOS()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;color:#DC2626;border-color:#FCA5A5;">
                 🚫 Anular pedido
               </button>
-              <button class="btn btn-outline btn-block" id="btnReimprimirPedido" onclick="reimprimirPedido()" style="margin-top:4px;display:none;">
-                🖨️ Reimprimir ticket
+              <button class="btn btn-outline btn-sm" id="btnLiberarMesa" onclick="liberarMesaDesdePedido()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;color:#B45309;border-color:#FDE68A;">
+                🚪 Liberar mesa
               </button>
-              <button class="btn btn-outline btn-block" id="btnEditarPagos" onclick="abrirModalEditarPagos()" style="margin-top:4px;display:none;">
+              <button class="btn btn-outline btn-sm" id="btnReimprimirPedido" onclick="reimprimirPedido()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;display:none;">
+                🖨️ Reimprimir
+              </button>
+              <button class="btn btn-outline btn-sm" id="btnEditarPagos" onclick="abrirModalEditarPagos()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;display:none;">
                 💳 Editar pagos
               </button>
-              <button class="btn btn-outline btn-block" id="btnEliminarPedidoPagado" onclick="eliminarPedidoPagado()" style="margin-top:4px;color:#DC2626;border-color:#FCA5A5;display:none;">
-                🗑️ Eliminar pedido
-              </button>
-              <button class="btn btn-outline btn-block" id="btnPrecuenta" onclick="imprimirPrecuenta()" style="margin-top:4px;">
-                📄 Imprimir Pre-cuenta
+              <button class="btn btn-outline btn-sm" id="btnEliminarPedidoPagado" onclick="eliminarPedidoPagado()" style="font-weight:600;padding:6px 2px;font-size:0.8rem;color:#DC2626;border-color:#FCA5A5;display:none;grid-column:span 2;">
+                🗑️ Eliminar pedido pagado
               </button>
             </div>
           </div>
@@ -432,7 +488,277 @@
     </div>
   </div>
 
-  <!-- MODAL SIN CAJA ABIERTA -->
+  <!-- MESA DESTINO MODAL (MOVER / UNIR) -->
+  <div class="modal-overlay" id="destinoModal" onclick="if(event.target===this)closeDestinoModalPOS()">
+    <div class="modal" style="max-width:440px;">
+      <div class="modal-header">
+        <h2 id="destinoModalTitle" style="font-family:var(--font-display);font-size:1.2rem;">🔀 Seleccionar mesa</h2>
+        <button class="modal-close" onclick="closeDestinoModalPOS()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div id="destinoModalList" style="display:grid;gap:8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeDestinoModalPOS()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MOVER ITEMS MODAL -->
+  <div class="modal-overlay" id="moverItemsModal" onclick="if(event.target===this)closeMoverItemsModalPOS()">
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2 id="moverItemsTitle" style="font-family:var(--font-display);font-size:1.2rem;">Mover productos</h2>
+        <button class="modal-close" onclick="closeMoverItemsModalPOS()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <p id="moverItemsInfo" style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;"></p>
+        <div id="moverItemsList" style="margin-bottom:12px;max-height:40vh;overflow-y:auto;"></div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;gap:8px;">
+        <button class="btn btn-outline" onclick="closeMoverItemsModalPOS()">Cancelar</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-primary btn-sm" onclick="confirmarMoverItemsPOS('seleccionados')">Mover seleccionados</button>
+          <button class="btn btn-success btn-sm" onclick="confirmarMoverItemsPOS('todo')">Mover todo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPCIONES ITEM MODAL -->
+  <div class="modal-overlay" id="opcionesItemModal" onclick="if(event.target===this)closeOpcionesItemModalPOS()">
+    <div class="modal" style="max-width:420px; padding:0;">
+      <div class="modal-header" style="border-bottom:1px solid #E2E8F0; padding:14px 18px;">
+        <h2 style="font-size:1.1rem; line-height:1.3;" id="opcionesItemTitle">Opciones del Ítem</h2>
+        <button class="modal-close" onclick="closeOpcionesItemModalPOS()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px; display:flex; flex-direction:column; gap:10px;">
+        <div id="opcionesItemContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGO QR MODAL -->
+  <div class="modal-overlay" id="qrPagoModal" style="z-index:9999;" onclick="if(event.target===this)closeQrPagoModalPOS()">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h2 style="font-family:var(--font-display);font-size:1.25rem;">📱 Pago con Yape</h2>
+        <button class="modal-close" onclick="closeQrPagoModalPOS()">&times;</button>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; padding:16px; background:#F8FAFC;">
+        <div style="text-align:center; margin-bottom:8px;">
+          <p style="font-size:0.85rem; color:#64748b; margin:0 0 2px;">Total a Pagar</p>
+          <h1 id="qrMontoTotal" style="font-size:2rem; font-weight:800; color:#111827; margin:0;">S/0.00</h1>
+        </div>
+
+        <div style="background:white; padding:10px; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.06); margin-bottom:12px; text-align:center; width:100%; max-width:200px;">
+          <img src="/img/qr-yape.png" alt="QR Yape" style="width:100%; max-width:160px; border-radius:10px; display:block; margin:0 auto;" onerror="this.onerror=null; this.src='https://via.placeholder.com/160?text=QR+Faltante';">
+          <p style="font-weight:700; font-size:0.82rem; color:#475569; margin-top:6px; margin-bottom:0;">JUVENAL HUARINO PAZ</p>
+        </div>
+
+        <div style="width:100%; max-width:280px;">
+          <label style="display:block; font-weight:700; font-size:0.82rem; color:#334155; margin-bottom:4px; text-align:center;">Código de Aprobación (Referencia)</label>
+          <input id="qrCodigoAprobacion" type="text" class="form-control" placeholder="Ej: 123456" style="font-size:1.1rem; text-align:center; letter-spacing:2px; height:42px;">
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:12px;">
+        <button class="btn btn-outline" style="flex:1;" onclick="closeQrPagoModalPOS()">Cancelar</button>
+        <button class="btn btn-primary" style="flex:2; background:#742B90; border-color:#742B90; font-weight:700;" onclick="confirmarPagoQrPOS()">✅ Confirmar Pago</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DIVIDIR CUENTA -->
+  <div id="dividirCuentaModal" class="modal-overlay" onclick="if(event.target===this)closeModalDividirCuenta()">
+    <div class="modal" style="max-width:580px; max-height:92vh; display:flex; flex-direction:column; padding:0;">
+      <!-- Header -->
+      <div class="modal-header" style="padding:14px 18px; border-bottom:1px solid var(--border);">
+        <div>
+          <h2 style="font-size:1.15rem; margin:0 0 2px 0;">🔀 Dividir y Cobrar Cuenta</h2>
+          <span style="font-size:0.8rem; color:var(--text-muted);">Mesa: <strong id="dividirMesaNombre">-</strong> · Pedido #<span id="dividirPedidoId">-</span></span>
+        </div>
+        <button class="modal-close" onclick="closeModalDividirCuenta()">&times;</button>
+      </div>
+
+      <!-- Resumen de Saldos de Mesa -->
+      <div style="background:var(--bg-main); padding:10px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:0.85rem;">
+        <div>
+          <span style="color:var(--text-muted);">Total Mesa:</span> <strong id="dividirTotalMesa" style="color:var(--text-dark);">S/ 0.00</strong>
+        </div>
+        <div>
+          <span style="color:var(--success);">Pagado:</span> <strong id="dividirPagadoMesa" style="color:var(--success);">S/ 0.00</strong>
+        </div>
+        <div>
+          <span style="color:var(--danger); font-weight:700;">Saldo Restante:</span> <strong id="dividirPendienteMesa" style="color:var(--danger); font-size:1.05rem;">S/ 0.00</strong>
+        </div>
+      </div>
+
+      <!-- Tabs Selector -->
+      <div style="display:flex; border-bottom:1px solid var(--border); background:var(--surface);">
+        <button id="tabBtnDividirPlatos" class="caja-tab active" onclick="cambiarTabDividir('platos')" style="flex:1; padding:10px; font-weight:700; border:none; border-bottom:3px solid var(--primary); background:transparent; cursor:pointer;">
+          🍽️ Por Platos (Selección)
+        </button>
+        <button id="tabBtnDividirPartes" class="caja-tab" onclick="cambiarTabDividir('partes')" style="flex:1; padding:10px; font-weight:700; border:none; border-bottom:3px solid transparent; color:var(--text-muted); background:transparent; cursor:pointer;">
+          ➗ En Partes Iguales
+        </button>
+      </div>
+
+      <!-- Body Tabs -->
+      <div class="modal-body" style="padding:14px 18px; flex:1; overflow-y:auto;">
+        
+        <!-- TAB 1: POR PLATOS -->
+        <div id="tabDividirPlatos">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:0.8rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Selecciona los platos a pagar</span>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-outline btn-sm" onclick="seleccionarTodosDividir(true)" style="padding:2px 8px; font-size:0.75rem;">Marcar todos</button>
+              <button class="btn btn-outline btn-sm" onclick="seleccionarTodosDividir(false)" style="padding:2px 8px; font-size:0.75rem;">Desmarcar</button>
+            </div>
+          </div>
+
+          <!-- Lista de Platos -->
+          <div id="dividirListaItems" style="border:1px solid var(--border); border-radius:10px; background:var(--surface); max-height:180px; overflow-y:auto; padding:4px 10px; margin-bottom:12px;"></div>
+
+          <!-- Panel de Cobro del Cliente Actual -->
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px; margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+              <span style="font-size:0.85rem; font-weight:700; color:var(--text-dark);">Total de este Comensal:</span>
+              <span id="dividirSubtotalCliente" style="font-size:1.55rem; font-weight:800; color:var(--primary); font-family:var(--font-display);">S/ 0.00</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Nombre Comensal (opcional)</label>
+                <input type="text" id="dividirNombreCliente" class="form-control" placeholder="Ej: Juan / Persona 1" style="height:36px; font-size:0.85rem;">
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Referencia / N° Operación</label>
+                <input type="text" id="dividirReferencia" class="form-control" placeholder="Ej: 456789" style="height:36px; font-size:0.85rem;">
+              </div>
+            </div>
+
+            <!-- Selector de Métodos de Pago -->
+            <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:4px;">Método de Pago</label>
+            <div id="dividirMetodosPago" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:8px;"></div>
+
+            <!-- Efectivo recibido / vuelto (si efectivo) -->
+            <div id="dividirEfectivoRow" style="display:none; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Monto recibido</label>
+                <input type="number" id="dividirMontoRecibido" class="form-control" step="0.5" placeholder="0.00" oninput="calcularVueltoDividir()" style="height:36px; font-size:0.9rem; font-weight:700;">
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Vuelto / Cambio</label>
+                <div id="dividirCambioCalculado" style="font-size:1.1rem; font-weight:800; color:var(--success); line-height:36px;">S/ 0.00</div>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+              <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer;">
+                <input type="checkbox" id="dividirCheckImprimir" checked style="width:16px; height:16px;">
+                <span>Imprimir ticket individual para este cliente</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: EN PARTES IGUALES -->
+        <div id="tabDividirPartes" style="display:none;">
+          <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px; margin-bottom:12px; text-align:center;">
+            <label style="display:block; font-size:0.85rem; font-weight:700; color:var(--text-dark); margin-bottom:6px;">¿Entre cuántas personas se divide la cuenta?</label>
+            
+            <!-- Contador -->
+            <div style="display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:8px;">
+              <button class="btn btn-outline" onclick="ajustarNumeroPartes(-1)" style="width:38px; height:38px; border-radius:50%; font-size:1.2rem; font-weight:800;">-</button>
+              <span id="dividirNumPersonas" style="font-size:1.7rem; font-weight:800; font-family:var(--font-display); min-width:44px;">2</span>
+              <button class="btn btn-outline" onclick="ajustarNumeroPartes(1)" style="width:38px; height:38px; border-radius:50%; font-size:1.2rem; font-weight:800;">+</button>
+            </div>
+
+            <!-- Chips Rápidos -->
+            <div style="display:flex; justify-content:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(2)">2 pers.</button>
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(3)">3 pers.</button>
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(4)">4 pers.</button>
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(5)">5 pers.</button>
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(6)">6 pers.</button>
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(8)">8 pers.</button>
+              <button class="btn btn-outline btn-sm" onclick="setNumeroPartes(10)">10 pers.</button>
+            </div>
+
+            <div style="border-top:1px dashed #CBD5E1; padding-top:8px; margin-top:8px; display:flex; justify-content:space-around;">
+              <div>
+                <span style="font-size:0.75rem; color:var(--text-muted);">Cuota por persona:</span>
+                <div id="dividirMontoPorPersona" style="font-size:1.35rem; font-weight:800; color:var(--primary);">S/ 0.00</div>
+              </div>
+              <div>
+                <span style="font-size:0.75rem; color:var(--text-muted);">Estado:</span>
+                <div id="dividirCuotasProgreso" style="font-size:1.05rem; font-weight:700; color:var(--text-dark);">0 de 2 pagadas</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lista de Cuotas -->
+          <div id="dividirListaCuotas" style="display:grid; gap:8px; max-height:220px; overflow-y:auto;"></div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer" style="padding:12px 18px; border-top:1px solid var(--border); display:flex; justify-content:space-between;">
+        <button class="btn btn-outline" onclick="closeModalDividirCuenta()">Cerrar</button>
+        <button class="btn btn-success" id="btnConfirmarDividirPlatos" onclick="confirmarPagoDivididoPlatos()" style="font-weight:800; padding:10px 18px;">
+          ✅ Cobrar Selección (S/ 0.00)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CAJA RÁPIDA (POS) -->
+  <div id="modalCajaRapida" class="modal-overlay" onclick="if(event.target===this)closeModalCajaRapida()">
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2 id="cajaRapidaTitle">💰 Control Rápido de Caja</h2>
+        <button class="modal-close" onclick="closeModalCajaRapida()">&times;</button>
+      </div>
+      <div class="modal-body" id="cajaRapidaBody">
+        <p class="empty-state">Cargando...</p>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <a href="/admin.html#caja" class="btn btn-outline btn-sm" onclick="closeModalCajaRapida()">⚙️ Panel Caja Completo</a>
+        <button class="btn btn-outline" onclick="closeModalCajaRapida()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL AJUSTE RÁPIDO DE STOCK DIARIO -->
+  <div id="stockRapidoModal" class="modal-overlay" onclick="if(event.target===this)cerrarModalStockRapido()">
+    <div class="modal" style="max-width:680px; width:95%;">
+      <div class="modal-header" style="background:#F8FAFC; border-bottom:1px solid #E2E8F0;">
+        <h2>📦 Control de Stock Diario (Cocina / Barra)</h2>
+        <button class="modal-close" onclick="cerrarModalStockRapido()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+          <input type="text" id="buscarStockRapidoInput" class="form-control" placeholder="🔍 Buscar plato o bebida..." oninput="filtrarListaStockRapido()" style="flex:1; min-width:200px; padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1;">
+          <select id="filtroCategoriaStockRapido" class="form-control" onchange="filtrarListaStockRapido()" style="width:auto; padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1;">
+            <option value="">Todas las categorías</option>
+          </select>
+        </div>
+
+        <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.85rem; color:#1E40AF; display:flex; justify-content:space-between; align-items:center;">
+          <span>💡 <strong>Tip:</strong> Activa el switch para controlar porciones restantes. Al llegar a 0 unidades, el sistema bloqueará su venta en mesero y caja.</span>
+        </div>
+
+        <div id="listaStockRapidoContainer" style="max-height:55vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">
+          <p class="empty-state">Cargando productos...</p>
+        </div>
+      </div>
+      <div class="modal-footer" style="background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between;">
+        <span style="font-size:0.85rem; color:#64748B;" id="stockRapidoInfo">Los cambios se aplican al instante</span>
+        <button class="btn btn-primary" onclick="cerrarModalStockRapido()">✓ Listo</button>
+      </div>
+    </div>
+  </div>
   <div id="sinCajaModal" class="modal-overlay" onclick="if(event.target===this)closeSinCajaModal()">
     <div class="modal" style="max-width:420px;text-align:center;">
       <div class="modal-body" style="padding:28px 24px;">
@@ -451,6 +777,7 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/socket-client.js"></script>
+  <script src="/js/modal-utils.js"></script>
   <script src="/js/login.js"></script>
   <script src="/js/mesas.js"></script>
   <script src="/js/pos.js"></script>

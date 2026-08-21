@@ -23,7 +23,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api/mesas', createMesasRouter(io));
 app.use('/api/pedidos', createPedidosRouter(io));
-app.use('/api/productos', createProductosRouter());
+app.use('/api/productos', createProductosRouter(io));
 app.use('/api/usuarios', createUsuariosRouter());
 app.use('/api/admin', createAdminRouter(io));
 
@@ -98,10 +98,11 @@ server.listen(PORT, '0.0.0.0', () => {
 ║  Accesos rápidos:                       ║
 ║  POS:     http://${ip}:${PORT}/           ║
 ║  Cocina:  http://${ip}:${PORT}/cocina.html ║
+║  Barra:   http://${ip}:${PORT}/barra.html  ║
 ║──────────────────────────────────────────║
 ║  PINs por defecto:                      ║
 ║  Admin: 1234  |  Mesero: 1111           ║
-║  Caja:  2222  |  Cocina: 3333           ║
+║  Caja:  2222  |  Cocina/Barra: 3333     ║
 ╚══════════════════════════════════════════╝
 `);
 });

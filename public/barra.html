@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cocina - POS Sarita</title>
+  <title>Barra - POS Sarita</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/modal-utils.js"></script>
   <style>
-    .cocina-layout {
+    .barra-layout {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
       gap: 18px;
@@ -25,7 +25,7 @@
       box-shadow: var(--shadow-sm);
       overflow: hidden;
       border: 1px solid var(--border);
-      border-top: 5px solid var(--warning);
+      border-top: 5px solid #4F46E5;
       transition: all 0.2s var(--ease-out);
     }
 
@@ -86,8 +86,8 @@
       font-family: var(--font-display);
       font-weight: 800;
       font-size: 1.15rem;
-      background: var(--primary-light);
-      color: var(--primary);
+      background: #EEF2FF;
+      color: #4F46E5;
       padding: 2px 10px;
       border-radius: var(--radius-sm);
       margin-right: 12px;
@@ -120,13 +120,13 @@
     }
 
     .comanda-item-nuevo {
-      background: var(--warning-light);
-      border: 1.5px solid var(--warning);
+      background: #DBEAFE;
+      border: 1.5px solid #2563EB;
       border-radius: var(--radius-full);
       padding: 2px 10px;
       font-size: 0.68rem;
       font-weight: 800;
-      color: var(--warning-text);
+      color: #1D4ED8;
       text-transform: uppercase;
       animation: pulseNuevo 1.5s infinite;
     }
@@ -139,7 +139,7 @@
     .comanda-item-check {
       width: 20px;
       height: 20px;
-      accent-color: var(--secondary);
+      accent-color: #4F46E5;
       cursor: pointer;
       flex-shrink: 0;
     }
@@ -177,7 +177,7 @@
       gap: 10px;
     }
 
-    .cocina-header {
+    .barra-header {
       background: var(--glass-bg);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
@@ -190,7 +190,7 @@
       box-shadow: var(--shadow-sm);
     }
 
-    .cocina-header h1 {
+    .barra-header h1 {
       font-size: 1.3rem;
       font-weight: 800;
       color: var(--text-dark);
@@ -236,8 +236,8 @@
   </style>
 </head>
 <body>
-  <div class="cocina-header">
-    <h1>👨‍🍳 COCINA - Pedidos en vivo</h1>
+  <div class="barra-header">
+    <h1>🍹 BARRA - Pedidos en vivo</h1>
     <div>
       <span id="pedidosCount" style="margin-right:16px;">0 pedidos</span>
       <button class="btn btn-warning btn-sm" onclick="openStockModal()" style="font-weight:700; margin-right:6px; background:#FEF3C7; color:#92400E; border:1px solid #FDE68A;">📦 Avisar Stock</button>
@@ -246,17 +246,17 @@
     </div>
   </div>
 
-  <!-- MODAL AVISO DE STOCK COCINA -->
-  <div class="modal-overlay" id="stockCocinaModal" onclick="if(event.target===this)closeStockModal()">
+  <!-- MODAL AVISO DE STOCK BARRA -->
+  <div class="modal-overlay" id="stockBarraModal" onclick="if(event.target===this)closeStockModal()">
     <div class="modal" style="max-width:680px; width:95%;">
       <div class="modal-header">
-        <h2>📦 Avisar Porciones Restantes a Meseros</h2>
+        <h2>📦 Avisar Stock de Bebidas / Barra a Meseros</h2>
         <button class="modal-close" onclick="closeStockModal()">&times;</button>
       </div>
       <div class="modal-body" style="max-height:65vh; overflow-y:auto; padding:16px;">
-        <input type="text" id="stockCocinaSearch" placeholder="🔍 Buscar plato..." oninput="renderStockCocinaList()" style="width:100%; padding:10px 14px; border:1px solid #CBD5E1; border-radius:8px; margin-bottom:12px; font-size:0.95rem;">
-        <div id="stockCocinaList" style="display:flex; flex-direction:column; gap:8px;">
-          <p style="text-align:center; color:#64748B;">Cargando platos...</p>
+        <input type="text" id="stockBarraSearch" placeholder="🔍 Buscar bebida o producto..." oninput="renderStockBarraList()" style="width:100%; padding:10px 14px; border:1px solid #CBD5E1; border-radius:8px; margin-bottom:12px; font-size:0.95rem;">
+        <div id="stockBarraList" style="display:flex; flex-direction:column; gap:8px;">
+          <p style="text-align:center; color:#64748B;">Cargando productos...</p>
         </div>
       </div>
       <div class="modal-footer" style="display:flex; justify-content:space-between;">
@@ -269,17 +269,17 @@
   <div class="modal-overlay" id="historialModal" onclick="if(event.target===this)closeHistorial()">
     <div class="modal" style="max-width:760px;">
       <div class="modal-header">
-        <h2>🕓 Historial de pedidos de cocina</h2>
+        <h2>🕓 Historial de pedidos de barra</h2>
         <button class="modal-close" onclick="closeHistorial()">&times;</button>
       </div>
       <div class="modal-body" id="historialBody" style="max-height:70vh;overflow-y:auto;"></div>
     </div>
   </div>
 
-  <div id="comandasContainer" class="cocina-layout">
+  <div id="comandasContainer" class="barra-layout">
     <div class="empty-state">
       <h2>🎯 Sin pedidos pendientes</h2>
-      <p>Los pedidos nuevos aparecerán aquí automáticamente</p>
+      <p>Los pedidos nuevos de barra aparecerán aquí automáticamente</p>
     </div>
   </div>
 
@@ -288,7 +288,7 @@
     const socket = io();
 
     function loadPedidos() {
-      fetch('/api/pedidos/cocina')
+      fetch('/api/pedidos/barra')
         .then(r => r.json())
         .then(renderPedidos)
         .catch(console.error);
@@ -301,7 +301,7 @@
         container.innerHTML = `
           <div class="empty-state" style="grid-column:1/-1;">
             <h2>🎯 Sin pedidos pendientes</h2>
-            <p>Los pedidos nuevos aparecerán aquí automáticamente</p>
+            <p>Los pedidos nuevos de barra aparecerán aquí automáticamente</p>
           </div>`;
         document.getElementById('pedidosCount').textContent = '0 pedidos';
         return;
@@ -350,18 +350,18 @@
                 const esNuevo = item.estado === 'PENDIENTE' && item.created_at && (Date.now() - new Date(item.created_at + 'Z').getTime()) < 3 * 60 * 1000;
                 return `
                 <div class="comanda-item ${item.estado === 'LISTO' ? 'listo' : ''}">
-                  <input type="checkbox" class="comanda-item-check" onchange="marcarItemCocinado(${item.id}, this.checked)" ${item.estado === 'LISTO' ? 'checked' : ''}>
+                  <input type="checkbox" class="comanda-item-check" onchange="marcarItemPreparado(${item.id}, this.checked)" ${item.estado === 'LISTO' ? 'checked' : ''}>
                   <div style="display:flex;align-items:center;flex:1;">
                     <span class="comanda-item-qty">${item.cantidad}</span>
                     <div class="comanda-item-info">
                       <div class="comanda-item-name">${item.producto_nombre} ${esNuevo ? '<span class="comanda-item-nuevo">Nuevo</span>' : ''}</div>
-                      ${item.variante_nombre ? `<div style="font-size:0.75rem;color:#3B82F6;font-weight:600;">${item.variante_nombre}</div>` : ''}
+                      ${item.variante_nombre ? `<div style="font-size:0.75rem;color:#4F46E5;font-weight:600;">${item.variante_nombre}</div>` : ''}
                       ${item.detalle ? `<div style="font-size:0.75rem;color:#64748b;">${item.detalle}</div>` : ''}
                       ${item.notas ? `<div class="comanda-item-nota">${item.notas}</div>` : ''}
                     </div>
                   </div>
                   <span class="comanda-item-status badge-${item.estado === 'PENDIENTE' ? 'yellow' : item.estado === 'COCINANDO' ? 'blue' : 'green'} badge">
-                    ${item.estado}
+                    ${item.estado === 'COCINANDO' ? 'PREPARANDO' : item.estado}
                   </span>
                 </div>`;
               }).join('');
@@ -370,7 +370,7 @@
           </div>
           <div class="comanda-footer">
             <button class="btn btn-primary btn-sm" onclick="marcarPreparando(${pedido.id})" ${pedido.estado !== 'ABIERTO' ? 'disabled' : ''}>
-              👨‍🍳 Preparando
+              🍹 Preparando
             </button>
             <button class="btn btn-success btn-sm" onclick="marcarListo(${pedido.id}, ${(pedido.items || []).filter(i => i.estado !== 'LISTO').length})" ${pedido.estado === 'LISTO' || pedido.estado === 'ENTREGADO' || pedido.estado === 'CERRADO' ? 'disabled' : ''}>
               ✅ Marcar todo listo
@@ -400,9 +400,9 @@
       if (pendientes > 0) {
         const ok = await customConfirm({
           title: 'Items Pendientes',
-          message: `Hay ${pendientes} item(s) sin marcar. ¿Marcar todo como listo de todas formas?`,
+          message: `Hay ${pendientes} item(s) de barra sin marcar. ¿Marcar todo como listo de todas formas?`,
           confirmText: 'Sí, marcar listo',
-          icon: '🍳'
+          icon: '🍹'
         });
         if (!ok) return;
       }
@@ -420,19 +420,11 @@
       }).catch(console.error);
     }
 
-    function marcarItemCocinado(itemId, checked) {
+    function marcarItemPreparado(itemId, checked) {
       fetch(`/api/pedidos/items/${itemId}/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: checked ? 'LISTO' : 'PENDIENTE' })
-      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
-    }
-
-    function marcarItemListo(itemId) {
-      fetch(`/api/pedidos/items/${itemId}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'LISTO' })
       }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
     }
 
@@ -452,7 +444,7 @@
       const body = document.getElementById('historialBody');
       body.innerHTML = '<p style="color:var(--gray);">Cargando historial...</p>';
       const qs = historialFecha ? `?fecha=${encodeURIComponent(historialFecha)}` : '';
-      fetch('/api/pedidos/cocina/historial' + qs)
+      fetch('/api/pedidos/barra/historial' + qs)
         .then(r => r.json())
         .then(renderHistorial)
         .catch(err => { body.innerHTML = '<p style="color:var(--danger);">Error al cargar historial</p>'; console.error(err); });
@@ -490,7 +482,7 @@
                     <span class="comanda-item-qty">${i.cantidad}</span>
                     <div class="comanda-item-info">
                       <div class="comanda-item-name">${i.producto_nombre}</div>
-                      ${i.variante_nombre ? `<div style="font-size:0.75rem;color:#3B82F6;font-weight:600;">${i.variante_nombre}</div>` : ''}
+                      ${i.variante_nombre ? `<div style="font-size:0.75rem;color:#4F46E5;font-weight:600;">${i.variante_nombre}</div>` : ''}
                       ${i.detalle ? `<div style="font-size:0.75rem;color:#64748b;">${i.detalle}</div>` : ''}
                     </div>
                     <span class="badge badge-${i.estado === 'PENDIENTE' ? 'yellow' : i.estado === 'COCINANDO' ? 'blue' : 'green'}">${i.estado}</span>
@@ -512,31 +504,31 @@
       document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-MX');
     }
 
-    let productosCocina = [];
+    let productosBarra = [];
 
     async function openStockModal() {
-      document.getElementById('stockCocinaModal').classList.add('active');
+      document.getElementById('stockBarraModal').classList.add('active');
       try {
         const res = await fetch('/api/productos');
         if (res.ok) {
-          productosCocina = await res.json();
-          renderStockCocinaList();
+          productosBarra = await res.json();
+          renderStockBarraList();
         }
       } catch (e) { console.error(e); }
     }
 
     function closeStockModal() {
-      document.getElementById('stockCocinaModal').classList.remove('active');
+      document.getElementById('stockBarraModal').classList.remove('active');
     }
 
-    function renderStockCocinaList() {
-      const container = document.getElementById('stockCocinaList');
+    function renderStockBarraList() {
+      const container = document.getElementById('stockBarraList');
       if (!container) return;
-      const q = (document.getElementById('stockCocinaSearch')?.value || '').trim().toLowerCase();
-      let list = productosCocina.filter(p => p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q));
+      const q = (document.getElementById('stockBarraSearch')?.value || '').trim().toLowerCase();
+      let list = productosBarra.filter(p => p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q));
 
       if (!list.length) {
-        container.innerHTML = '<p style="text-align:center; color:#64748B; padding:20px;">No se encontraron platos</p>';
+        container.innerHTML = '<p style="text-align:center; color:#64748B; padding:20px;">No se encontraron productos</p>';
         return;
       }
 
@@ -561,14 +553,14 @@
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
               <label style="display:flex; align-items:center; gap:4px; font-size:0.8rem; font-weight:600; cursor:pointer;">
-                <input type="checkbox" ${activo ? 'checked' : ''} onchange="toggleStockCocina(${p.id}, this.checked)" style="width:16px; height:16px;">
+                <input type="checkbox" ${activo ? 'checked' : ''} onchange="toggleStockBarra(${p.id}, this.checked)" style="width:16px; height:16px;">
                 Controlar
               </label>
               <div style="display:flex; align-items:center; gap:4px; opacity:${activo ? '1' : '0.4'}; pointer-events:${activo ? 'auto' : 'none'};">
-                <button class="btn btn-sm btn-secondary" onclick="ajustarStockCocina(${p.id}, -1)" style="padding:4px 10px; font-size:1rem; font-weight:bold;">-</button>
-                <input type="number" min="0" value="${stock}" onchange="fijarStockCocina(${p.id}, this.value)" style="width:50px; text-align:center; padding:4px; border:1px solid #CBD5E1; border-radius:6px; font-weight:bold;">
-                <button class="btn btn-sm btn-secondary" onclick="ajustarStockCocina(${p.id}, 1)" style="padding:4px 10px; font-size:1rem; font-weight:bold;">+</button>
-                <button class="btn btn-sm btn-danger" onclick="fijarStockCocina(${p.id}, 0)" style="padding:4px 8px; font-size:0.75rem; font-weight:bold;">🚫 0</button>
+                <button class="btn btn-sm btn-secondary" onclick="ajustarStockBarra(${p.id}, -1)" style="padding:4px 10px; font-size:1rem; font-weight:bold;">-</button>
+                <input type="number" min="0" value="${stock}" onchange="fijarStockBarra(${p.id}, this.value)" style="width:50px; text-align:center; padding:4px; border:1px solid #CBD5E1; border-radius:6px; font-weight:bold;">
+                <button class="btn btn-sm btn-secondary" onclick="ajustarStockBarra(${p.id}, 1)" style="padding:4px 10px; font-size:1rem; font-weight:bold;">+</button>
+                <button class="btn btn-sm btn-danger" onclick="fijarStockBarra(${p.id}, 0)" style="padding:4px 8px; font-size:0.75rem; font-weight:bold;">🚫 0</button>
               </div>
             </div>
           </div>
@@ -577,10 +569,10 @@
       container.innerHTML = html;
     }
 
-    async function toggleStockCocina(prodId, activo) {
-      const p = productosCocina.find(x => x.id === prodId);
+    async function toggleStockBarra(prodId, activo) {
+      const p = productosBarra.find(x => x.id === prodId);
       if (p) p.controlar_stock = activo ? 1 : 0;
-      renderStockCocinaList();
+      renderStockBarraList();
       await fetch(`/api/productos/${prodId}/stock`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -588,13 +580,13 @@
       });
     }
 
-    async function ajustarStockCocina(prodId, delta) {
-      const p = productosCocina.find(x => x.id === prodId);
+    async function ajustarStockBarra(prodId, delta) {
+      const p = productosBarra.find(x => x.id === prodId);
       if (!p) return;
       const nuevo = Math.max(0, (p.stock_actual || 0) + delta);
       p.stock_actual = nuevo;
       p.controlar_stock = 1;
-      renderStockCocinaList();
+      renderStockBarraList();
       await fetch(`/api/productos/${prodId}/stock`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -602,13 +594,13 @@
       });
     }
 
-    async function fijarStockCocina(prodId, valor) {
-      const p = productosCocina.find(x => x.id === prodId);
+    async function fijarStockBarra(prodId, valor) {
+      const p = productosBarra.find(x => x.id === prodId);
       if (!p) return;
       const nuevo = Math.max(0, parseInt(valor, 10) || 0);
       p.stock_actual = nuevo;
       p.controlar_stock = 1;
-      renderStockCocinaList();
+      renderStockBarraList();
       await fetch(`/api/productos/${prodId}/stock`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -617,20 +609,19 @@
     }
 
     socket.on('stock:actualizado', (data) => {
-      const p = productosCocina.find(x => x.id === data.producto_id);
+      const p = productosBarra.find(x => x.id === data.producto_id);
       if (p) {
         p.controlar_stock = data.controlar_stock;
         p.stock_actual = data.stock_actual;
         p.stock_minimo = data.stock_minimo;
-        renderStockCocinaList();
+        renderStockBarraList();
       }
     });
 
     socket.on('pedido:nuevo', () => {
       loadPedidos();
-      new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
+      new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
     });
-
     socket.on('pedido:actualizado', () => loadPedidos());
     socket.on('item:actualizado', () => loadPedidos());
     socket.on('mesa:updated', () => loadPedidos());

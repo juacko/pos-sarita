@@ -20,13 +20,24 @@ let config = {
     tipo: 'windows',
     habilitada: true,
     ancho_papel: 80
+  },
+  barra: {
+    nombre: 'Impresora Barra',
+    nombre_impresora: 'BARRA',
+    tipo: 'windows',
+    habilitada: true,
+    ancho_papel: 80
   }
 };
 
 if (fs.existsSync(CONFIG_PATH)) {
   try {
     const saved = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    config = { caja: { ...config.caja, ...saved.caja }, cocina: { ...config.cocina, ...saved.cocina } };
+    config = {
+      caja:   { ...config.caja,   ...saved.caja },
+      cocina: { ...config.cocina, ...saved.cocina },
+      barra:  { ...config.barra,  ...(saved.barra || {}) }
+    };
   } catch (e) {
     console.error('[PRINTERS] Error loading config:', e.message);
   }
@@ -488,9 +499,70 @@ function printPrecuenta(pedido, items, mesa) {
   return printRawEscPos(buffer, 'caja');
 }
 
+function generateComandaBarraText(pedido, items, mesa) {
+  const lines = [];
+  const ahora = new Date();
+  const hora = ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const fecha = ahora.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  lines.push(blankLine());
+  lines.push(bigText('BARRA'));
+  lines.push(sepLine('=', 'barra'));
+  lines.push(blankLine());
+  lines.push({ text: `MESA: ${mesa && (mesa.numero || mesa.nombre)}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
+  lines.push(twoCol(`TIPO: ${tipoLabel(mesa && mesa.area_tipo)}`, `HORA: ${hora}`, 48));
+  if (clienteRelevante(mesa) && pedido.cliente_nombre) {
+    lines.push({ text: `Cliente: ${pedido.cliente_nombre}`, align: 'L' });
+    if (pedido.cliente_telefono) lines.push({ text: `Tel: ${pedido.cliente_telefono}`, align: 'L' });
+    if (pedido.cliente_direccion) lines.push({ text: `Direccion: ${pedido.cliente_direccion}`, align: 'L' });
+    if (pedido.hora_recogida) lines.push({ text: `Recoger: ${pedido.hora_recogida}`, align: 'L' });
+  }
+  if (pedido.mesero_nombre) lines.push({ text: `Mesero: ${pedido.mesero_nombre}`, align: 'L' });
+  if (pedido.nota) lines.push({ text: `NOTA: ${pedido.nota}`, align: 'L', bold: true });
+  lines.push(sepLine('=', 'barra'));
+  lines.push(blankLine());
+
+  for (const item of items) {
+    if (item.estado === 'CANCELADO') continue;
+    lines.push({ text: `${item.cantidad}x  ${item.producto_nombre}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
+    if (item.variante_nombre) lines.push({ text: `     * ${item.variante_nombre}`, align: 'L' });
+    if (item.notas) lines.push({ text: `     * ${item.notas}`, align: 'L' });
+    try {
+      const mods = JSON.parse(item.modificadores_json || '[]');
+      if (mods.length) lines.push(...wrapText(`     + ${mods.map(modLabel).join(', ')}`, 48).map(t => ({ text: t, align: 'L' })));
+    } catch (e) {}
+    try {
+      const agrs = JSON.parse(item.agregados_json || '[]');
+      if (agrs.length) lines.push(...wrapText(`     + ${agrs.map(a => a.nombre || a).join(', ')}`, 48).map(t => ({ text: t, align: 'L' })));
+    } catch (e) {}
+    if (item.detalle) lines.push({ text: `     # ${item.detalle}`, align: 'L' });
+    lines.push(blankLine());
+  }
+
+  lines.push(sepLine('=', 'barra'));
+  lines.push({ text: `PEDIDO #${pedido.id}`, align: 'C', bold: true });
+  lines.push({ text: `${fecha}  ${hora}`, align: 'C' });
+
+  return buildEscPos(lines, 'barra');
+}
+
+function printComandaBarra(pedido, items, mesa) {
+  const buffer = generateComandaBarraText(pedido, items, mesa);
+  return printRawEscPos(buffer, 'barra');
+}
+
 function printComanda(pedido, items, mesa) {
-  const buffer = generateComandaText(pedido, items, mesa);
-  return printRawEscPos(buffer, 'cocina');
+  const itemsCocina = items.filter(i => ['cocina', 'ambos'].includes(i.destino_impresion || 'cocina'));
+  const itemsBarra  = items.filter(i => ['barra',  'ambos'].includes(i.destino_impresion || 'cocina'));
+
+  const results = [];
+  if (itemsCocina.length) {
+    results.push(printRawEscPos(generateComandaText(pedido, itemsCocina, mesa), 'cocina'));
+  }
+  if (itemsBarra.length) {
+    results.push(printRawEscPos(generateComandaBarraText(pedido, itemsBarra, mesa), 'barra'));
+  }
+  return results[0] || { ok: true };
 }
 
 function generateResumenMovimientosText(fecha, movimientos, totales) {
@@ -553,8 +625,9 @@ function getConfig() {
 }
 
 function updateConfig(newConfig) {
-  if (newConfig.caja) config.caja = { ...config.caja, ...newConfig.caja };
+  if (newConfig.caja)   config.caja   = { ...config.caja,   ...newConfig.caja };
   if (newConfig.cocina) config.cocina = { ...config.cocina, ...newConfig.cocina };
+  if (newConfig.barra)  config.barra  = { ...config.barra,  ...newConfig.barra };
   saveConfig();
   return config;
 }
@@ -607,15 +680,251 @@ function detectPrinters() {
   }
 }
 
+function generateCorteTicketText(tipo, data) {
+  const cols = anchoColumnas('caja');
+  const lines = [];
+  const ahora = new Date();
+  const fechaStr = ahora.toLocaleDateString('es-PE');
+  const horaStr = ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const esZ = tipo.toUpperCase() === 'Z';
+
+  lines.push(blankLine());
+  lines.push(bigText(esZ ? 'CORTE Z' : 'CORTE X'));
+  lines.push(midText(esZ ? 'CIERRE DEFINITIVO' : 'REPORTE PARCIAL'));
+  lines.push(bigText('POS SARITA'));
+  lines.push(sepLine('=', 'caja'));
+
+  lines.push(twoCol('FECHA EMISION:', `${fechaStr} ${horaStr}`, cols));
+  if (data.sesion_id || data.sesion?.id) {
+    lines.push(twoCol('SESION CAJA:', `#${data.sesion_id || data.sesion?.id}`, cols));
+  }
+  const openedAt = data.opened_at || data.sesion?.opened_at;
+  if (openedAt) {
+    const dOpen = new Date(openedAt);
+    lines.push(twoCol('APERTURA:', `${dOpen.toLocaleDateString('es-PE')} ${dOpen.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })}`, cols));
+  }
+  const cajero = data.cajero_nombre || data.usuario_nombre || data.sesion?.usuario_nombre;
+  if (cajero) lines.push(twoCol('CAJERO(A):', cajero, cols));
+  if (esZ && data.closed_at) {
+    const dClose = new Date(data.closed_at);
+    lines.push(twoCol('CIERRE:', `${dClose.toLocaleDateString('es-PE')} ${dClose.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })}`, cols));
+  }
+  lines.push(blankLine());
+
+  // --- VENTAS POR METODO DE PAGO ---
+  lines.push(sepLine('-', 'caja'));
+  lines.push({ text: 'RESUMEN DE VENTAS Y COBROS', align: 'C', bold: true });
+  lines.push(sepLine('-', 'caja'));
+
+  const desglose = data.desglose || {};
+  const entries = Object.entries(desglose);
+  if (entries.length === 0) {
+    lines.push({ text: 'Sin ventas registradas en el periodo', align: 'C' });
+  } else {
+    for (const [k, v] of entries) {
+      if (!v || (v.cantidad === 0 && (v.total || 0) === 0)) continue;
+      const label = `${textoDeMetodo(k)} (${v.cantidad}p)`;
+      lines.push(...rowLine(label, fmtMoney(v.total || 0), cols));
+      if (v.total_propina > 0) {
+        lines.push({ text: `   Propina: ${fmtMoney(v.total_propina)}`, align: 'L' });
+      }
+    }
+  }
+
+  lines.push(sepLine('-', 'caja'));
+  const totalVentas = data.total_ventas ?? data.total_general ?? 0;
+  const totRow = rowLine('TOTAL VENTAS', fmtMoney(totalVentas), cols)[0];
+  totRow.bold = true;
+  totRow.size = SZ_DOUBLE_W;
+  lines.push(totRow);
+
+  lines.push(twoCol('TOTAL PEDIDOS:', `${data.total_pedidos || 0}`, cols));
+  if (data.ticket_promedio != null) {
+    lines.push(twoCol('TICKET PROMEDIO:', fmtMoney(data.ticket_promedio), cols));
+  }
+  if ((data.propinas || data.total_propina) > 0) {
+    lines.push(twoCol('PROPINAS TOTALES:', fmtMoney(data.propinas || data.total_propina), cols));
+  }
+  if (data.cancelados?.total > 0) {
+    lines.push(twoCol('PEDIDOS ANULADOS:', `${data.cancelados.total} (-${fmtMoney(data.cancelados.suma || 0)})`, cols));
+  }
+  if (data.descuentos?.total > 0) {
+    lines.push(twoCol('DESCUENTOS:', `${data.descuentos.total} (-${fmtMoney(data.descuentos.monto_estimado || 0)})`, cols));
+  }
+  lines.push(blankLine());
+
+  // --- ARQUEO / CONTROL DE EFECTIVO ---
+  lines.push(sepLine('-', 'caja'));
+  lines.push({ text: 'CONTROL DE EFECTIVO (CAJA)', align: 'C', bold: true });
+  lines.push(sepLine('-', 'caja'));
+
+  const fondo = data.fondo_inicial ?? (data.sesion?.fondo_inicial || 0);
+  const pagosEf = data.pagos_efectivo ?? (desglose.efectivo?.total || 0);
+  const ingEf = data.ingresos_efectivo ?? 0;
+  const egrEf = data.egresos_efectivo ?? 0;
+  const espEf = data.efectivo_esperado ?? (fondo + pagosEf + ingEf - egrEf);
+
+  lines.push(...rowLine('(+) Fondo inicial', fmtMoney(fondo), cols));
+  lines.push(...rowLine('(+) Ventas en efectivo', fmtMoney(pagosEf), cols));
+  if (ingEf > 0) lines.push(...rowLine('(+) Ingresos caja', fmtMoney(ingEf), cols));
+  if (egrEf > 0) lines.push(...rowLine('(-) Egresos / Gastos', fmtMoney(egrEf), cols));
+  lines.push(sepLine('-', 'caja'));
+
+  const espRow = rowLine('(=) EFECTIVO ESPERADO', fmtMoney(espEf), cols)[0];
+  espRow.bold = true;
+  lines.push(espRow);
+
+  if (esZ || data.efectivo_contado != null) {
+    const contado = data.efectivo_contado || 0;
+    const dif = data.sobrante_faltante != null ? data.sobrante_faltante : (contado - espEf);
+    lines.push(...rowLine('(=) EFECTIVO CONTADO', fmtMoney(contado), cols));
+    
+    let estadoCuadre = 'CUADRADO (OK)';
+    if (Math.abs(dif) >= 0.01) {
+      estadoCuadre = dif > 0 ? `SOBRANTE (+${fmtMoney(dif)})` : `FALTANTE (${fmtMoney(dif)})`;
+    }
+    const difRow = rowLine('DIFERENCIA', estadoCuadre, cols)[0];
+    difRow.bold = true;
+    difRow.size = SZ_DOUBLE_W;
+    lines.push(difRow);
+  }
+
+  // --- DESGLOSE DE BILLETES Y MONEDAS (si fue provisto) ---
+  if (data.arqueo_desglose && Object.keys(data.arqueo_desglose).length > 0) {
+    lines.push(blankLine());
+    lines.push({ text: 'DETALLE CONTEO FISICO', align: 'C', bold: true });
+    for (const [denom, cant] of Object.entries(data.arqueo_desglose)) {
+      if (!cant || cant <= 0) continue;
+      const dNum = parseFloat(denom);
+      const sub = dNum * cant;
+      const denomLabel = dNum >= 10 ? `Billete S/${dNum}` : `Moneda S/${dNum.toFixed(2)}`;
+      lines.push(...rowLine(`${denomLabel} x ${cant}`, fmtMoney(sub), cols));
+    }
+  }
+
+  // --- MOVIMIENTOS RECIENTES ---
+  if (data.movimientos && data.movimientos.length > 0) {
+    lines.push(blankLine());
+    lines.push(sepLine('-', 'caja'));
+    lines.push({ text: 'GASTOS / MOVIMIENTOS DEL TURNO', align: 'C', bold: true });
+    for (const m of data.movimientos) {
+      const pfx = m.tipo === 'INGRESO' ? '+' : '-';
+      const mText = `[${pfx}] ${m.concepto}${m.persona ? ' (' + m.persona + ')' : ''}`;
+      lines.push(...rowLine(mText, `${pfx}${fmtMoney(m.monto)}`, cols));
+    }
+  }
+
+  if (data.notas_cierre) {
+    lines.push(blankLine());
+    lines.push(...wrapText(`NOTAS DE CIERRE: ${data.notas_cierre}`, cols).map(t => ({ text: t, align: 'L' })));
+  }
+
+  // --- FIRMAS PARA CORTE Z ---
+  if (esZ) {
+    lines.push(blankLine());
+    lines.push(blankLine());
+    lines.push(blankLine());
+    if (cols >= 48) {
+      lines.push({ text: '____________________        ____________________', align: 'C' });
+      lines.push({ text: '     CAJERO(A)                   ADMINISTRADOR  ', align: 'C' });
+    } else {
+      lines.push({ text: '________________________', align: 'C' });
+      lines.push({ text: 'CAJERO(A) RESPONSABLE', align: 'C' });
+      lines.push(blankLine());
+      lines.push(blankLine());
+      lines.push({ text: '________________________', align: 'C' });
+      lines.push({ text: 'ADMINISTRADOR / AUDITOR', align: 'C' });
+    }
+  }
+
+  lines.push(blankLine());
+  lines.push({ text: `*** FIN DEL CORTE ${tipo.toUpperCase()} ***`, align: 'C', bold: true });
+  lines.push(sepLine('=', 'caja'));
+
+  return buildEscPos(lines, 'caja');
+}
+
+function generateTicketDivididoText(pedido, itemsPagados, pago, mesa, infoDividido) {
+  const cols = anchoColumnas('caja');
+  const lines = [];
+  const totalPagadoParte = pago ? pago.monto : (itemsPagados || []).reduce((s, i) => s + (i.cantidad || 1) * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+
+  lines.push(...headerLines(pedido, mesa, 'CUENTA DIVIDIDA'));
+  lines.push({ text: '*** PAGO INDIVIDUAL ***', align: 'C', bold: true });
+  if (infoDividido && infoDividido.persona) {
+    lines.push({ text: `COMENSAL: ${infoDividido.persona}`, align: 'C' });
+  }
+  if (infoDividido && infoDividido.cuotaInfo) {
+    lines.push({ text: `DIVISIÓN: ${infoDividido.cuotaInfo}`, align: 'C' });
+  }
+
+  lines.push(blankLine());
+  lines.push(...tableHeader(cols));
+
+  if (itemsPagados && itemsPagados.length > 0) {
+    for (const item of itemsPagados) {
+      pushItemLines(lines, item, cols, true);
+    }
+  } else if (infoDividido && infoDividido.cuotaInfo) {
+    lines.push(...rowLine(`1x Cuota (${infoDividido.cuotaInfo})`, fmtMoney(totalPagadoParte), cols));
+    lines.push(blankLine());
+  }
+
+  lines.push(sepLine('-', 'caja'));
+  const totalRow = rowLine('TOTAL PAGADO', fmtMoney(totalPagadoParte), cols)[0];
+  totalRow.bold = true;
+  totalRow.size = SZ_DOUBLE_W;
+  lines.push(totalRow);
+  lines.push(sepLine('=', 'caja'));
+
+  if (pago) {
+    lines.push(blankLine());
+    let detalle = textoDeMetodo(pago.metodo);
+    if (pago.referencia) detalle += ` (${pago.referencia})`;
+    lines.push(...rowLine(`PAGO: ${detalle}`, fmtMoney(pago.monto), cols));
+    if (pago.cambio > 0) {
+      lines.push(...rowLine('VUELTO / CAMBIO', fmtMoney(pago.cambio), cols));
+    }
+  }
+
+  if (infoDividido && infoDividido.saldoPendiente != null) {
+    lines.push(blankLine());
+    lines.push(sepLine('-', 'caja'));
+    lines.push(...rowLine('TOTAL MESA', fmtMoney(infoDividido.totalMesa || pedido.total), cols));
+    lines.push(...rowLine('SALDO RESTANTE MESA', fmtMoney(infoDividido.saldoPendiente), cols));
+  }
+
+  lines.push(...footerLines());
+
+  return buildEscPos(lines, 'caja');
+}
+
+function printTicketDividido(pedido, itemsPagados, pago, mesa, infoDividido) {
+  const buffer = generateTicketDivididoText(pedido, itemsPagados, pago, mesa, infoDividido);
+  return printRawEscPos(buffer, 'caja');
+}
+
+function printCorteCaja(tipo, data) {
+  const buffer = generateCorteTicketText(tipo, data);
+  return printRawEscPos(buffer, 'caja');
+}
+
 module.exports = {
   printTicket,
+  printTicketDividido,
+  generateTicketDivididoText,
   printPrecuenta,
   generatePrecuentaText,
   generateComandaText,
+  generateComandaBarraText,
   printComanda,
+  printComandaBarra,
   printResumenMovimientos,
+  generateCorteTicketText,
+  printCorteCaja,
   getConfig,
   updateConfig,
   testPrinter,
   detectPrinters
 };
+

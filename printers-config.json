@@ -12,5 +12,12 @@
     "tipo": "windows",
     "habilitada": true,
     "ancho_papel": 80
+  },
+  "barra": {
+    "nombre": "Impresora Barra",
+    "nombre_impresora": "80mm Series Printer",
+    "tipo": "windows",
+    "habilitada": true,
+    "ancho_papel": 80
   }
 }

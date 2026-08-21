@@ -6,6 +6,82 @@ const pagos = require('../metodos-pago');
 function createPedidosRouter(io) {
   const router = Router();
 
+  // ---- HELPER: resolver destino de impresión de un item ----
+  function resolverDestino(productoId) {
+    if (!productoId) return 'cocina';
+    const row = db.prepare(`
+      SELECT COALESCE(NULLIF(p.destino_override, ''), NULLIF(c.destino, ''), 'cocina') AS destino_resuelto
+      FROM productos p
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE p.id = ?
+    `).get(productoId);
+    return row ? row.destino_resuelto : 'cocina';
+  }
+
+  // ---- HELPERS CONTROL DE STOCK ----
+  function validarYDescontarStock(items) {
+    const requestedPerProduct = {};
+    for (const it of items || []) {
+      const prodId = it.producto_id || it.id;
+      if (!prodId) continue;
+      requestedPerProduct[prodId] = (requestedPerProduct[prodId] || 0) + (it.cantidad || 1);
+    }
+
+    const affectedProducts = [];
+    for (const [prodId, reqQty] of Object.entries(requestedPerProduct)) {
+      const prod = db.prepare('SELECT id, nombre, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+      if (!prod || !prod.controlar_stock) continue;
+
+      if (prod.stock_actual < reqQty) {
+        throw {
+          status: 400,
+          error: prod.stock_actual <= 0
+            ? `El producto "${prod.nombre}" se encuentra AGOTADO.`
+            : `Stock insuficiente para "${prod.nombre}". Solicitado: ${reqQty}, Disponible en cocina/barra: ${prod.stock_actual}.`
+        };
+      }
+
+      db.prepare('UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?').run(reqQty, prodId);
+      const updated = db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+      affectedProducts.push(updated);
+    }
+
+    return affectedProducts;
+  }
+
+  function reponerStock(items) {
+    const qtyPerProduct = {};
+    for (const it of items || []) {
+      const prodId = it.producto_id || it.id;
+      if (!prodId) continue;
+      qtyPerProduct[prodId] = (qtyPerProduct[prodId] || 0) + (it.cantidad || 1);
+    }
+
+    const affectedProducts = [];
+    for (const [prodId, qty] of Object.entries(qtyPerProduct)) {
+      const prod = db.prepare('SELECT id, controlar_stock, stock_minimo FROM productos WHERE id = ?').get(prodId);
+      if (!prod || !prod.controlar_stock) continue;
+
+      db.prepare('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?').run(qty, prodId);
+      const updated = db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+      affectedProducts.push(updated);
+    }
+
+    return affectedProducts;
+  }
+
+  function emitirStockActualizado(affectedProducts) {
+    if (!io || !affectedProducts || !affectedProducts.length) return;
+    for (const p of affectedProducts) {
+      io.emit('stock:actualizado', {
+        producto_id: p.id,
+        controlar_stock: p.controlar_stock,
+        stock_actual: p.stock_actual,
+        stock_minimo: p.stock_minimo
+      });
+    }
+  }
+
   // ---- HELPERS MOVIMIENTO ENTRE MESAS ----
   function recalcularTotalPedido(pedidoId) {
     const t = db.prepare(`
@@ -140,6 +216,8 @@ function createPedidosRouter(io) {
       const errorOpciones = validarOpcionesRequeridas(items);
       if (errorOpciones) return res.status(400).json({ error: errorOpciones });
 
+      let affectedStockProducts = [];
+
       const pedido = db.transaction(() => {
         const mesa = db.prepare('SELECT numero, nombre, estado, pedido_activo_id FROM mesas WHERE id = ?').get(mesa_id);
         if (!mesa) throw { status: 404, error: 'Mesa no encontrada' };
@@ -150,6 +228,9 @@ function createPedidosRouter(io) {
         if (pedidoActivo) {
           throw { status: 409, error: `La mesa ya tiene un pedido activo (#${pedidoActivo.id}). Usa ese pedido o anúlalo antes de crear otro` };
         }
+
+        // Validar y descontar stock disponible
+        affectedStockProducts = validarYDescontarStock(items);
 
         const mesero = mesero_id
           ? db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(mesero_id)
@@ -166,20 +247,21 @@ function createPedidosRouter(io) {
 
         const insertItem = db.prepare(`
           INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
-            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
           const precioBase = item.precio || 0;
           const precioAdic = item.precio_adicional || 0;
+          const destino = resolverDestino(item.producto_id || null);
           insertItem.run(
             pedidoId, item.producto_id || null, item.nombre, item.cantidad, precioBase,
             precioAdic, item.notas || null,
             item.variante_id || null, item.variante_nombre || null,
             JSON.stringify(item.modificadores || []),
             JSON.stringify(item.agregados || []),
-            item.detalle || ''
+            item.detalle || '', destino
           );
           total += item.cantidad * (precioBase + precioAdic);
         }
@@ -216,6 +298,7 @@ function createPedidosRouter(io) {
 
       io.emit('pedido:nuevo', { pedido, items: itemsData });
       io.emit('mesa:updated', mesaData);
+      emitirStockActualizado(affectedStockProducts);
 
       printers.printComanda(pedido, itemsData, mesaData);
 
@@ -235,6 +318,8 @@ function createPedidosRouter(io) {
       const errorOpciones = validarOpcionesRequeridas(items);
       if (errorOpciones) return res.status(400).json({ error: errorOpciones });
 
+      let affectedStockProducts = [];
+
       const result = db.transaction(() => {
         const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
         if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
@@ -244,24 +329,30 @@ function createPedidosRouter(io) {
           SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
         `).get(pedido.mesa_id);
 
+        // Validar y descontar stock disponible
+        affectedStockProducts = validarYDescontarStock(items);
+
         const insertItem = db.prepare(`
           INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
-            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         let total = 0;
+        const insertedItemIds = [];
         for (const item of items) {
           const precioBase = item.precio || 0;
           const precioAdic = item.precio_adicional || 0;
-          insertItem.run(
+          const destino = resolverDestino(item.producto_id || null);
+          const insRes = insertItem.run(
             req.params.id, item.producto_id || null, item.nombre, item.cantidad, precioBase,
             precioAdic, item.notas || null,
             item.variante_id || null, item.variante_nombre || null,
             JSON.stringify(item.modificadores || []),
             JSON.stringify(item.agregados || []),
-            item.detalle || ''
+            item.detalle || '', destino
           );
+          insertedItemIds.push(insRes.lastInsertRowid);
           total += item.cantidad * (precioBase + precioAdic);
         }
 
@@ -282,17 +373,134 @@ function createPedidosRouter(io) {
           db.prepare('UPDATE pedidos SET nota = ? WHERE id = ?').run(nota, req.params.id);
         }
 
+        const nuevosItems = itemsData.filter(i => insertedItemIds.includes(i.id));
+
         io.emit('pedido:actualizado', pedidoActualizado);
 
-        printers.printComanda(pedidoActualizado, itemsData, mesa);
+        printers.printComanda(pedidoActualizado, nuevosItems.length ? nuevosItems : itemsData, mesa);
 
         return { pedido: pedidoActualizado, items: itemsData };
       })();
+
+      emitirStockActualizado(affectedStockProducts);
 
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
+    }
+  });
+
+  router.patch('/:id/items/:itemId', (req, res) => {
+    try {
+      const { precio_adicional, cantidad, usuario_id } = req.body;
+      const result = db.transaction(() => {
+        const item = db.prepare('SELECT * FROM pedido_items WHERE id = ? AND pedido_id = ?').get(req.params.itemId, req.params.id);
+        if (!item) throw { status: 404, error: 'Item no encontrado en el pedido' };
+        
+        let updates = [];
+        let params = [];
+        if (precio_adicional !== undefined) {
+          updates.push('precio_adicional = ?');
+          params.push(parseFloat(precio_adicional) || 0);
+        }
+        if (cantidad !== undefined) {
+          const nuevaCantidad = parseInt(cantidad, 10);
+          if (isNaN(nuevaCantidad) || nuevaCantidad <= 0) {
+             throw { status: 400, error: 'Cantidad inválida' };
+          }
+          updates.push('cantidad = ?');
+          params.push(nuevaCantidad);
+        }
+        if (updates.length > 0) {
+          params.push(req.params.itemId);
+          db.prepare(`UPDATE pedido_items SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+          recalcularTotalPedido(req.params.id, db);
+        }
+        
+        return { message: 'Item actualizado correctamente' };
+      })();
+      
+      const pedidoInfo = db.prepare('SELECT mesa_id FROM pedidos WHERE id = ?').get(req.params.id);
+      if (pedidoInfo) {
+        const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(pedidoInfo.mesa_id);
+        io.emit('mesa:updated', mesa);
+        io.emit('pedido:items_updated', { pedidoId: req.params.id });
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.error || err.message });
+    }
+  });
+
+  router.post('/:id/items/:itemId/split', (req, res) => {
+    try {
+      const { splitCantidad, usuario_id } = req.body;
+      const result = db.transaction(() => {
+        const item = db.prepare('SELECT * FROM pedido_items WHERE id = ? AND pedido_id = ?').get(req.params.itemId, req.params.id);
+        if (!item) throw { status: 404, error: 'Item no encontrado' };
+        
+        const qSeparar = parseInt(splitCantidad, 10);
+        if (isNaN(qSeparar) || qSeparar <= 0 || qSeparar >= item.cantidad) {
+          throw { status: 400, error: 'Cantidad a separar inválida' };
+        }
+        
+        // 1. Update existing item
+        const nuevaCantidadOri = item.cantidad - qSeparar;
+        db.prepare('UPDATE pedido_items SET cantidad = ? WHERE id = ?').run(nuevaCantidadOri, req.params.itemId);
+        
+        // 2. Insert new split item
+        db.prepare(`
+          INSERT INTO pedido_items 
+          (pedido_id, producto_id, producto_nombre, variante_id, variante_nombre, cantidad, precio_unitario, precio_adicional, notas, detalle, destino_impresion, estado, modificadores_json, agregados_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          item.pedido_id, item.producto_id, item.producto_nombre, item.variante_id, item.variante_nombre,
+          qSeparar, item.precio_unitario, item.precio_adicional, item.notas, item.detalle, item.destino_impresion, item.estado, item.modificadores_json, item.agregados_json
+        );
+        
+        recalcularTotalPedido(req.params.id, db);
+        return { message: 'Item dividido correctamente' };
+      })();
+      
+      const pedidoInfo = db.prepare('SELECT mesa_id FROM pedidos WHERE id = ?').get(req.params.id);
+      if (pedidoInfo) {
+        const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(pedidoInfo.mesa_id);
+        io.emit('mesa:updated', mesa);
+        io.emit('pedido:items_updated', { pedidoId: req.params.id });
+      }
+      res.json(result);
+    } catch (err) {
+      const status = err.status || 500;
+      res.status(status).json({ error: err.error || err.message });
+    }
+  });
+
+  router.delete('/:id/items/:itemId', (req, res) => {
+    try {
+      let affectedStockProducts = [];
+      const result = db.transaction(() => {
+        const item = db.prepare('SELECT * FROM pedido_items WHERE id = ? AND pedido_id = ?').get(req.params.itemId, req.params.id);
+        if (!item) throw { status: 404, error: 'Item no encontrado' };
+        
+        affectedStockProducts = reponerStock([item]);
+        db.prepare('DELETE FROM pedido_items WHERE id = ?').run(req.params.itemId);
+        recalcularTotalPedido(req.params.id);
+        
+        return { message: 'Item eliminado correctamente' };
+      })();
+      
+      emitirStockActualizado(affectedStockProducts);
+
+      const pedidoInfo = db.prepare('SELECT mesa_id FROM pedidos WHERE id = ?').get(req.params.id);
+      if (pedidoInfo) {
+        const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(pedidoInfo.mesa_id);
+        io.emit('mesa:updated', mesa);
+        io.emit('pedido:items_updated', { pedidoId: req.params.id });
+      }
+      res.json(result);
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.error || err.message });
     }
   });
 
@@ -471,13 +679,17 @@ function createPedidosRouter(io) {
         ORDER BY p.created_at ASC
       `).all();
 
+      const resultado = [];
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
-          SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
         `).all(pedido.id);
+        if (pedido.items.length > 0) resultado.push(pedido);
       }
 
-      res.json(pedidos);
+      res.json(resultado);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -492,7 +704,8 @@ function createPedidosRouter(io) {
 
       const pedidos = db.prepare(`
         SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre,
-               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO') as total_items
+               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO'
+                  AND (pi.destino_impresion = 'cocina' OR pi.destino_impresion = 'ambos' OR pi.destino_impresion IS NULL)) as total_items
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
@@ -503,7 +716,70 @@ function createPedidosRouter(io) {
 
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
-          SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
+        `).all(pedido.id);
+      }
+
+      res.json(pedidos);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── BARRA ───
+  router.get('/barra', (req, res) => {
+    try {
+      const pedidos = db.prepare(`
+        SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre
+        FROM pedidos p
+        JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
+        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION')
+        ORDER BY p.created_at ASC
+      `).all();
+
+      const resultado = [];
+      for (const pedido of pedidos) {
+        pedido.items = db.prepare(`
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
+        `).all(pedido.id);
+        if (pedido.items.length > 0) resultado.push(pedido);
+      }
+
+      res.json(resultado);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/barra/historial', (req, res) => {
+    try {
+      const { fecha } = req.query;
+      const d = fecha ? new Date(fecha + 'T00:00:00') : new Date();
+      const ini = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 00:00:00';
+      const fin = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 23:59:59';
+
+      const pedidos = db.prepare(`
+        SELECT p.*, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre,
+               (SELECT COUNT(*) FROM pedido_items pi WHERE pi.pedido_id = p.id AND pi.estado != 'CANCELADO'
+                  AND (pi.destino_impresion = 'barra' OR pi.destino_impresion = 'ambos')) as total_items
+        FROM pedidos p
+        JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
+        WHERE p.estado IN ('LISTO', 'ENTREGADO', 'CERRADO')
+          AND p.created_at >= ? AND p.created_at <= ?
+        ORDER BY p.created_at DESC
+      `).all(ini, fin);
+
+      for (const pedido of pedidos) {
+        pedido.items = db.prepare(`
+          SELECT * FROM pedido_items
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
         `).all(pedido.id);
       }
 
@@ -726,6 +1002,155 @@ function createPedidosRouter(io) {
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
+    }
+  });
+
+  router.post('/:id/pagar-dividido', (req, res) => {
+    try {
+      const {
+        metodo,
+        monto,
+        monto_recibido,
+        usuario_id,
+        referencia,
+        propina,
+        tipo_division,
+        items_pagados,
+        persona,
+        cuota_info,
+        imprimir_ticket = true
+      } = req.body;
+
+      if (!metodo || !pagos.esMetodoValido(metodo)) {
+        return res.status(400).json({ error: 'Método de pago inválido o no habilitado' });
+      }
+
+      const montoNum = parseFloat(monto);
+      if (isNaN(montoNum) || montoNum <= 0) {
+        return res.status(400).json({ error: 'Monto inválido' });
+      }
+
+      const result = db.transaction(() => {
+        const sesionCaja = db.prepare("SELECT id FROM caja_sesiones WHERE estado = 'ABIERTA' ORDER BY id DESC LIMIT 1").get();
+        if (!sesionCaja) {
+          throw { status: 409, error: 'No hay caja abierta para cobrar. Abra la caja antes de registrar el pago', code: 'CAJA_CERRADA' };
+        }
+
+        const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+        if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
+        if (pedido.estado === 'CERRADO') throw { status: 409, error: 'El pedido ya está cerrado' };
+        if (pedido.estado === 'CANCELADO') throw { status: 409, error: 'El pedido está cancelado' };
+
+        const descuentoRow = db.prepare('SELECT COALESCE(SUM(CASE WHEN tipo = \'porcentaje\' THEN 0 ELSE valor END), 0) as fijo, SUM(CASE WHEN tipo = \'porcentaje\' THEN valor ELSE 0 END) as pct FROM descuentos WHERE pedido_id = ?').get(req.params.id);
+        const descuentoPorcentaje = descuentoRow.pct || 0;
+        const descuentoFijo = descuentoRow.fijo || 0;
+        const totalBruto = pedido.total;
+        const totalConDescuento = totalBruto * (1 - descuentoPorcentaje / 100) - descuentoFijo;
+        const totalFinal = Math.max(0, totalConDescuento);
+
+        const pagadoAnterior = db.prepare('SELECT COALESCE(SUM(monto), 0) as total FROM pagos WHERE pedido_id = ?')
+          .get(req.params.id).total;
+        const pendiente = Math.max(0, totalFinal - pagadoAnterior);
+
+        if (montoNum > pendiente + 0.05) {
+          throw { status: 400, error: `El monto (S/${montoNum.toFixed(2)}) excede el saldo pendiente (S/${pendiente.toFixed(2)})` };
+        }
+
+        let notasPago = '';
+        if (tipo_division === 'items' && Array.isArray(items_pagados) && items_pagados.length > 0) {
+          const descItems = items_pagados.map(i => `${i.cantidad || 1}x ${i.producto_nombre}`).join(', ');
+          notasPago = `Pago dividido (${persona ? persona + ': ' : ''}${descItems})`;
+
+          const updateItemPagado = db.prepare('UPDATE pedido_items SET cantidad_pagada = cantidad_pagada + ? WHERE id = ? AND pedido_id = ?');
+          for (const it of items_pagados) {
+            const curItem = db.prepare('SELECT id, cantidad, COALESCE(cantidad_pagada, 0) as cantidad_pagada FROM pedido_items WHERE id = ? AND pedido_id = ?').get(it.id, req.params.id);
+            if (curItem) {
+              const cantDisponible = curItem.cantidad - curItem.cantidad_pagada;
+              if (cantDisponible <= 0) {
+                throw { status: 400, error: `El producto "${it.producto_nombre || 'Seleccionado'}" ya ha sido pagado en su totalidad` };
+              }
+              const cantAPagar = Math.min(it.cantidad || 1, cantDisponible);
+              updateItemPagado.run(cantAPagar, curItem.id, req.params.id);
+            }
+          }
+        } else if (tipo_division === 'partes') {
+          notasPago = `Pago dividido (${cuota_info || 'Parte'}${persona ? ' - ' + persona : ''})`;
+        } else {
+          notasPago = `Pago dividido ${persona ? 'por ' + persona : ''}`;
+        }
+
+        const propinaMonto = parseFloat(propina) || 0;
+        db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(req.params.id, montoNum, metodo, propinaMonto, referencia || null, notasPago, usuario_id || null);
+
+        const pagadoTotal = pagadoAnterior + montoNum;
+        const fullyPaid = pagadoTotal >= totalFinal - 0.01;
+        const nuevoPendiente = Math.max(0, totalFinal - pagadoTotal);
+
+        const recibido = parseFloat(monto_recibido) || montoNum;
+        const cambio = metodo === 'efectivo' && recibido > montoNum ? Math.max(0, recibido - montoNum) : 0;
+
+        if (fullyPaid) {
+          db.prepare("UPDATE pedidos SET estado = 'CERRADO', updated_at = datetime('now') WHERE id = ?")
+            .run(req.params.id);
+        }
+
+        return {
+          pedido,
+          cambio,
+          pagadoTotal,
+          pendiente: nuevoPendiente,
+          fullyPaid,
+          totalFinal
+        };
+      })();
+
+      const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+      const mesaData = db.prepare(`
+        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+      `).get(pedidoActualizado.mesa_id);
+
+      if (result.fullyPaid && mesaData?.es_virtual && mesaData.pedido_activo_id == pedidoActualizado.id) {
+        db.prepare("UPDATE mesas SET estado = 'LIBRE', pedido_activo_id = NULL, updated_at = datetime('now') WHERE id = ?")
+          .run(mesaData.id);
+        mesaData.estado = 'LIBRE';
+        mesaData.pedido_activo_id = null;
+      }
+
+      const pago = db.prepare('SELECT * FROM pagos WHERE pedido_id = ? ORDER BY id DESC LIMIT 1').get(req.params.id);
+
+      io.emit('pedido:actualizado', pedidoActualizado);
+      io.emit('mesa:updated', mesaData);
+      io.emit('caja:updated');
+
+      if (imprimir_ticket) {
+        const pagoInfo = {
+          metodo,
+          monto: montoNum,
+          referencia: referencia || null,
+          cambio: result.cambio
+        };
+        const infoDividido = {
+          persona: persona || null,
+          cuotaInfo: cuota_info || (tipo_division === 'partes' ? 'Cuota individual' : null),
+          totalMesa: result.totalFinal,
+          saldoPendiente: result.pendiente
+        };
+        printers.printTicketDividido(pedidoActualizado, items_pagados || [], pagoInfo, mesaData, infoDividido);
+      }
+
+      res.json({
+        ok: true,
+        pedido: pedidoActualizado,
+        pago,
+        cambio: result.cambio,
+        pagado_total: result.pagadoTotal,
+        pendiente: result.pendiente,
+        completado: result.fullyPaid
+      });
+    } catch (err) {
+      const status = err.status || 500;
+      res.status(status).json({ error: err.error || err.message, code: err.code });
     }
   });
 

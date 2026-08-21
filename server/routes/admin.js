@@ -44,18 +44,26 @@ function createAdminRouter(io) {
 
   router.post('/categorias', (req, res) => {
     try {
-      const { nombre, color } = req.body;
+      const { nombre, color, destino } = req.body;
       if (!nombre) return res.status(400).json({ error: 'nombre requerido' });
-      const r = db.prepare('INSERT INTO categorias (nombre, color) VALUES (?, ?)').run(nombre, color || '#6B7280');
+      const r = db.prepare('INSERT INTO categorias (nombre, color, destino) VALUES (?, ?, ?)').run(nombre, color || '#6B7280', destino || 'cocina');
       res.status(201).json(db.prepare('SELECT * FROM categorias WHERE id = ?').get(r.lastInsertRowid));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   router.put('/categorias/:id', (req, res) => {
     try {
-      const { nombre, color, activo } = req.body;
-      db.prepare('UPDATE categorias SET nombre=?, color=?, activo=? WHERE id=?')
-        .run(nombre, color, activo ?? 1, req.params.id);
+      const existing = db.prepare('SELECT * FROM categorias WHERE id = ?').get(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Categoría no encontrada' });
+
+      const nombre = req.body.nombre !== undefined ? req.body.nombre : existing.nombre;
+      const color = req.body.color !== undefined ? req.body.color : existing.color;
+      const activo = req.body.activo !== undefined ? (req.body.activo ? 1 : 0) : existing.activo;
+      const destino = req.body.destino !== undefined ? (req.body.destino || 'cocina') : (existing.destino || 'cocina');
+
+      db.prepare('UPDATE categorias SET nombre=?, color=?, activo=?, destino=? WHERE id=?')
+        .run(nombre, color, activo, destino, req.params.id);
+
       res.json(db.prepare('SELECT * FROM categorias WHERE id = ?').get(req.params.id));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -97,20 +105,54 @@ function createAdminRouter(io) {
 
   router.post('/productos', (req, res) => {
     try {
-      const { nombre, descripcion, precio, categoria_id, para_llevar } = req.body;
+      const { nombre, descripcion, precio, categoria_id, para_llevar, destino_override, controlar_stock, stock_actual, stock_minimo } = req.body;
       if (!nombre || precio == null) return res.status(400).json({ error: 'nombre y precio requeridos' });
-      const r = db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id, para_llevar) VALUES (?,?,?,?,?)')
-        .run(nombre, descripcion || '', precio, categoria_id || null, para_llevar ? 1 : 0);
-      res.status(201).json(db.prepare('SELECT * FROM productos WHERE id = ?').get(r.lastInsertRowid));
+      const r = db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id, para_llevar, destino_override, controlar_stock, stock_actual, stock_minimo) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(
+          nombre,
+          descripcion || '',
+          precio,
+          categoria_id || null,
+          para_llevar ? 1 : 0,
+          destino_override || null,
+          controlar_stock ? 1 : 0,
+          Math.max(0, parseInt(stock_actual, 10) || 0),
+          Math.max(0, parseInt(stock_minimo, 10) || 3)
+        );
+      const nuevo = db.prepare('SELECT * FROM productos WHERE id = ?').get(r.lastInsertRowid);
+      res.status(201).json(nuevo);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
   router.put('/productos/:id', (req, res) => {
     try {
-      const { nombre, descripcion, precio, categoria_id, activo, para_llevar } = req.body;
-      db.prepare('UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, para_llevar=? WHERE id=?')
-        .run(nombre, descripcion || '', precio, categoria_id || null, activo ?? 1, para_llevar ? 1 : 0, req.params.id);
-      res.json(db.prepare('SELECT * FROM productos WHERE id = ?').get(req.params.id));
+      const existing = db.prepare('SELECT * FROM productos WHERE id = ?').get(req.params.id);
+      if (!existing) return res.status(404).json({ error: 'Producto no encontrado' });
+
+      const nombre = req.body.nombre !== undefined ? req.body.nombre : existing.nombre;
+      const descripcion = req.body.descripcion !== undefined ? req.body.descripcion : existing.descripcion;
+      const precio = req.body.precio !== undefined ? req.body.precio : existing.precio;
+      const categoria_id = req.body.categoria_id !== undefined ? req.body.categoria_id : existing.categoria_id;
+      const activo = req.body.activo !== undefined ? (req.body.activo ? 1 : 0) : existing.activo;
+      const para_llevar = req.body.para_llevar !== undefined ? (req.body.para_llevar ? 1 : 0) : existing.para_llevar;
+      const destino_override = req.body.destino_override !== undefined ? (req.body.destino_override || null) : existing.destino_override;
+      const controlar_stock = req.body.controlar_stock !== undefined ? (req.body.controlar_stock ? 1 : 0) : existing.controlar_stock;
+      const stock_actual = req.body.stock_actual !== undefined ? Math.max(0, parseInt(req.body.stock_actual, 10) || 0) : existing.stock_actual;
+      const stock_minimo = req.body.stock_minimo !== undefined ? Math.max(0, parseInt(req.body.stock_minimo, 10) || 0) : existing.stock_minimo;
+
+      db.prepare('UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, para_llevar=?, destino_override=?, controlar_stock=?, stock_actual=?, stock_minimo=? WHERE id=?')
+        .run(nombre, descripcion || '', precio, categoria_id || null, activo, para_llevar, destino_override || null, controlar_stock, stock_actual, stock_minimo, req.params.id);
+
+      const act = db.prepare('SELECT * FROM productos WHERE id = ?').get(req.params.id);
+      if (io) {
+        io.emit('stock:actualizado', {
+          producto_id: act.id,
+          controlar_stock: act.controlar_stock,
+          stock_actual: act.stock_actual,
+          stock_minimo: act.stock_minimo
+        });
+      }
+      res.json(act);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -714,11 +756,29 @@ function createAdminRouter(io) {
         return res.status(403).json({ error: 'Solo el administrador o el cajero pueden anular pedidos' });
       }
 
+      let affectedStockProducts = [];
+
       const result = db.transaction(() => {
         const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
         if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
         if (pedido.estado === 'CERRADO' || pedido.estado === 'CANCELADO') {
           throw { status: 409, error: `No se puede anular un pedido en estado ${pedido.estado}` };
+        }
+
+        // Reponer stock de los items activos que se anulan
+        const itemsToRestore = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(pedido.id);
+        const qtyPerProduct = {};
+        for (const it of itemsToRestore) {
+          if (!it.producto_id) continue;
+          qtyPerProduct[it.producto_id] = (qtyPerProduct[it.producto_id] || 0) + (it.cantidad || 1);
+        }
+        for (const [prodId, qty] of Object.entries(qtyPerProduct)) {
+          const prod = db.prepare('SELECT id, controlar_stock, stock_minimo FROM productos WHERE id = ?').get(prodId);
+          if (prod && prod.controlar_stock) {
+            db.prepare('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?').run(qty, prodId);
+            const actProd = db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+            affectedStockProducts.push(actProd);
+          }
         }
 
         db.prepare("UPDATE pedidos SET estado = 'CANCELADO', motivo_cancelacion = ?, anulado_por = ?, updated_at = datetime('now') WHERE id = ?")
@@ -753,6 +813,16 @@ function createAdminRouter(io) {
       const pedidoFinal = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
       io.emit('pedido:actualizado', pedidoFinal);
       if (result.mesa) io.emit('mesa:updated', result.mesa);
+      if (io && affectedStockProducts.length) {
+        for (const p of affectedStockProducts) {
+          io.emit('stock:actualizado', {
+            producto_id: p.id,
+            controlar_stock: p.controlar_stock,
+            stock_actual: p.stock_actual,
+            stock_minimo: p.stock_minimo
+          });
+        }
+      }
 
       res.json({ ok: true, pedido: pedidoFinal, mesa: result.mesa });
     } catch (err) {
@@ -1078,7 +1148,9 @@ function createAdminRouter(io) {
       const result = db.prepare('INSERT INTO caja_sesiones (usuario_id, fondo_inicial, notas_apertura, absorbe_desde) VALUES (?, ?, ?, ?)')
         .run(usuario_id, parseFloat(fondo_inicial) || 0, notas || null, absorbe_desde);
 
-      res.status(201).json(db.prepare('SELECT * FROM caja_sesiones WHERE id = ?').get(result.lastInsertRowid));
+      const nuevaSesion = db.prepare('SELECT * FROM caja_sesiones WHERE id = ?').get(result.lastInsertRowid);
+      if (io) io.emit('caja:updated', { estado: 'ABIERTA', sesion_id: nuevaSesion.id });
+      res.status(201).json(nuevaSesion);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1129,6 +1201,8 @@ function createAdminRouter(io) {
       for (const [k, v] of Object.entries(desglose)) {
         if (v.total_propina > 0) propinaPorMetodo[k] = v.total_propina;
       }
+
+      if (io) io.emit('caja:updated', { estado: 'CERRADA', sesion_id: sesion.id });
 
       res.json({
         ok: true,
@@ -1186,6 +1260,127 @@ function createAdminRouter(io) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ─── IMPRESION DE CORTES DE CAJA (CORTE X / CORTE Z) ───
+  router.post('/caja/corte-x/imprimir', (req, res) => {
+    try {
+      const sesion = db.prepare('SELECT cs.*, u.nombre as usuario_nombre FROM caja_sesiones cs LEFT JOIN usuarios u ON u.id = cs.usuario_id WHERE cs.estado = ? ORDER BY cs.id DESC LIMIT 1').get('ABIERTA');
+      if (!sesion) return res.status(404).json({ error: 'No hay sesión de caja abierta para emitir Corte X' });
+
+      const now = db.prepare("SELECT datetime('now') as t").get().t;
+      const inicio = inicioSesion(sesion);
+      const { desglose, totalGeneral, totalPropina } = getDesglosePagos('pg.created_at >= ? AND pg.created_at <= ?', [inicio, now]);
+      const { movs, totales } = getMovimientosTotales('created_at >= ? AND created_at <= ?', [inicio, now]);
+      const pedidos = db.prepare(`
+        SELECT COUNT(*) as c FROM pedidos WHERE estado = 'CERRADO' AND created_at >= ? AND created_at <= ?
+      `).get(inicio, now);
+      const metricas = getMetricasSesion(inicio, now);
+
+      const pagosEfectivo = desglose.efectivo?.total || 0;
+      const ingEf = totales.por_metodo.efectivo?.ingresos || 0;
+      const egrEf = totales.por_metodo.efectivo?.egresos || 0;
+      const efectivoEsperado = (sesion.fondo_inicial || 0) + pagosEfectivo + ingEf - egrEf;
+
+      const corteData = {
+        sesion_id: sesion.id,
+        opened_at: sesion.opened_at,
+        cajero_nombre: sesion.usuario_nombre,
+        fondo_inicial: sesion.fondo_inicial || 0,
+        total_ventas: totalGeneral,
+        total_pedidos: pedidos.c,
+        propinas: totalPropina,
+        desglose,
+        pagos_efectivo: pagosEfectivo,
+        ingresos_efectivo: ingEf,
+        egresos_efectivo: egrEf,
+        efectivo_esperado: efectivoEsperado,
+        ticket_promedio: metricas.ticket_promedio,
+        cancelados: metricas.cancelados,
+        descuentos: metricas.descuentos,
+        movimientos: movs
+      };
+
+      printers.printCorteCaja('X', corteData);
+      res.json({ ok: true, data: corteData });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.post('/caja/corte-z/imprimir', (req, res) => {
+    try {
+      const { sesion_id, arqueo_desglose } = req.body || {};
+      let sesion;
+      if (sesion_id) {
+        sesion = db.prepare(`
+          SELECT cs.*, u.nombre as usuario_nombre, cu.nombre as cerrado_por_nombre
+          FROM caja_sesiones cs
+          LEFT JOIN usuarios u ON u.id = cs.usuario_id
+          LEFT JOIN usuarios cu ON cu.id = cs.cerrada_por
+          WHERE cs.id = ?
+        `).get(sesion_id);
+      } else {
+        sesion = db.prepare(`
+          SELECT cs.*, u.nombre as usuario_nombre, cu.nombre as cerrado_por_nombre
+          FROM caja_sesiones cs
+          LEFT JOIN usuarios u ON u.id = cs.usuario_id
+          LEFT JOIN usuarios cu ON cu.id = cs.cerrada_por
+          WHERE cs.estado = 'CERRADA'
+          ORDER BY cs.id DESC LIMIT 1
+        `).get();
+      }
+
+      if (!sesion) return res.status(404).json({ error: 'No se encontró la sesión de caja' });
+
+      const inicio = inicioSesion(sesion);
+      const fin = sesion.closed_at || db.prepare("SELECT datetime('now') as t").get().t;
+
+      let desglose = null;
+      if (sesion.desglose_json) {
+        try { desglose = JSON.parse(sesion.desglose_json); } catch { desglose = null; }
+      }
+      if (!desglose) {
+        const dp = getDesglosePagos('pg.created_at >= ? AND pg.created_at <= ?', [inicio, fin]);
+        desglose = dp.desglose;
+      }
+
+      const { movs, totales } = getMovimientosTotales('created_at >= ? AND created_at <= ?', [inicio, fin]);
+      const metricas = getMetricasSesion(inicio, fin);
+
+      const pagosEfectivo = desglose.efectivo?.total || 0;
+      const ingEf = totales.por_metodo.efectivo?.ingresos || 0;
+      const egrEf = totales.por_metodo.efectivo?.egresos || 0;
+      const efectivoEsperado = sesion.efectivo_esperado != null
+        ? sesion.efectivo_esperado
+        : ((sesion.fondo_inicial || 0) + pagosEfectivo + ingEf - egrEf);
+
+      const corteData = {
+        sesion_id: sesion.id,
+        opened_at: sesion.opened_at,
+        closed_at: sesion.closed_at,
+        cajero_nombre: sesion.usuario_nombre,
+        cerrada_por_nombre: sesion.cerrado_por_nombre,
+        fondo_inicial: sesion.fondo_inicial || 0,
+        total_ventas: sesion.total_ventas ?? metricas.total_general ?? 0,
+        total_pedidos: sesion.total_pedidos ?? metricas.total_pedidos ?? 0,
+        propinas: sesion.propinas ?? metricas.total_propina ?? 0,
+        desglose,
+        pagos_efectivo: pagosEfectivo,
+        ingresos_efectivo: ingEf,
+        egresos_efectivo: egrEf,
+        efectivo_esperado: efectivoEsperado,
+        efectivo_contado: sesion.efectivo_contado,
+        sobrante_faltante: sesion.sobrante_faltante,
+        notas_cierre: sesion.notas_cierre,
+        ticket_promedio: metricas.ticket_promedio,
+        cancelados: metricas.cancelados,
+        descuentos: metricas.descuentos,
+        movimientos: movs,
+        arqueo_desglose: arqueo_desglose || null
+      };
+
+      printers.printCorteCaja('Z', corteData);
+      res.json({ ok: true, data: corteData });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ─── MOVIMIENTOS DE CAJA ───
   router.get('/caja/movimientos', (req, res) => {
     try {
@@ -1221,7 +1416,10 @@ function createAdminRouter(io) {
         INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(tipo, concepto.trim(), montoF, metodo_pago, persona || null, usuario_id || null, notas || null);
-      res.status(201).json(db.prepare('SELECT * FROM caja_movimientos WHERE id = ?').get(r.lastInsertRowid));
+      
+      const nuevoMov = db.prepare('SELECT * FROM caja_movimientos WHERE id = ?').get(r.lastInsertRowid);
+      if (io) io.emit('caja:updated', { movimiento: nuevoMov });
+      res.status(201).json(nuevoMov);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -1229,6 +1427,7 @@ function createAdminRouter(io) {
     try {
       const r = db.prepare('DELETE FROM caja_movimientos WHERE id = ?').run(req.params.id);
       if (r.changes === 0) return res.status(404).json({ error: 'Movimiento no encontrado' });
+      if (io) io.emit('caja:updated', { deleted_id: req.params.id });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

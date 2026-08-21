@@ -8,11 +8,22 @@ let canalModalTipo = null;
 let clienteModalTipo = null;
 let clienteModalAccion = null;
 let mesaPendiente = null;
+let canalesOcultos = localStorage.getItem('canalesAdminOculto') === '1';
+
+function toggleCanales() {
+  canalesOcultos = !canalesOcultos;
+  localStorage.setItem('canalesAdminOculto', canalesOcultos ? '1' : '0');
+  const el = document.getElementById('canalesRow');
+  const btn = document.getElementById('toggleCanalesBtn');
+  if (el) el.style.display = canalesOcultos ? 'none' : 'grid';
+  if (btn) btn.textContent = canalesOcultos ? '🛵 Mostrar Canales' : '🛵 Ocultar Canales';
+}
 
 async function initApp() {
+  await loadAreas();
   await loadMesas();
   await loadUsuarios();
-  await loadAreas();
+  await loadEstadoCajaHeader();
 
   leerMesaDesdeURL();
   if (mesaPendiente) setTimeout(abrirMesaPendiente, 400);
@@ -24,6 +35,7 @@ async function initApp() {
     loginScreen.style.display = 'none';
     appContent.style.display = 'block';
     updateUserInfo();
+    loadEstadoCajaHeader();
   }
 }
 
@@ -99,6 +111,10 @@ function renderCanales(mesas) {
   ];
 
   el.innerHTML = '';
+  el.style.display = canalesOcultos ? 'none' : 'grid';
+  const btn = document.getElementById('toggleCanalesBtn');
+  if (btn) btn.textContent = canalesOcultos ? '🛵 Mostrar Canales' : '🛵 Ocultar Canales';
+
   for (const t of tipos) {
     const hayArea = areasGlobal.some(a => a.tipo === t.tipo && a.activo);
     if (!hayArea) continue;
@@ -422,7 +438,13 @@ async function liberarMesa(mesaId) {  if (!currentUser) return showToast('Debe i
     return;
   }
 
-  if (!confirm('¿Liberar esta mesa?')) return;
+  const ok = await customConfirm({
+    title: '¿Liberar Mesa?',
+    message: '¿Estás seguro de liberar esta mesa?',
+    confirmText: 'Sí, liberar',
+    icon: '🪑'
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch(`/api/mesas/${mesaId}/liberar`, {
@@ -450,7 +472,14 @@ function liberarMesaRapida(mesaId) {
 
 async function cancelarReserva(mesaId) {  if (!currentUser) return showToast('Debe iniciar sesión', 'error');
 
-  if (!confirm('¿Cancelar la reserva de esta mesa?')) return;
+  const ok = await customConfirm({
+    title: '¿Cancelar Reserva?',
+    message: '¿Estás seguro de cancelar la reserva de esta mesa?',
+    confirmText: 'Sí, cancelar',
+    isDanger: true,
+    icon: '📅'
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch(`/api/mesas/${mesaId}/cancelar-reserva`, {
@@ -473,7 +502,13 @@ async function cancelarReserva(mesaId) {  if (!currentUser) return showToast('De
 }
 
 async function transferirMesa(mesaId) {
-  const nuevoId = prompt('ID del nuevo mesero:');
+  const nuevoId = await customPrompt({
+    title: 'Transferir Mesa',
+    message: 'Ingresa el ID del nuevo mesero asignado:',
+    placeholder: 'ID de mesero',
+    required: true,
+    icon: '👤'
+  });
   if (!nuevoId) return;
 
   try {
@@ -704,4 +739,229 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('pos-login-done', () => {
   setTimeout(abrirMesaPendiente, 50);
+  loadEstadoCajaHeader();
 });
+
+// ─── CONTROL RÁPIDO DE CAJA (POS HEADER & MODAL) ───
+let sesionCajaActualData = null;
+
+async function loadEstadoCajaHeader() {
+  const btns = [
+    document.getElementById('btnCajaHeader'),
+    document.getElementById('btnCajaHeaderPedido'),
+    document.getElementById('btnCajaHeaderPOS')
+  ].filter(Boolean);
+  if (!btns.length) return;
+  try {
+    const res = await fetch('/api/admin/caja/sesion-actual');
+    const data = await res.json();
+    sesionCajaActualData = data;
+
+    btns.forEach(btn => {
+      if (data && data.estado === 'ABIERTA') {
+        const efectivo = data.efectivo_esperado != null ? data.efectivo_esperado : (data.fondo_inicial || 0);
+        btn.style.background = '#ECFDF5';
+        btn.style.color = '#065F46';
+        btn.style.borderColor = '#A7F3D0';
+        btn.innerHTML = `🟢 Caja: <strong>S/${efectivo.toFixed(2)}</strong>`;
+        btn.title = `Caja abierta por ${data.usuario_nombre || 'N/A'}. Clic para acciones rápidas`;
+      } else {
+        btn.style.background = '#FEF3C7';
+        btn.style.color = '#92400E';
+        btn.style.borderColor = '#FCD34D';
+        btn.innerHTML = `⚠️ <strong>Caja Cerrada</strong>`;
+        btn.title = 'No hay sesión de caja abierta. Clic para abrir.';
+      }
+    });
+  } catch (e) {
+    btns.forEach(btn => btn.innerHTML = `💰 Caja`);
+  }
+}
+
+async function abrirModalCajaRapida() {
+  const modal = document.getElementById('modalCajaRapida');
+  const body = document.getElementById('cajaRapidaBody');
+  if (!modal || !body) return;
+
+  modal.classList.add('active');
+  body.innerHTML = '<p class="empty-state">Consultando estado de caja...</p>';
+
+  try {
+    const res = await fetch('/api/admin/caja/sesion-actual');
+    const data = await res.json();
+    sesionCajaActualData = data;
+
+    if (!data || data.estado !== 'ABIERTA') {
+      body.innerHTML = `
+        <div style="text-align:center;padding:16px 8px;">
+          <div style="font-size:3rem;margin-bottom:8px;">⚠️</div>
+          <h3 style="font-size:1.15rem;font-weight:800;color:#92400E;margin-bottom:6px;">No hay caja abierta</h3>
+          <p style="font-size:0.88rem;color:#64748B;margin-bottom:18px;">
+            Para cobrar pedidos y controlar el flujo de dinero, primero debes abrir la caja.
+          </p>
+          <a href="/admin.html#caja" class="btn btn-primary btn-block" style="padding:12px;font-size:1rem;text-decoration:none;" onclick="closeModalCajaRapida()">
+            🔓 Abrir Caja en Admin
+          </a>
+        </div>
+      `;
+      return;
+    }
+
+    const s = data;
+    const fondo = s.fondo_inicial || 0;
+    const ventas = s.total_ventas || 0;
+    const ventasEf = s.pagos_efectivo || 0;
+    const movTot = s.movimientos_totales || { ingresos: 0, egresos: 0 };
+    const esperado = s.efectivo_esperado || 0;
+    const apertura = new Date(s.opened_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+
+    let html = `
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:0.8rem;color:#64748B;">Caja abierta a las <strong>${apertura}</strong> (${s.usuario_nombre || 'N/A'})</span>
+          <span class="badge badge-green">ABIERTA</span>
+        </div>
+        
+        <div style="text-align:center;padding:10px 0;background:white;border-radius:10px;border:1px solid #E2E8F0;margin-bottom:10px;">
+          <div style="font-size:0.75rem;color:#64748B;font-weight:700;text-transform:uppercase;">Efectivo Actual en Caja</div>
+          <div style="font-size:2rem;font-weight:800;color:#059669;">S/${esperado.toFixed(2)}</div>
+          <div style="font-size:0.72rem;color:#94A3B8;">Fondo: S/${fondo.toFixed(2)} · Ventas Ef.: +S/${ventasEf.toFixed(2)} · Gastos: -S/${(movTot.egresos || 0).toFixed(2)}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.8rem;">
+          <div style="background:white;padding:8px 10px;border-radius:8px;border:1px solid #E2E8F0;">
+            <div style="color:#64748B;">Ventas Totales:</div>
+            <div style="font-weight:800;color:#1E293B;font-size:1rem;">S/${ventas.toFixed(2)}</div>
+          </div>
+          <div style="background:white;padding:8px 10px;border-radius:8px;border:1px solid #E2E8F0;">
+            <div style="color:#64748B;">Pedidos Cobrados:</div>
+            <div style="font-weight:800;color:#1E293B;font-size:1rem;">${s.total_pedidos || 0}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-outline" style="flex:1;padding:10px;font-weight:700;color:#059669;border-color:#A7F3D0;" onclick="mostrarFormMovimientoRapido('INGRESO')">
+          ➕ Ingreso
+        </button>
+        <button class="btn btn-outline" style="flex:1;padding:10px;font-weight:700;color:#DC2626;border-color:#FECACA;" onclick="mostrarFormMovimientoRapido('EGRESO')">
+          ➖ Gasto / Retiro
+        </button>
+        <button class="btn btn-outline" style="padding:10px;font-weight:700;" onclick="imprimirCorteXRapido()" title="Imprimir Corte X en ticketera">
+          🖨️ Corte X
+        </button>
+      </div>
+
+      <div id="cajaRapidaFormWrap" style="display:none;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:10px;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <h4 id="movRapidoTitulo" style="margin:0;font-size:0.9rem;font-weight:700;">Registrar Movimiento</h4>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('cajaRapidaFormWrap').style.display='none'" style="padding:1px 6px;">✕</button>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label style="font-size:0.8rem;font-weight:700;">Monto (S/) *</label>
+          <input id="movRapidoMonto" type="number" step="0.5" min="0.5" class="form-control" placeholder="0.00" style="font-size:1.1rem;font-weight:700;">
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label style="font-size:0.8rem;font-weight:700;">Concepto / Motivo *</label>
+          <input id="movRapidoConcepto" class="form-control" placeholder="Ej: Compra de hielo, Insumo urgente, etc.">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label style="font-size:0.8rem;font-weight:700;">Persona / Destino (opcional)</label>
+          <input id="movRapidoPersona" class="form-control" placeholder="Nombre de proveedor / persona">
+        </div>
+        <input type="hidden" id="movRapidoTipo" value="EGRESO">
+        <button id="btnGuardarMovRapido" class="btn btn-primary btn-block" onclick="guardarMovimientoRapido()">
+          💾 Guardar Movimiento
+        </button>
+      </div>
+    `;
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = '<p class="empty-state">Error al conectar con caja</p>';
+  }
+}
+
+function closeModalCajaRapida() {
+  const modal = document.getElementById('modalCajaRapida');
+  if (modal) modal.classList.remove('active');
+}
+
+function mostrarFormMovimientoRapido(tipo) {
+  const wrap = document.getElementById('cajaRapidaFormWrap');
+  const tit = document.getElementById('movRapidoTitulo');
+  const btn = document.getElementById('btnGuardarMovRapido');
+  const hidTipo = document.getElementById('movRapidoTipo');
+  if (!wrap || !tit || !btn || !hidTipo) return;
+
+  hidTipo.value = tipo;
+  wrap.style.display = 'block';
+  if (tipo === 'INGRESO') {
+    tit.textContent = '➕ Registrar Ingreso de Dinero';
+    tit.style.color = '#059669';
+    btn.textContent = '✔ Guardar Ingreso';
+    btn.className = 'btn btn-success btn-block';
+  } else {
+    tit.textContent = '➖ Registrar Gasto / Egreso de Caja';
+    tit.style.color = '#DC2626';
+    btn.textContent = '✔ Guardar Gasto';
+    btn.className = 'btn btn-danger btn-block';
+  }
+  document.getElementById('movRapidoMonto').focus();
+}
+
+async function guardarMovimientoRapido() {
+  const tipo = document.getElementById('movRapidoTipo')?.value || 'EGRESO';
+  const monto = parseFloat(document.getElementById('movRapidoMonto')?.value || 0);
+  const concepto = document.getElementById('movRapidoConcepto')?.value?.trim();
+  const persona = document.getElementById('movRapidoPersona')?.value?.trim();
+
+  if (!monto || monto <= 0) return showToast('Ingresa un monto válido mayor a cero', 'warning');
+  if (!concepto) return showToast('El concepto o motivo es obligatorio', 'warning');
+
+  try {
+    const res = await fetch('/api/admin/caja/movimientos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo,
+        monto,
+        concepto,
+        metodo_pago: 'efectivo',
+        persona: persona || null,
+        usuario_id: currentUser ? currentUser.id : null
+      })
+    });
+
+    if (res.ok) {
+      showToast(`${tipo === 'INGRESO' ? 'Ingreso' : 'Gasto'} de S/${monto.toFixed(2)} registrado`, 'success');
+      await loadEstadoCajaHeader();
+      await abrirModalCajaRapida();
+    } else {
+      const err = await res.json();
+      showToast(err.error || 'Error al registrar movimiento', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function imprimirCorteXRapido() {
+  try {
+    const res = await fetch('/api/admin/caja/corte-x/imprimir', { method: 'POST' });
+    const d = await res.json();
+    if (res.ok) {
+      showToast('🖨️ Ticket Corte X (Parcial) emitido', 'success');
+    } else {
+      showToast(d.error || 'Error al imprimir', 'warning');
+    }
+  } catch (e) {
+    showToast('Error de conexión con impresora', 'error');
+  }
+}
+
+if (typeof socket !== 'undefined' && socket) {
+  socket.on('caja:updated', () => {
+    loadEstadoCajaHeader();
+  });
+}
