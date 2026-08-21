@@ -240,8 +240,29 @@
     <h1>🍹 BARRA - Pedidos en vivo</h1>
     <div>
       <span id="pedidosCount" style="margin-right:16px;">0 pedidos</span>
+      <button class="btn btn-warning btn-sm" onclick="openStockModal()" style="font-weight:700; margin-right:6px; background:#FEF3C7; color:#92400E; border:1px solid #FDE68A;">📦 Avisar Stock</button>
       <button class="btn btn-secondary btn-sm" onclick="openHistorial()">🕓 Historial</button>
       <span id="reloj" style="margin-left:16px;"></span>
+    </div>
+  </div>
+
+  <!-- MODAL AVISO DE STOCK BARRA -->
+  <div class="modal-overlay" id="stockBarraModal" onclick="if(event.target===this)closeStockModal()">
+    <div class="modal" style="max-width:680px; width:95%;">
+      <div class="modal-header">
+        <h2>📦 Avisar Stock de Bebidas / Barra a Meseros</h2>
+        <button class="modal-close" onclick="closeStockModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height:65vh; overflow-y:auto; padding:16px;">
+        <input type="text" id="stockBarraSearch" placeholder="🔍 Buscar bebida o producto..." oninput="renderStockBarraList()" style="width:100%; padding:10px 14px; border:1px solid #CBD5E1; border-radius:8px; margin-bottom:12px; font-size:0.95rem;">
+        <div id="stockBarraList" style="display:flex; flex-direction:column; gap:8px;">
+          <p style="text-align:center; color:#64748B;">Cargando productos...</p>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between;">
+        <span style="font-size:0.85rem; color:#64748B;">Alerta en vivo a todos los meseros</span>
+        <button class="btn btn-primary" onclick="closeStockModal()">✓ Listo</button>
+      </div>
     </div>
   </div>
 
@@ -483,7 +504,124 @@
       document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-MX');
     }
 
-    socket.on('pedido:nuevo', () => loadPedidos());
+    let productosBarra = [];
+
+    async function openStockModal() {
+      document.getElementById('stockBarraModal').classList.add('active');
+      try {
+        const res = await fetch('/api/productos');
+        if (res.ok) {
+          productosBarra = await res.json();
+          renderStockBarraList();
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    function closeStockModal() {
+      document.getElementById('stockBarraModal').classList.remove('active');
+    }
+
+    function renderStockBarraList() {
+      const container = document.getElementById('stockBarraList');
+      if (!container) return;
+      const q = (document.getElementById('stockBarraSearch')?.value || '').trim().toLowerCase();
+      let list = productosBarra.filter(p => p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q));
+
+      if (!list.length) {
+        container.innerHTML = '<p style="text-align:center; color:#64748B; padding:20px;">No se encontraron productos</p>';
+        return;
+      }
+
+      let html = '';
+      for (const p of list) {
+        const activo = !!p.controlar_stock;
+        const stock = p.stock_actual || 0;
+        let badge = activo
+          ? (stock <= 0 ? '<span style="background:#FEE2E2;color:#DC2626;padding:2px 6px;border-radius:4px;font-size:0.75rem;font-weight:700;">🚫 Agotado</span>'
+            : stock <= (p.stock_minimo || 3) ? `<span style="background:#FEF3C7;color:#D97706;padding:2px 6px;border-radius:4px;font-size:0.75rem;font-weight:700;">⚠️ Quedan ${stock}</span>`
+            : `<span style="background:#E0E7FF;color:#3730A3;padding:2px 6px;border-radius:4px;font-size:0.75rem;font-weight:700;">📦 ${stock} disp.</span>`)
+          : '<span style="color:#64748B;font-size:0.75rem;">Ilimitado</span>';
+
+        html += `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; gap:8px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:160px;">
+              <strong style="font-size:0.95rem; color:#1E293B;">${p.nombre}</strong>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                <span style="font-size:0.8rem; color:#64748B;">${p.categoria || ''}</span>
+                ${badge}
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label style="display:flex; align-items:center; gap:4px; font-size:0.8rem; font-weight:600; cursor:pointer;">
+                <input type="checkbox" ${activo ? 'checked' : ''} onchange="toggleStockBarra(${p.id}, this.checked)" style="width:16px; height:16px;">
+                Controlar
+              </label>
+              <div style="display:flex; align-items:center; gap:4px; opacity:${activo ? '1' : '0.4'}; pointer-events:${activo ? 'auto' : 'none'};">
+                <button class="btn btn-sm btn-secondary" onclick="ajustarStockBarra(${p.id}, -1)" style="padding:4px 10px; font-size:1rem; font-weight:bold;">-</button>
+                <input type="number" min="0" value="${stock}" onchange="fijarStockBarra(${p.id}, this.value)" style="width:50px; text-align:center; padding:4px; border:1px solid #CBD5E1; border-radius:6px; font-weight:bold;">
+                <button class="btn btn-sm btn-secondary" onclick="ajustarStockBarra(${p.id}, 1)" style="padding:4px 10px; font-size:1rem; font-weight:bold;">+</button>
+                <button class="btn btn-sm btn-danger" onclick="fijarStockBarra(${p.id}, 0)" style="padding:4px 8px; font-size:0.75rem; font-weight:bold;">🚫 0</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+    }
+
+    async function toggleStockBarra(prodId, activo) {
+      const p = productosBarra.find(x => x.id === prodId);
+      if (p) p.controlar_stock = activo ? 1 : 0;
+      renderStockBarraList();
+      await fetch(`/api/productos/${prodId}/stock`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ controlar_stock: activo ? 1 : 0 })
+      });
+    }
+
+    async function ajustarStockBarra(prodId, delta) {
+      const p = productosBarra.find(x => x.id === prodId);
+      if (!p) return;
+      const nuevo = Math.max(0, (p.stock_actual || 0) + delta);
+      p.stock_actual = nuevo;
+      p.controlar_stock = 1;
+      renderStockBarraList();
+      await fetch(`/api/productos/${prodId}/stock`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock_actual: nuevo, controlar_stock: 1 })
+      });
+    }
+
+    async function fijarStockBarra(prodId, valor) {
+      const p = productosBarra.find(x => x.id === prodId);
+      if (!p) return;
+      const nuevo = Math.max(0, parseInt(valor, 10) || 0);
+      p.stock_actual = nuevo;
+      p.controlar_stock = 1;
+      renderStockBarraList();
+      await fetch(`/api/productos/${prodId}/stock`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock_actual: nuevo, controlar_stock: 1 })
+      });
+    }
+
+    socket.on('stock:actualizado', (data) => {
+      const p = productosBarra.find(x => x.id === data.producto_id);
+      if (p) {
+        p.controlar_stock = data.controlar_stock;
+        p.stock_actual = data.stock_actual;
+        p.stock_minimo = data.stock_minimo;
+        renderStockBarraList();
+      }
+    });
+
+    socket.on('pedido:nuevo', () => {
+      loadPedidos();
+      new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
+    });
     socket.on('pedido:actualizado', () => loadPedidos());
     socket.on('item:actualizado', () => loadPedidos());
     socket.on('mesa:updated', () => loadPedidos());

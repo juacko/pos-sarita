@@ -66,6 +66,9 @@ db.exec(`
     precio REAL NOT NULL,
     categoria_id INTEGER,
     para_llevar INTEGER DEFAULT 0,
+    controlar_stock INTEGER DEFAULT 0,
+    stock_actual INTEGER DEFAULT 0,
+    stock_minimo INTEGER DEFAULT 3,
     activo INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (categoria_id) REFERENCES categorias(id)
@@ -146,6 +149,7 @@ db.exec(`
     detalle TEXT DEFAULT '',
     estado TEXT DEFAULT 'PENDIENTE'
       CHECK(estado IN ('PENDIENTE','COCINANDO','LISTO','ENTREGADO','CANCELADO')),
+    cantidad_pagada INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
   );
@@ -253,10 +257,14 @@ function migrateColumns() {
   if (!piCols.includes('agregados_json')) db.exec("ALTER TABLE pedido_items ADD COLUMN agregados_json TEXT DEFAULT '[]'");
   if (!piCols.includes('detalle')) db.exec("ALTER TABLE pedido_items ADD COLUMN detalle TEXT DEFAULT ''");
   if (!piCols.includes('destino_impresion')) db.exec("ALTER TABLE pedido_items ADD COLUMN destino_impresion TEXT DEFAULT 'cocina'");
+  if (!piCols.includes('cantidad_pagada')) db.exec("ALTER TABLE pedido_items ADD COLUMN cantidad_pagada INTEGER DEFAULT 0");
   const pCols = db.prepare("SELECT name FROM pragma_table_info('productos')").all().map(c => c.name);
   if (!pCols.includes('descripcion')) db.exec("ALTER TABLE productos ADD COLUMN descripcion TEXT DEFAULT ''");
   if (!pCols.includes('para_llevar')) db.exec("ALTER TABLE productos ADD COLUMN para_llevar INTEGER DEFAULT 0");
   if (!pCols.includes('destino_override')) db.exec("ALTER TABLE productos ADD COLUMN destino_override TEXT DEFAULT NULL");
+  if (!pCols.includes('controlar_stock')) db.exec("ALTER TABLE productos ADD COLUMN controlar_stock INTEGER DEFAULT 0");
+  if (!pCols.includes('stock_actual')) db.exec("ALTER TABLE productos ADD COLUMN stock_actual INTEGER DEFAULT 0");
+  if (!pCols.includes('stock_minimo')) db.exec("ALTER TABLE productos ADD COLUMN stock_minimo INTEGER DEFAULT 3");
   const cCols = db.prepare("SELECT name FROM pragma_table_info('categorias')").all().map(c => c.name);
   if (!cCols.includes('activo')) db.exec("ALTER TABLE categorias ADD COLUMN activo INTEGER DEFAULT 1");
   if (!cCols.includes('created_at')) db.exec("ALTER TABLE categorias ADD COLUMN created_at DATETIME");

@@ -14,15 +14,23 @@ async function abrirPOS(mesaId) {
     const res = await fetch(`/api/mesas/${mesaId}`);
     posMesaData = await res.json();
 
+    if (document.getElementById('mainHeader')) document.getElementById('mainHeader').style.display = 'none';
     document.getElementById('mesasView').style.display = 'none';
+    document.getElementById('pedidoView').style.display = 'none';
     document.getElementById('posView').style.display = 'block';
     document.getElementById('posMesaNumero').textContent = posMesaData.nombre || `Mesa ${posMesaData.numero}`;
     document.getElementById('posMesaInfo').textContent = `${posMesaData.estado} | ${posMesaData.mesero_nombre || 'Sin mesero'}`;
+    if (document.getElementById('userInfoPOS') && currentUser) {
+      document.getElementById('userInfoPOS').textContent = `${currentUser.nombre} (${currentUser.rol})`;
+    }
+    if (typeof loadEstadoCajaHeader === 'function') loadEstadoCajaHeader();
     renderPosClienteBar();
 
     await loadCategorias();
     await loadProductos();
     renderCategoriaTabs();
+    const searchInput = document.getElementById('searchProductosInput');
+    if (searchInput) searchInput.value = '';
     renderProductos();
     renderPedidoItems();
   } catch (err) {
@@ -125,33 +133,69 @@ function renderCategoriaTabs() {
 
 function renderProductos() {
   const container = document.getElementById('productosGrid');
+  const searchQuery = (document.getElementById('searchProductosInput')?.value || '').trim().toLowerCase();
+
   container.innerHTML = '';
 
   let filtered = productos;
   if (categoriaActiva) {
-    filtered = productos.filter(p => p.categoria_id === categoriaActiva);
+    filtered = filtered.filter(p => p.categoria_id === categoriaActiva);
+  }
+  if (searchQuery) {
+    filtered = filtered.filter(p => p.nombre.toLowerCase().includes(searchQuery));
   }
 
   if (filtered.length === 0) {
-    container.innerHTML = '<p style="color:var(--gray);grid-column:1/-1;text-align:center;padding:40px;">Sin productos en esta categoría</p>';
+    container.innerHTML = '<p style="color:var(--gray);grid-column:1/-1;text-align:center;padding:40px;">Sin productos encontrados</p>';
     return;
   }
 
   for (const prod of filtered) {
     const btn = document.createElement('button');
-    btn.className = 'producto-btn';
-    btn.innerHTML = `${prod.nombre} <span class="precio">S/${prod.precio.toFixed(2)}</span>`;
+    let badgeHtml = '';
+    let extraClass = '';
+
+    if (prod.controlar_stock) {
+      if (prod.stock_actual <= 0) {
+        extraClass = ' agotado';
+        badgeHtml = '<span class="stock-badge agotado">🚫 AGOTADO</span>';
+      } else if (prod.stock_actual <= (prod.stock_minimo || 3)) {
+        extraClass = ' stock-alerta';
+        badgeHtml = `<span class="stock-badge alerta">⚠️ Quedan ${prod.stock_actual}</span>`;
+      } else {
+        badgeHtml = `<span class="stock-badge normal">📦 ${prod.stock_actual} disp.</span>`;
+      }
+    }
+
+    btn.className = `producto-btn${extraClass}`;
+    btn.innerHTML = `${prod.nombre} <span class="precio">S/${prod.precio.toFixed(2)}</span>${badgeHtml}`;
     btn.onclick = () => agregarItem(prod);
     container.appendChild(btn);
   }
 }
 
 function agregarItem(producto) {
+  if (producto.controlar_stock && producto.stock_actual <= 0) {
+    showToast(`🚫 "${producto.nombre}" está AGOTADO en cocina/barra`, 'error');
+    return;
+  }
+
+  const enCarrito = pedidoItems.filter(i => i.producto_id === producto.id).reduce((s, i) => s + i.cantidad, 0);
+  if (producto.controlar_stock && enCarrito >= producto.stock_actual) {
+    showToast(`⚠️ Stock máximo alcanzado para "${producto.nombre}" (solo quedan ${producto.stock_actual})`, 'warning');
+    return;
+  }
+
   const hasExtras = (producto.variantes && producto.variantes.length) ||
                     (producto.modificadores && producto.modificadores.length) ||
                     (producto.agregados && producto.agregados.length);
   if (hasExtras) {
     openCustomizeModal(producto, (customized) => {
+      const currentTotal = pedidoItems.filter(i => i.producto_id === producto.id).reduce((s, i) => s + i.cantidad, 0);
+      if (producto.controlar_stock && currentTotal >= producto.stock_actual) {
+        showToast(`⚠️ Stock máximo alcanzado para "${producto.nombre}" (solo quedan ${producto.stock_actual})`, 'warning');
+        return;
+      }
       const exist = pedidoItems.find(i =>
         i.producto_id === customized.producto_id &&
         i.variante_id === customized.variante_id &&
@@ -585,34 +629,64 @@ async function verPedidoExistente(mesaId) {
       renderPedidoViewCliente();
     }
 
+    if (document.getElementById('mainHeader')) document.getElementById('mainHeader').style.display = 'none';
     document.getElementById('mesasView').style.display = 'none';
     document.getElementById('posView').style.display = 'none';
     document.getElementById('pedidoView').style.display = 'block';
     document.getElementById('pedidoViewMesaNumero').textContent = posMesaData.nombre || `Mesa ${posMesaData.numero}`;
     document.getElementById('pedidoViewInfo').textContent = `${posMesaData.estado} | ${posMesaData.mesero_nombre || 'Sin mesero'}`;
     document.getElementById('pedidoViewId').textContent = pedidoExistente.id;
+    if (document.getElementById('userInfoPedido') && currentUser) {
+      document.getElementById('userInfoPedido').textContent = `${currentUser.nombre} (${currentUser.rol})`;
+    }
+    if (typeof loadEstadoCajaHeader === 'function') loadEstadoCajaHeader();
 
     const estadoBadge = document.getElementById('pedidoViewEstado');
     estadoBadge.textContent = pedidoExistente.estado;
     estadoBadge.className = `badge badge-${pedidoExistente.estado === 'CERRADO' ? 'green' : pedidoExistente.estado === 'CANCELADO' ? 'red' : 'blue'}`;
 
     renderPedidoExistenteItems();
-    renderPedidoExistenteResumen();
+    if (document.getElementById('pedidoViewResumen')) renderPedidoExistenteResumen();
     renderPedidoExistentePagos();
 
     const total = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
     const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
     const isFullyPaid = pagado >= total - 0.01;
     const isCerrado = pedidoExistente.estado === 'CERRADO' || pedidoExistente.estado === 'CANCELADO';
-
     const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
-    document.getElementById('btnCobrarPedido').style.display = (!isCerrado && !isFullyPaid) ? 'flex' : 'none';
-    document.getElementById('btnReimprimirPedido').style.display = isCerrado ? 'flex' : 'none';
-    document.getElementById('btnLiberarMesa').style.display = 'flex';
-    document.getElementById('btnAnularPedido').style.display = (!isCerrado && puedeAnular) ? 'flex' : 'none';
-    document.getElementById('btnEditarPagos').style.display = (isCerrado && pedidoExistente.estado !== 'CANCELADO' && puedeAnular) ? 'flex' : 'none';
-    document.getElementById('btnEliminarPedidoPagado').style.display = (isCerrado && pedidoExistente.estado !== 'CANCELADO' && puedeAnular) ? 'flex' : 'none';
-    document.getElementById('btnAgregarMas').style.display = (!isCerrado && !isFullyPaid) ? 'flex' : 'none';
+
+    const elTotal = document.getElementById('pedidoViewTotal');
+    if (elTotal) elTotal.textContent = `S/${total.toFixed(2)}`;
+
+    const elPendiente = document.getElementById('pedidoViewPendiente');
+    const elPendienteMonto = document.getElementById('pedidoViewPendienteMonto');
+    const pendiente = Math.max(0, total - pagado);
+
+    if (elPendiente) {
+      if (pagado > 0 && !isFullyPaid) {
+        elPendiente.style.display = 'flex';
+        if (elPendienteMonto) elPendienteMonto.textContent = `S/${pendiente.toFixed(2)}`;
+      } else {
+        elPendiente.style.display = 'none';
+      }
+    }
+
+    const setDisplay = (id, show) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = show ? 'block' : 'none';
+    };
+
+    setDisplay('btnCobrarPedido', !isCerrado && !isFullyPaid);
+    setDisplay('btnAgregarMas', !isCerrado && !isFullyPaid);
+    setDisplay('btnYapeRapido', !isCerrado && !isFullyPaid);
+    setDisplay('btnMoverMesa', !isCerrado && !isFullyPaid);
+    setDisplay('btnUnirMesa', !isCerrado && !isFullyPaid);
+    setDisplay('btnPrecuenta', true);
+    setDisplay('btnLiberarMesa', true);
+    setDisplay('btnAnularPedido', !isCerrado && puedeAnular);
+    setDisplay('btnReimprimirPedido', isCerrado);
+    setDisplay('btnEditarPagos', isCerrado && pedidoExistente.estado !== 'CANCELADO' && puedeAnular);
+    setDisplay('btnEliminarPedidoPagado', isCerrado && pedidoExistente.estado !== 'CANCELADO' && puedeAnular);
   } catch (err) {
     showToast('Error al cargar pedido', 'error');
     console.error(err);
@@ -622,9 +696,11 @@ async function verPedidoExistente(mesaId) {
 function renderPedidoExistenteItems() {
   const container = document.getElementById('pedidoViewItems');
   if (!pedidoExistente?.items?.length) {
-    container.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px;">Sin items</p>';
+    container.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px;">Sin items en la comanda</p>';
     return;
   }
+
+  const isCerrado = pedidoExistente.estado === 'CERRADO' || pedidoExistente.estado === 'CANCELADO';
 
   container.innerHTML = pedidoExistente.items.map(item => {
     const precioAdic = item.precio_adicional || 0;
@@ -639,20 +715,29 @@ function renderPedidoExistenteItems() {
       const agrs = JSON.parse(item.agregados_json || '[]');
       if (agrs.length) details += `<div style="font-size:0.75rem;color:var(--gray);">Agr: ${agrs.map(a => a.nombre || a).join(', ')}</div>`;
     } catch (e) {}
-    if (item.notas) details += `<div style="font-size:0.75rem;color:var(--yellow);">📝 ${item.notas}</div>`;
+    if (item.notas) details += `<div style="font-size:0.75rem;color:var(--yellow);font-weight:600;">📝 ${item.notas}</div>`;
+
+    const sanitizedName = (item.producto_nombre || '').replace(/'/g, "\\'");
 
     return `
-      <div class="pedido-item">
-        <div class="pedido-item-info">
-          <div>
-            <span class="pedido-item-qty">${item.cantidad}x</span>
-            <span class="pedido-item-name">${item.producto_nombre}</span>
+      <div class="pedido-item" style="padding:10px 4px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #F1F5F9;transition:background 0.15s;">
+        <div class="pedido-item-info" style="flex:1;cursor:pointer;" onclick="abrirOpcionesItemPOS(${item.id}, ${item.cantidad}, ${item.precio_unitario}, ${precioAdic}, '${sanitizedName}')">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="pedido-item-qty" style="background:#EFF6FF;color:#2563EB;padding:2px 8px;border-radius:6px;font-size:0.85rem;font-weight:800;">${item.cantidad}x</span>
+            <span class="pedido-item-name" style="font-weight:700;font-size:0.92rem;color:#1E293B;">${item.producto_nombre}</span>
           </div>
           ${details}
         </div>
-        <div style="text-align:right;">
-          ${precioAdic > 0 ? `<div style="font-size:0.7rem;color:var(--gray);">S/${item.precio_unitario.toFixed(2)} + S/${precioAdic.toFixed(2)}</div>` : ''}
-          <div class="pedido-item-price">S/${subtotal.toFixed(2)}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="text-align:right;">
+            ${precioAdic !== 0 ? `<div style="font-size:0.72rem;color:${precioAdic > 0 ? '#059669' : '#DC2626'}; font-weight:700;">${precioAdic > 0 ? '+' : ''}S/${precioAdic.toFixed(2)}</div>` : ''}
+            <div class="pedido-item-price" style="font-size:1.05rem;font-weight:800;color:#0F172A;">S/${subtotal.toFixed(2)}</div>
+          </div>
+          ${!isCerrado ? `
+            <button onclick="abrirOpcionesItemPOS(${item.id}, ${item.cantidad}, ${item.precio_unitario}, ${precioAdic}, '${sanitizedName}')" title="Opciones de este plato" style="background:#F8FAFC;border:1px solid #CBD5E1;border-radius:8px;padding:6px 10px;font-size:1.1rem;cursor:pointer;color:#334155;">
+              ⋮
+            </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -1692,6 +1777,7 @@ function irAbrirCaja() {
 
 const _originalShowMesasView = showMesasView;
 showMesasView = function() {
+  if (document.getElementById('mainHeader')) document.getElementById('mainHeader').style.display = 'flex';
   document.getElementById('mesasView').style.display = 'block';
   document.getElementById('posView').style.display = 'none';
   document.getElementById('pedidoView').style.display = 'none';
@@ -1702,3 +1788,1054 @@ showMesasView = function() {
   pedidoItems = [];
   loadMesas();
 };
+
+// ─── OPCIONES DE ÍTEM (EDITAR CANTIDAD, PRECIO, DIVIDIR, ELIMINAR, REPETIR) ───
+function abrirOpcionesItemPOS(itemId, cantidadActual, precioOriginal, precioAdicional, nombre) {
+  if (!pedidoExistente || pedidoExistente.estado === 'CERRADO' || pedidoExistente.estado === 'CANCELADO') return;
+  const elTitle = document.getElementById('opcionesItemTitle');
+  if (elTitle) elTitle.textContent = `Opciones: ${nombre}`;
+
+  const puedeEditar = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
+
+  let html = '';
+  if (!puedeEditar) {
+    html = `
+      <div style="background:#FEF2F2; border:1px solid #FECACA; padding:10px; border-radius:8px; color:#DC2626; font-size:0.85rem; margin-bottom:8px;">
+        ⚠️ Solo administradores o cajeros pueden editar precios o eliminar platos de una comanda activa.
+      </div>
+    `;
+  }
+
+  html += `
+    <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:12px; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.9rem;">
+        <span style="color:#64748B;">Cantidad Actual:</span>
+        <strong style="color:#1E293B;">${cantidadActual} unidad(es)</strong>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.9rem;">
+        <span style="color:#64748B;">Precio Unitario Base:</span>
+        <strong style="color:#1E293B;">S/${precioOriginal.toFixed(2)}</strong>
+      </div>
+      
+      <label style="display:block; font-size:0.85rem; font-weight:700; color:#334155; margin-bottom:4px;">Ajuste de Precio (Adicional / Descuento)</label>
+      <input type="number" id="itemPrecioAdicionalPOS" class="form-control" value="${precioAdicional}" step="0.5" ${!puedeEditar ? 'disabled' : ''} style="font-size:1.1rem; font-weight:700;">
+      <p style="font-size:0.75rem; color:#64748B; margin:4px 0 0 0;">Usa números negativos para descuentos (ej: -5.00).</p>
+    </div>
+  `;
+
+  if (puedeEditar) {
+    html += `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+        <button class="btn btn-outline" style="padding:10px 6px; font-weight:700; font-size:0.88rem;" onclick="editarCantidadItemPOS(${itemId}, ${cantidadActual})">
+          ✏️ Editar Cantidad
+        </button>
+        ${cantidadActual > 1 ? `
+          <button class="btn btn-outline" style="padding:10px 6px; font-weight:700; font-size:0.88rem;" onclick="dividirItemPOS(${itemId}, ${cantidadActual})">
+            🔀 Dividir Ítem
+          </button>
+        ` : `
+          <button class="btn btn-outline" style="padding:10px 6px; font-weight:700; font-size:0.88rem;" onclick="sumarProductoOrdenPOS(${itemId})">
+            🔁 Repetir (+1)
+          </button>
+        `}
+      </div>
+      <button class="btn btn-primary btn-block" style="padding:11px; font-weight:700; margin-bottom:8px;" onclick="guardarOpcionesItemPOS(${itemId})">
+        💾 Guardar Ajuste de Precio
+      </button>
+      <button class="btn btn-outline btn-block" style="padding:11px; font-weight:700; color:#DC2626; border-color:#FCA5A5;" onclick="eliminarOpcionesItemPOS(${itemId})">
+        🗑️ Eliminar Plato de Comanda
+      </button>
+    `;
+  } else {
+    html += `
+      <button class="btn btn-outline btn-block" style="padding:10px; font-weight:700;" onclick="sumarProductoOrdenPOS(${itemId})">
+        🔁 Repetir (+1 a cocina)
+      </button>
+    `;
+  }
+
+  const contentEl = document.getElementById('opcionesItemContent');
+  if (contentEl) contentEl.innerHTML = html;
+  const modal = document.getElementById('opcionesItemModal');
+  if (modal) modal.classList.add('active');
+}
+
+function closeOpcionesItemModalPOS() {
+  const modal = document.getElementById('opcionesItemModal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function guardarOpcionesItemPOS(itemId) {
+  if (!posMesaData || !posMesaData.pedido_activo_id) return;
+  const adicional = parseFloat(document.getElementById('itemPrecioAdicionalPOS')?.value) || 0;
+
+  try {
+    const r = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ precio_adicional: adicional, usuario_id: currentUser ? currentUser.id : null })
+    });
+    if (r.ok) {
+      showToast('Ajuste de precio guardado', 'success');
+      closeOpcionesItemModalPOS();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    } else {
+      const e = await r.json();
+      showToast(e.error || 'Error al actualizar', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function eliminarOpcionesItemPOS(itemId) {
+  if (!posMesaData || !posMesaData.pedido_activo_id) return;
+  const ok = await customConfirm({
+    title: '¿Eliminar producto?',
+    message: '¿Estás seguro de eliminar todo este producto de la comanda?',
+    confirmText: 'Sí, eliminar',
+    icon: '🗑️'
+  });
+  if (!ok) return;
+
+  try {
+    const r = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items/${itemId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario_id: currentUser ? currentUser.id : null })
+    });
+    if (r.ok) {
+      showToast('Plato eliminado de la comanda', 'success');
+      closeOpcionesItemModalPOS();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    } else {
+      const e = await r.json();
+      showToast(e.error || 'Error al eliminar', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function editarCantidadItemPOS(itemId, cantidadActual) {
+  if (!posMesaData || !posMesaData.pedido_activo_id) return;
+  
+  const res = prompt(`Ingresa la nueva cantidad para este plato (Actual: ${cantidadActual}):`, cantidadActual);
+  if (res === null) return;
+  
+  const nuevaCant = parseInt(res, 10);
+  if (isNaN(nuevaCant) || nuevaCant < 0) {
+    return showToast('Cantidad inválida', 'warning');
+  }
+  
+  if (nuevaCant === 0) {
+    return eliminarOpcionesItemPOS(itemId);
+  }
+  
+  if (nuevaCant === cantidadActual) return;
+
+  try {
+    const r = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cantidad: nuevaCant, usuario_id: currentUser ? currentUser.id : null })
+    });
+    if (r.ok) {
+      showToast('Cantidad actualizada', 'success');
+      closeOpcionesItemModalPOS();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    } else {
+      const err = await r.json();
+      showToast(err.error || 'Error al actualizar', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function dividirItemPOS(itemId, cantidadActual) {
+  if (!posMesaData || !posMesaData.pedido_activo_id) return;
+  if (cantidadActual <= 1) return;
+  
+  const res = prompt(`¿Cuántos platos deseas separar del grupo de ${cantidadActual}?`, '1');
+  if (res === null) return;
+  
+  const qSeparar = parseInt(res, 10);
+  if (isNaN(qSeparar) || qSeparar <= 0 || qSeparar >= cantidadActual) {
+    return showToast(`Cantidad a separar inválida. Debe ser entre 1 y ${cantidadActual - 1}`, 'warning');
+  }
+
+  try {
+    const r = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items/${itemId}/split`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ splitCantidad: qSeparar, usuario_id: currentUser ? currentUser.id : null })
+    });
+    if (r.ok) {
+      showToast('Ítem dividido con éxito', 'success');
+      closeOpcionesItemModalPOS();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    } else {
+      const err = await r.json();
+      showToast(err.error || 'Error al dividir ítem', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function sumarProductoOrdenPOS(itemId) {
+  if (!pedidoExistente?.items?.length || !posMesaData?.pedido_activo_id) return;
+  const it = pedidoExistente.items.find(x => x.id === itemId);
+  if (!it) return;
+
+  const item = {
+    producto_id: it.producto_id,
+    nombre: it.producto_nombre,
+    cantidad: 1,
+    precio: it.precio_unitario,
+    precio_adicional: it.precio_adicional || 0,
+    variante_id: it.variante_id,
+    variante_nombre: it.variante_nombre,
+    modificadores: JSON.parse(it.modificadores_json || '[]'),
+    agregados: JSON.parse(it.agregados_json || '[]'),
+    detalle: it.detalle || '',
+    notas: it.notas || ''
+  };
+
+  const ok = await customConfirm({
+    title: 'Enviar a Cocina',
+    message: `¿Enviar +1 "${it.producto_nombre}" a cocina/comanda?`,
+    confirmText: 'Sí, enviar +1',
+    icon: '👨‍🍳'
+  });
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [item], nota: null })
+    });
+    if (res.ok) {
+      showToast(`+1 ${it.producto_nombre} enviado a comanda`, 'success');
+      closeOpcionesItemModalPOS();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    } else {
+      const data = await res.json();
+      showToast(data.error || 'Error al agregar producto', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+// ─── MOVER PEDIDO / MOVER ITEMS / UNIR MESA EN POS ───
+let actividadDestinoPOS = null;
+let mesaDestinoElegidaPOS = null;
+let moverSeleccionPOS = new Set();
+
+function abrirMoverMesaPOS() { abrirSeleccionDestinoPOS('mover'); }
+function abrirUnirMesaPOS() { abrirSeleccionDestinoPOS('unir'); }
+
+function abrirSeleccionDestinoPOS(accion) {
+  actividadDestinoPOS = accion;
+  let disponibles = allMesas.filter(m =>
+    !m.es_virtual &&
+    m.id !== posMesaData?.id &&
+    m.estado !== 'INACTIVO'
+  );
+  if (accion === 'unir') {
+    disponibles = disponibles.filter(m => m.estado !== 'LIBRE');
+  }
+  const title = document.getElementById('destinoModalTitle');
+  const list = document.getElementById('destinoModalList');
+  if (title) title.textContent = accion === 'unir' ? '🔗 Unir con otra mesa' : '↔️ Mover a otra mesa';
+  if (!disponibles.length) {
+    if (list) list.innerHTML = '<p style="color:#6B7280;text-align:center;padding:12px;">No hay otras mesas disponibles</p>';
+    document.getElementById('destinoModal')?.classList.add('active');
+    return;
+  }
+  if (list) {
+    list.innerHTML = disponibles.map(m => {
+      const total = m.pedido_total || 0;
+      const tienePedido = m.pedido_activo_id && m.pedido_total != null;
+      return `
+        <button class="btn btn-outline" style="width:100%; justify-content:space-between; padding:12px 14px; text-align:left;" onclick="elegirMesaDestinoPOS(${m.id}, '${accion}')">
+          <span style="font-weight:700;">${m.nombre || 'Mesa ' + m.numero} — <span style="font-weight:normal;text-transform:lowercase;">${m.estado}</span></span>
+          <span style="font-weight:800;color:${tienePedido ? '#059669' : '#94A3B8'};">${tienePedido ? 'S/' + total.toFixed(2) : 'libre'}</span>
+        </button>
+      `;
+    }).join('');
+  }
+  document.getElementById('destinoModal')?.classList.add('active');
+}
+
+async function elegirMesaDestinoPOS(id, accion) {
+  const destMesa = allMesas.find(m => m.id === id);
+  if (!destMesa) return;
+  if (accion === 'unir') {
+    confirmarUnirPOS(destMesa);
+  } else {
+    const estaOcupada = destMesa.pedido_activo_id && destMesa.pedido_total != null;
+    const nombreDest = destMesa.nombre || 'Mesa ' + destMesa.numero;
+    if (estaOcupada) {
+      const ok = await customConfirm({
+        title: 'Mesa Destino Ocupada',
+        message: `La mesa "${nombreDest}" ya tiene un pedido activo (S/${(destMesa.pedido_total || 0).toFixed(2)}). ¿Deseas transferir productos a esta mesa?`,
+        confirmText: 'Sí, mover productos',
+        icon: '🔀'
+      });
+      if (!ok) return;
+    }
+    abrirSeleccionItemsPOS(destMesa);
+  }
+}
+
+function closeDestinoModalPOS() {
+  const modal = document.getElementById('destinoModal');
+  if (modal) modal.classList.remove('active');
+  actividadDestinoPOS = null;
+}
+
+function abrirSeleccionItemsPOS(destMesa) {
+  mesaDestinoElegidaPOS = destMesa;
+  if (!pedidoExistente?.items?.length) return;
+  moverSeleccionPOS = new Set(pedidoExistente.items.map((_, idx) => idx));
+  closeDestinoModalPOS();
+
+  document.getElementById('moverItemsTitle').textContent = `Mover productos a ${destMesa.nombre || 'Mesa ' + destMesa.numero}`;
+  document.getElementById('moverItemsInfo').textContent = 'Selecciona los platos a transferir a la mesa destino:';
+  document.getElementById('moverItemsList').innerHTML = pedidoExistente.items.map((it, idx) => {
+    const sub = it.cantidad * (it.precio_unitario + (it.precio_adicional || 0));
+    return `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #F1F5F9;font-size:0.88rem;cursor:pointer;">
+        <input type="checkbox" checked onchange="moverItemCheckPOS(${idx}, this)" style="width:18px;height:18px;">
+        <span style="flex:1;"><strong>${it.cantidad}x</strong> ${it.producto_nombre}${it.variante_nombre ? ' (' + it.variante_nombre + ')' : ''}</span>
+        <span style="font-weight:700;">S/${sub.toFixed(2)}</span>
+      </label>
+    `;
+  }).join('');
+  document.getElementById('moverItemsModal')?.classList.add('active');
+}
+
+function moverItemCheckPOS(idx, el) {
+  if (el.checked) moverSeleccionPOS.add(idx);
+  else moverSeleccionPOS.delete(idx);
+}
+
+function closeMoverItemsModalPOS() {
+  document.getElementById('moverItemsModal')?.classList.remove('active');
+  mesaDestinoElegidaPOS = null;
+  moverSeleccionPOS = new Set();
+}
+
+async function confirmarMoverItemsPOS(mode) {
+  if (!mesaDestinoElegidaPOS || !posMesaData?.pedido_activo_id) return;
+  let ids;
+  if (mode === 'todo') {
+    ids = pedidoExistente.items.map(i => i.id);
+  } else {
+    ids = pedidoExistente.items.filter((_, idx) => moverSeleccionPOS.has(idx)).map(i => i.id);
+  }
+  if (!ids.length) return showToast('Selecciona al menos un producto', 'warning');
+
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/mover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        item_ids: ids,
+        mesa_destino_id: mesaDestinoElegidaPOS.id,
+        mesero_id: currentUser?.id || null
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Productos movidos a ${mesaDestinoElegidaPOS.nombre || 'Mesa ' + mesaDestinoElegidaPOS.numero}`, 'success');
+      closeMoverItemsModalPOS();
+      showMesasView();
+      await loadMesas();
+    } else {
+      showToast(data.error || 'Error al mover productos', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+async function confirmarUnirPOS(destMesa) {
+  if (!posMesaData?.pedido_activo_id) return;
+  const ok = await customConfirm({
+    title: 'Unir Pedidos de Mesas',
+    message: `¿Unir todo el pedido de esta mesa con ${destMesa.nombre || 'Mesa ' + destMesa.numero}? La mesa actual quedará libre.`,
+    confirmText: 'Sí, unir mesas',
+    icon: '🔗'
+  });
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/unir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mesa_destino_id: destMesa.id,
+        mesero_id: currentUser?.id || null
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Pedido unido a ${destMesa.nombre || 'Mesa ' + destMesa.numero}`, 'success');
+      closeDestinoModalPOS();
+      showMesasView();
+      await loadMesas();
+    } else {
+      showToast(data.error || 'Error al unir mesas', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+// ─── COBRO RÁPIDO POR YAPE EN POS (QR) ───
+function abrirCobroYapePOS() {
+  if (!pedidoExistente) return;
+  const total = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
+  const pendiente = Math.max(0, total - pagado);
+
+  document.getElementById('qrMontoTotal').textContent = `S/${pendiente.toFixed(2)}`;
+  document.getElementById('qrCodigoAprobacion').value = '';
+  document.getElementById('qrPagoModal')?.classList.add('active');
+}
+
+function closeQrPagoModalPOS() {
+  document.getElementById('qrPagoModal')?.classList.remove('active');
+}
+
+async function confirmarPagoQrPOS() {
+  const ref = document.getElementById('qrCodigoAprobacion')?.value?.trim();
+  if (!ref) return showToast('Ingresa el código de aprobación o referencia de Yape', 'warning');
+  if (!posMesaData?.pedido_activo_id || !pedidoExistente) return;
+
+  const total = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
+  const pendiente = Math.max(0, total - pagado);
+
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/pagos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metodo: 'yape',
+        monto: pendiente,
+        referencia: ref,
+        usuario_id: currentUser ? currentUser.id : null
+      })
+    });
+    if (res.ok) {
+      showToast('✅ Pago con Yape registrado correctamente', 'success');
+      closeQrPagoModalPOS();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    } else {
+      const err = await res.json();
+      showToast(err.error || 'Error al registrar pago', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+// ─── GESTIÓN DE COBRO DIVIDIDO (SPLIT BILL) ───
+let dividirTabActual = 'platos';
+let dividirItemsSeleccionados = {};
+let dividirMetodoSeleccionado = 'efectivo';
+let dividirNumPartes = 2;
+
+async function abrirModalDividirCuenta() {
+  if (!posMesaData || !posMesaData.pedido_activo_id) return;
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}`);
+    if (!res.ok) throw new Error('Pedido no encontrado');
+    pedidoExistente = await res.json();
+
+    const totalBruto = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+    const pagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
+    const pendiente = Math.max(0, totalBruto - pagado);
+
+    document.getElementById('dividirMesaNombre').textContent = posMesaData.nombre || `Mesa ${posMesaData.numero}`;
+    document.getElementById('dividirPedidoId').textContent = pedidoExistente.id;
+    document.getElementById('dividirTotalMesa').textContent = `S/${totalBruto.toFixed(2)}`;
+    document.getElementById('dividirPagadoMesa').textContent = `S/${pagado.toFixed(2)}`;
+    document.getElementById('dividirPendienteMesa').textContent = `S/${pendiente.toFixed(2)}`;
+
+    document.getElementById('dividirNombreCliente').value = '';
+    document.getElementById('dividirReferencia').value = '';
+    document.getElementById('dividirMontoRecibido').value = '';
+    document.getElementById('dividirCambioCalculado').textContent = 'S/ 0.00';
+    document.getElementById('dividirCheckImprimir').checked = true;
+
+    dividirItemsSeleccionados = {};
+    renderDividirMetodosPago();
+    renderDividirItemsList();
+    renderDividirPartes();
+    cambiarTabDividir(dividirTabActual);
+
+    document.getElementById('dividirCuentaModal').classList.add('active');
+  } catch (e) {
+    showToast('Error al abrir cobro dividido', 'error');
+  }
+}
+
+function closeModalDividirCuenta() {
+  document.getElementById('dividirCuentaModal').classList.remove('active');
+}
+
+function cambiarTabDividir(tab) {
+  dividirTabActual = tab;
+  const isPlatos = tab === 'platos';
+  
+  const tabPlatos = document.getElementById('tabDividirPlatos');
+  const tabPartes = document.getElementById('tabDividirPartes');
+  const btnTabPlatos = document.getElementById('tabBtnDividirPlatos');
+  const btnTabPartes = document.getElementById('tabBtnDividirPartes');
+  const btnConfirmar = document.getElementById('btnConfirmarDividirPlatos');
+
+  if (tabPlatos) tabPlatos.style.display = isPlatos ? 'block' : 'none';
+  if (tabPartes) tabPartes.style.display = isPlatos ? 'none' : 'block';
+  if (btnConfirmar) btnConfirmar.style.display = isPlatos ? 'block' : 'none';
+
+  if (btnTabPlatos) {
+    btnTabPlatos.style.borderBottomColor = isPlatos ? 'var(--primary)' : 'transparent';
+    btnTabPlatos.style.color = isPlatos ? 'var(--primary)' : 'var(--text-muted)';
+  }
+  if (btnTabPartes) {
+    btnTabPartes.style.borderBottomColor = isPlatos ? 'transparent' : 'var(--primary)';
+    btnTabPartes.style.color = isPlatos ? 'var(--text-muted)' : 'var(--primary)';
+  }
+}
+
+function renderDividirMetodosPago() {
+  const container = document.getElementById('dividirMetodosPago');
+  if (!container) return;
+  const metodos = typeof metodosVisibles === 'function' ? metodosVisibles() : [
+    { key: 'efectivo', label: 'Efectivo', icono: '💵' },
+    { key: 'yape', label: 'Yape', icono: '📱' },
+    { key: 'tarjeta', label: 'Tarjeta', icono: '💳' },
+    { key: 'plin', label: 'Plin', icono: '📱' }
+  ];
+
+  if (!metodos.some(m => m.key === dividirMetodoSeleccionado)) {
+    dividirMetodoSeleccionado = metodos[0]?.key || 'efectivo';
+  }
+
+  container.innerHTML = metodos.map(m => {
+    const isSel = m.key === dividirMetodoSeleccionado;
+    return `
+      <button type="button" class="btn btn-sm ${isSel ? 'btn-primary' : 'btn-outline'}" onclick="selectMetodoDividir('${m.key}')" style="padding:7px 4px; font-size:0.8rem; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:2px;">
+        <span style="font-size:1.1rem;">${m.icono || '💳'}</span>
+        <span>${m.label || m.key}</span>
+      </button>
+    `;
+  }).join('');
+
+  const rowEf = document.getElementById('dividirEfectivoRow');
+  if (rowEf) rowEf.style.display = dividirMetodoSeleccionado === 'efectivo' ? 'grid' : 'none';
+}
+
+function selectMetodoDividir(metodo) {
+  dividirMetodoSeleccionado = metodo;
+  renderDividirMetodosPago();
+  calcularVueltoDividir();
+}
+
+function renderDividirItemsList() {
+  const container = document.getElementById('dividirListaItems');
+  if (!container || !pedidoExistente?.items) return;
+
+  if (!pedidoExistente.items.length) {
+    container.innerHTML = '<p class="empty-state" style="padding:16px;">Sin productos en este pedido</p>';
+    recalcularSubtotalDividido();
+    return;
+  }
+
+  container.innerHTML = pedidoExistente.items.map(item => {
+    const precioUnit = item.precio_unitario + (item.precio_adicional || 0);
+    const cantPagada = item.cantidad_pagada || 0;
+    const cantPendiente = Math.max(0, item.cantidad - cantPagada);
+    const isTotalmentePagado = cantPendiente <= 0;
+
+    const sel = dividirItemsSeleccionados[item.id];
+    const isChecked = Boolean(sel) && !isTotalmentePagado;
+    const qtySel = isChecked ? Math.min(cantPendiente, sel.cantidad) : 0;
+    const subtotalItem = qtySel * precioUnit;
+
+    if (isTotalmentePagado) {
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-bottom:1px solid #E2E8F0; background:#F8FAFC; opacity:0.65; font-size:0.88rem;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <input type="checkbox" disabled style="width:18px; height:18px; cursor:not-allowed;">
+            <div>
+              <div style="font-weight:700; color:#64748B; text-decoration:line-through;">${item.producto_nombre} ${item.variante_nombre ? '(' + item.variante_nombre + ')' : ''}</div>
+              <div style="font-size:0.75rem; color:#94A3B8;">S/${precioUnit.toFixed(2)} c/u · ${item.cantidad}x Total</div>
+            </div>
+          </div>
+          <span class="badge badge-green" style="font-size:0.75rem; font-weight:700; background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0;">
+            ✅ PAGADO (${item.cantidad}x)
+          </span>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 6px; border-bottom:1px solid #F1F5F9; font-size:0.88rem;">
+        <label style="display:flex; align-items:center; gap:10px; flex:1; cursor:pointer; min-width:0;">
+          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleItemDividir(${item.id}, ${cantPendiente}, this.checked)" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
+          <div style="min-width:0;">
+            <div style="font-weight:700; color:#1E293B;">${item.producto_nombre} ${item.variante_nombre ? '(' + item.variante_nombre + ')' : ''}</div>
+            <div style="font-size:0.75rem; color:#64748B;">
+              S/${precioUnit.toFixed(2)} c/u · 
+              <strong style="color:${cantPagada > 0 ? '#D97706' : '#2563EB'};">Pendiente: ${cantPendiente}x</strong>
+              ${cantPagada > 0 ? `<span style="color:#059669; margin-left:4px;">(${cantPagada}x pagado)</span>` : ''}
+            </div>
+          </div>
+        </label>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+          ${cantPendiente > 1 && isChecked ? `
+            <div style="display:flex; align-items:center; gap:4px; background:#F1F5F9; border-radius:6px; padding:2px 6px;">
+              <button type="button" onclick="cambiarQtyItemDividir(${item.id}, -1, ${cantPendiente})" style="border:none; background:transparent; font-weight:800; cursor:pointer; padding:0 4px;">-</button>
+              <span style="font-weight:800; font-size:0.85rem; min-width:18px; text-align:center;">${qtySel}</span>
+              <button type="button" onclick="cambiarQtyItemDividir(${item.id}, 1, ${cantPendiente})" style="border:none; background:transparent; font-weight:800; cursor:pointer; padding:0 4px;">+</button>
+            </div>
+          ` : ''}
+          <div style="font-weight:800; font-size:0.95rem; color:${isChecked ? '#059669' : '#94A3B8'}; min-width:65px; text-align:right;">
+            S/${subtotalItem.toFixed(2)}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  recalcularSubtotalDividido();
+}
+
+function toggleItemDividir(itemId, cantPendiente, isChecked) {
+  const item = pedidoExistente?.items?.find(x => x.id === itemId);
+  if (!item) return;
+
+  if (isChecked) {
+    dividirItemsSeleccionados[itemId] = { cantidad: cantPendiente, item };
+  } else {
+    delete dividirItemsSeleccionados[itemId];
+  }
+  renderDividirItemsList();
+}
+
+function cambiarQtyItemDividir(itemId, delta, cantPendiente) {
+  if (!dividirItemsSeleccionados[itemId]) return;
+  const current = dividirItemsSeleccionados[itemId].cantidad;
+  const next = Math.max(1, Math.min(cantPendiente, current + delta));
+  dividirItemsSeleccionados[itemId].cantidad = next;
+  renderDividirItemsList();
+}
+
+function seleccionarTodosDividir(marcar) {
+  if (!pedidoExistente?.items) return;
+  if (marcar) {
+    pedidoExistente.items.forEach(item => {
+      const cantPendiente = Math.max(0, item.cantidad - (item.cantidad_pagada || 0));
+      if (cantPendiente > 0) {
+        dividirItemsSeleccionados[item.id] = { cantidad: cantPendiente, item };
+      }
+    });
+  } else {
+    dividirItemsSeleccionados = {};
+  }
+  renderDividirItemsList();
+}
+
+function recalcularSubtotalDividido() {
+  let subtotal = 0;
+  Object.values(dividirItemsSeleccionados).forEach(({ cantidad, item }) => {
+    const precioUnit = item.precio_unitario + (item.precio_adicional || 0);
+    subtotal += cantidad * precioUnit;
+  });
+
+  const subEl = document.getElementById('dividirSubtotalCliente');
+  if (subEl) subEl.textContent = `S/${subtotal.toFixed(2)}`;
+
+  const btnConfirmar = document.getElementById('btnConfirmarDividirPlatos');
+  if (btnConfirmar) {
+    btnConfirmar.textContent = `✅ Cobrar Selección (S/${subtotal.toFixed(2)})`;
+    btnConfirmar.disabled = subtotal <= 0;
+  }
+
+  calcularVueltoDividir();
+}
+
+function calcularVueltoDividir() {
+  let subtotal = 0;
+  Object.values(dividirItemsSeleccionados).forEach(({ cantidad, item }) => {
+    const precioUnit = item.precio_unitario + (item.precio_adicional || 0);
+    subtotal += cantidad * precioUnit;
+  });
+
+  const recibido = parseFloat(document.getElementById('dividirMontoRecibido')?.value) || 0;
+  const cambioEl = document.getElementById('dividirCambioCalculado');
+  if (cambioEl) {
+    if (recibido > subtotal && subtotal > 0) {
+      cambioEl.textContent = `S/${(recibido - subtotal).toFixed(2)}`;
+    } else {
+      cambioEl.textContent = 'S/ 0.00';
+    }
+  }
+}
+
+async function confirmarPagoDivididoPlatos() {
+  if (!posMesaData?.pedido_activo_id) return;
+  const entries = Object.values(dividirItemsSeleccionados);
+  if (!entries.length) return showToast('Selecciona al menos un plato para cobrar', 'warning');
+
+  let subtotal = 0;
+  const itemsPagados = entries.map(({ cantidad, item }) => {
+    const precioUnit = item.precio_unitario + (item.precio_adicional || 0);
+    subtotal += cantidad * precioUnit;
+    return {
+      id: item.id,
+      cantidad,
+      producto_nombre: item.producto_nombre,
+      precio_unitario: item.precio_unitario,
+      precio_adicional: item.precio_adicional || 0,
+      variante_nombre: item.variante_nombre || null
+    };
+  });
+
+  const persona = document.getElementById('dividirNombreCliente')?.value?.trim() || null;
+  const ref = document.getElementById('dividirReferencia')?.value?.trim() || null;
+  const recibido = parseFloat(document.getElementById('dividirMontoRecibido')?.value) || subtotal;
+  const imprimirTicket = document.getElementById('dividirCheckImprimir')?.checked ?? true;
+
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/pagar-dividido`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metodo: dividirMetodoSeleccionado,
+        monto: subtotal,
+        monto_recibido: recibido,
+        usuario_id: currentUser ? currentUser.id : null,
+        referencia: ref,
+        tipo_division: 'items',
+        items_pagados: itemsPagados,
+        persona,
+        imprimir_ticket: imprimirTicket
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return showToast(data.error || 'Error al procesar pago dividido', 'error');
+    }
+
+    showToast(`✅ Pago de S/${subtotal.toFixed(2)} registrado`, 'success');
+
+    if (data.completado) {
+      showToast('🎉 ¡Cuenta 100% pagada!', 'success');
+      closeModalDividirCuenta();
+      showMesasView();
+      await loadMesas();
+    } else {
+      await abrirModalDividirCuenta();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+// ─── TAB 2: PARTES IGUALES LOGIC ───
+function setNumeroPartes(n) {
+  dividirNumPartes = Math.max(2, Math.min(20, n));
+  renderDividirPartes();
+}
+
+function ajustarNumeroPartes(delta) {
+  setNumeroPartes(dividirNumPartes + delta);
+}
+
+function renderDividirPartes() {
+  const numEl = document.getElementById('dividirNumPersonas');
+  if (numEl) numEl.textContent = dividirNumPartes;
+
+  if (!pedidoExistente) return;
+  const totalBruto = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const pagos = pedidoExistente.pagos || [];
+  const totalPagado = pagos.reduce((s, p) => s + p.monto, 0);
+  const pendiente = Math.max(0, totalBruto - totalPagado);
+
+  const montoCuota = Math.round((totalBruto / dividirNumPartes) * 100) / 100;
+  const cuotaEl = document.getElementById('dividirMontoPorPersona');
+  if (cuotaEl) cuotaEl.textContent = `S/${montoCuota.toFixed(2)}`;
+
+  const cuotasPagadas = Math.min(dividirNumPartes, Math.floor((totalPagado + 0.05) / montoCuota));
+  const progEl = document.getElementById('dividirCuotasProgreso');
+  if (progEl) progEl.textContent = `${cuotasPagadas} de ${dividirNumPartes} pagadas`;
+
+  const container = document.getElementById('dividirListaCuotas');
+  if (!container) return;
+
+  let html = '';
+  for (let i = 1; i <= dividirNumPartes; i++) {
+    const isPagada = i <= cuotasPagadas;
+    html += `
+      <div style="background:${isPagada ? '#F0FDF4' : '#FFFFFF'}; border:1.5px solid ${isPagada ? '#86EFAC' : '#E2E8F0'}; border-radius:10px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong style="color:#1E293B; font-size:0.95rem;">Comensal #${i}</strong>
+          <span style="font-size:0.8rem; color:#64748B; margin-left:8px;">Cuota: S/${montoCuota.toFixed(2)}</span>
+        </div>
+        <div>
+          ${isPagada ? `
+            <span class="badge badge-green" style="font-weight:700;">✅ PAGADO</span>
+          ` : `
+            <button class="btn btn-success btn-sm" onclick="cobrarCuotaDivididaModal(${i}, ${montoCuota})" style="font-weight:700; padding:6px 14px;">
+              💳 Cobrar Cuota
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
+}
+
+async function cobrarCuotaDivididaModal(cuotaIndex, montoCuota) {
+  if (!posMesaData?.pedido_activo_id || !pedidoExistente) return;
+  const totalBruto = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const totalPagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
+  const pendiente = Math.max(0, totalBruto - totalPagado);
+  const montoACobrar = Math.min(montoCuota, pendiente);
+
+  const metodoPrompt = prompt(`Cobro Comensal #${cuotaIndex} (S/${montoACobrar.toFixed(2)})\n\nIngresa método de pago (efectivo, yape, plin, tarjeta):`, 'yape');
+  if (!metodoPrompt) return;
+  const metodo = metodoPrompt.toLowerCase().trim();
+
+  let ref = null;
+  if (metodo === 'yape' || metodo === 'plin' || metodo === 'tarjeta') {
+    ref = prompt(`Código de aprobación / referencia para ${metodo.toUpperCase()}:`, '');
+  }
+
+  try {
+    const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/pagar-dividido`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        metodo: metodo || 'efectivo',
+        monto: montoACobrar,
+        usuario_id: currentUser ? currentUser.id : null,
+        referencia: ref,
+        tipo_division: 'partes',
+        persona: `Comensal #${cuotaIndex}`,
+        cuota_info: `Cuota ${cuotaIndex} de ${dividirNumPartes}`,
+        imprimir_ticket: true
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) return showToast(data.error || 'Error al cobrar cuota', 'error');
+
+    showToast(`✅ Cuota #${cuotaIndex} pagada (S/${montoACobrar.toFixed(2)})`, 'success');
+
+    if (data.completado) {
+      showToast('🎉 ¡Cuenta 100% pagada!', 'success');
+      closeModalDividirCuenta();
+      showMesasView();
+      await loadMesas();
+    } else {
+      await abrirModalDividirCuenta();
+      await verPedidoExistente(posMesaData.id);
+      loadMesas();
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
+}
+
+// ─── CONTROL RÁPIDO DE STOCK DIARIO ───
+let stockRapidoFiltroCat = '';
+let stockRapidoBusqueda = '';
+
+async function abrirModalStockRapido() {
+  const modal = document.getElementById('stockRapidoModal');
+  if (!modal) return;
+  modal.classList.add('active');
+
+  // Cargar categorías en el select
+  const selectCat = document.getElementById('filtroCategoriaStockRapido');
+  if (selectCat && typeof categorias !== 'undefined') {
+    selectCat.innerHTML = '<option value="">Todas las categorías</option>' +
+      categorias.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+  }
+
+  // Refrescar productos desde el backend para tener la data más reciente
+  try {
+    const res = await fetch('/api/productos');
+    if (res.ok) {
+      productos = await res.json();
+    }
+  } catch (e) {
+    console.error('Error cargando productos para stock:', e);
+  }
+
+  renderListaStockRapido();
+}
+
+function cerrarModalStockRapido() {
+  const modal = document.getElementById('stockRapidoModal');
+  if (modal) modal.classList.remove('active');
+}
+
+function filtrarListaStockRapido() {
+  stockRapidoBusqueda = (document.getElementById('buscarStockRapidoInput')?.value || '').trim().toLowerCase();
+  stockRapidoFiltroCat = document.getElementById('filtroCategoriaStockRapido')?.value || '';
+  renderListaStockRapido();
+}
+
+function renderListaStockRapido() {
+  const container = document.getElementById('listaStockRapidoContainer');
+  if (!container) return;
+
+  let list = productos || [];
+  if (stockRapidoFiltroCat) {
+    list = list.filter(p => p.categoria_id == stockRapidoFiltroCat);
+  }
+  if (stockRapidoBusqueda) {
+    list = list.filter(p => p.nombre.toLowerCase().includes(stockRapidoBusqueda));
+  }
+
+  if (!list.length) {
+    container.innerHTML = '<p class="empty-state">No se encontraron productos</p>';
+    return;
+  }
+
+  let html = '';
+  for (const p of list) {
+    const activo = !!p.controlar_stock;
+    const stock = p.stock_actual || 0;
+    const minStock = p.stock_minimo || 3;
+    let badge = '';
+    if (activo) {
+      if (stock <= 0) badge = '<span class="stock-badge agotado">🚫 Agotado</span>';
+      else if (stock <= minStock) badge = `<span class="stock-badge alerta">⚠️ Quedan ${stock}</span>`;
+      else badge = `<span class="stock-badge normal">📦 ${stock} disp.</span>`;
+    } else {
+      badge = '<span style="font-size:0.75rem; color:#64748B; background:#F1F5F9; padding:2px 6px; border-radius:4px;">Ilimitado</span>';
+    }
+
+    html += `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#FFFFFF; border:1px solid ${activo && stock <= 0 ? '#FECACA' : '#E2E8F0'}; border-radius:10px; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:180px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <strong style="font-size:0.95rem; color:#1E293B;">${p.nombre}</strong>
+            ${badge}
+          </div>
+          <span style="font-size:0.8rem; color:#64748B;">S/ ${p.precio.toFixed(2)} • ${p.categoria || 'Sin categoría'}</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:600; cursor:pointer; user-select:none; margin:0;">
+            <input type="checkbox" ${activo ? 'checked' : ''} onchange="toggleControlarStockRapido(${p.id}, this.checked)" style="width:16px; height:16px; accent-color:#2563EB;">
+            Controlar
+          </label>
+
+          <div style="display:flex; align-items:center; gap:4px; opacity:${activo ? '1' : '0.4'}; pointer-events:${activo ? 'auto' : 'none'};">
+            <button class="btn btn-sm btn-outline" onclick="cambiarStockRapido(${p.id}, -1)" style="padding:4px 10px; font-size:1rem; font-weight:bold; min-width:32px;">-</button>
+            <input type="number" min="0" value="${stock}" onchange="fijarStockRapido(${p.id}, this.value)" style="width:55px; text-align:center; padding:5px 4px; border:1px solid #CBD5E1; border-radius:6px; font-weight:700; font-size:0.95rem;">
+            <button class="btn btn-sm btn-outline" onclick="cambiarStockRapido(${p.id}, 1)" style="padding:4px 10px; font-size:1rem; font-weight:bold; min-width:32px;">+</button>
+            <button class="btn btn-sm btn-danger" onclick="agotarStockRapido(${p.id})" title="Marcar como agotado (0)" style="padding:4px 8px; font-size:0.8rem; font-weight:600; margin-left:4px;">🚫 0</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+async function toggleControlarStockRapido(prodId, activo) {
+  const p = productos.find(x => x.id === prodId);
+  if (!p) return;
+  p.controlar_stock = activo ? 1 : 0;
+  renderListaStockRapido();
+
+  try {
+    await fetch(`/api/productos/${prodId}/stock`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ controlar_stock: activo ? 1 : 0 })
+    });
+  } catch (e) {
+    showToast('Error al actualizar stock', 'error');
+  }
+}
+
+async function cambiarStockRapido(prodId, delta) {
+  const p = productos.find(x => x.id === prodId);
+  if (!p) return;
+  const nuevoStock = Math.max(0, (p.stock_actual || 0) + delta);
+  p.stock_actual = nuevoStock;
+  renderListaStockRapido();
+
+  try {
+    await fetch(`/api/productos/${prodId}/stock`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_actual: nuevoStock, controlar_stock: 1 })
+    });
+  } catch (e) {
+    showToast('Error al actualizar stock', 'error');
+  }
+}
+
+async function fijarStockRapido(prodId, valor) {
+  const p = productos.find(x => x.id === prodId);
+  if (!p) return;
+  const nuevoStock = Math.max(0, parseInt(valor, 10) || 0);
+  p.stock_actual = nuevoStock;
+  renderListaStockRapido();
+
+  try {
+    await fetch(`/api/productos/${prodId}/stock`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_actual: nuevoStock, controlar_stock: 1 })
+    });
+  } catch (e) {
+    showToast('Error al fijar stock', 'error');
+  }
+}
+
+async function agotarStockRapido(prodId) {
+  const p = productos.find(x => x.id === prodId);
+  if (!p) return;
+  p.stock_actual = 0;
+  p.controlar_stock = 1;
+  renderListaStockRapido();
+
+  try {
+    await fetch(`/api/productos/${prodId}/stock`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_actual: 0, controlar_stock: 1 })
+    });
+    showToast(`🚫 "${p.nombre}" marcado como AGOTADO`, 'info');
+  } catch (e) {
+    showToast('Error al agotar stock', 'error');
+  }
+}

@@ -23,7 +23,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api/mesas', createMesasRouter(io));
 app.use('/api/pedidos', createPedidosRouter(io));
-app.use('/api/productos', createProductosRouter());
+app.use('/api/productos', createProductosRouter(io));
 app.use('/api/usuarios', createUsuariosRouter());
 app.use('/api/admin', createAdminRouter(io));
 
