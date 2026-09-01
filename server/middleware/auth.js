@@ -64,8 +64,8 @@ function requireAuth(db = defaultDb) {
         return next();
       }
 
-      // Fallback de compatibilidad progresiva si el cliente envía usuario_id en body o query
-      const fallbackUserId = req.body?.usuario_id || req.query?.usuario_id;
+      // Fallback de compatibilidad progresiva si el cliente envía usuario_id en header, body o query
+      const fallbackUserId = req.headers['x-user-id'] || req.body?.usuario_id || req.query?.usuario_id;
       if (fallbackUserId) {
         const usuario = db.prepare('SELECT id, nombre, rol, activo FROM usuarios WHERE id = ? AND activo = 1').get(fallbackUserId);
         if (usuario) {

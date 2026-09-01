@@ -11,15 +11,23 @@
       const savedUser = localStorage.getItem('posUser');
       if (savedUser) {
         const user = JSON.parse(savedUser);
-        if (user && user.token) {
+        if (user) {
           options = options || {};
           options.headers = options.headers || {};
           if (options.headers instanceof Headers) {
-            if (!options.headers.has('x-session-token')) {
+            if (user.token && !options.headers.has('x-session-token')) {
               options.headers.append('x-session-token', user.token);
             }
+            if (user.id && !options.headers.has('x-user-id')) {
+              options.headers.append('x-user-id', String(user.id));
+            }
           } else {
-            options.headers['x-session-token'] = options.headers['x-session-token'] || user.token;
+            if (user.token) {
+              options.headers['x-session-token'] = options.headers['x-session-token'] || user.token;
+            }
+            if (user.id) {
+              options.headers['x-user-id'] = options.headers['x-user-id'] || String(user.id);
+            }
           }
         }
       }

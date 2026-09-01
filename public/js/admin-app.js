@@ -495,14 +495,35 @@
 
     // ---- CORTE DE CAJA (Cierre tab) ----
     async function loadCategorias() {
-      const r = await fetch('/api/admin/categorias');
-      categorias = await r.json();
+      try {
+        const r = await fetch('/api/admin/categorias');
+        const data = await r.json();
+        if (r.ok && Array.isArray(data)) {
+          categorias = data;
+        } else {
+          categorias = [];
+          if (r.status === 401) showToast('Sesión requerida. Por favor ingresa con tu PIN', 'error');
+        }
+      } catch (e) {
+        categorias = [];
+      }
     }
 
     async function loadProductos() {
-      const r = await fetch('/api/admin/productos/completo');
-      productosCompleto = await r.json();
-      renderProductos();
+      try {
+        const r = await fetch('/api/admin/productos/completo');
+        const data = await r.json();
+        if (r.ok && Array.isArray(data)) {
+          productosCompleto = data;
+        } else {
+          productosCompleto = [];
+          if (r.status === 401) showToast('Sesión requerida. Por favor ingresa con tu PIN', 'error');
+        }
+        renderProductos();
+      } catch (e) {
+        productosCompleto = [];
+        renderProductos();
+      }
     }
 
     // ---- CATEGORIAS ----
