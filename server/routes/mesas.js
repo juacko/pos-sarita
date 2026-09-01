@@ -330,12 +330,12 @@ function createMesasRouter(io) {
         db.prepare(`
           INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
           VALUES (?, 'LIBERADA', ?, 'Mesa liberada')
-        `).run(mesaId, mesero_id);
+        `).run(mesaId, effectiveUserId);
 
         return db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
       })();
 
-      io.emit('mesa:updated', result);
+      if (io) io.emit('mesa:updated', result);
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
