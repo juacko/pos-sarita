@@ -1745,7 +1745,7 @@
           closeCartModal();
           document.getElementById('successMsg').textContent = `Pedido enviado a cocina — Mesa ${posMesaData?.nombre || posMesaData?.numero}`;
           document.getElementById('successOverlay').classList.add('active');
-          setTimeout(() => document.getElementById('successOverlay').classList.remove('active'), 2500);
+          setTimeout(() => document.getElementById('successOverlay').classList.remove('active'), 800);
           await loadMesas();
           showMesasView();
         } else {
