@@ -64,6 +64,35 @@ describe('Integration API Tests', () => {
         res.status(err.status || 500).json({ error: err.error || err.message });
       }
     });
+
+    app.patch('/api/test/pedidos/:id/items/estado', (req, res) => {
+      const { estado, destino } = req.body;
+      if (destino === 'cocina') {
+        testDb.prepare(`
+          UPDATE pedido_items SET estado = ?
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
+        `).run(estado, req.params.id);
+      } else if (destino === 'barra') {
+        testDb.prepare(`
+          UPDATE pedido_items SET estado = ?
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
+        `).run(estado, req.params.id);
+      }
+
+      const allActiveItems = testDb.prepare("SELECT estado FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(req.params.id);
+      if (allActiveItems.length > 0) {
+        const allReady = allActiveItems.every(i => i.estado === 'LISTO' || i.estado === 'ENTREGADO');
+        if (allReady) {
+          testDb.prepare("UPDATE pedidos SET estado = 'LISTO' WHERE id = ?").run(req.params.id);
+        }
+      }
+
+      const items = testDb.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(req.params.id);
+      const pedido = testDb.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+      res.json({ ok: true, items, pedido });
+    });
   });
 
   it('POST /api/test/descontar-stock descuenta stock vía HTTP', async () => {
@@ -87,7 +116,7 @@ describe('Integration API Tests', () => {
   });
 
   it('GET /api/test/resumen-pago/:id calcula resumen financiero vía HTTP', async () => {
-    testDb.prepare('INSERT INTO pedidos (id, mesa_id, mesa_numero, total) VALUES (1, 1, 1, 50)').run();
+    testDb.prepare("INSERT INTO pedidos (id, mesa_id, mesa_numero, total) VALUES (1, 1, 1, 50)").run();
     testDb.prepare("INSERT INTO descuentos (pedido_id, tipo, valor, motivo) VALUES (1, 'porcentaje', 20, 'Descuento cliente')").run();
 
     const res = await request(app).get('/api/test/resumen-pago/1');
@@ -96,5 +125,27 @@ describe('Integration API Tests', () => {
     expect(res.body.totalBruto).toBe(50);
     expect(res.body.totalFinal).toBe(40);
     expect(res.body.pendiente).toBe(40);
+  });
+
+  it('PATCH /api/test/pedidos/:id/items/estado no afecta a barra cuando cocina marca listo', async () => {
+    testDb.prepare("INSERT INTO pedidos (id, mesa_id, mesa_numero, total, estado) VALUES (1, 1, 1, 40, 'ABIERTO')").run();
+    testDb.prepare("INSERT INTO pedido_items (pedido_id, producto_nombre, cantidad, precio_unitario, destino_impresion, estado) VALUES (1, 'Ramen', 1, 30, 'cocina', 'PENDIENTE')").run();
+    testDb.prepare("INSERT INTO pedido_items (pedido_id, producto_nombre, cantidad, precio_unitario, destino_impresion, estado) VALUES (1, 'Café', 1, 10, 'barra', 'PENDIENTE')").run();
+
+    const res = await request(app)
+      .patch('/api/test/pedidos/1/items/estado')
+      .send({ estado: 'LISTO', destino: 'cocina' });
+
+    expect(res.status).toBe(200);
+
+    const items = testDb.prepare('SELECT producto_nombre, destino_impresion, estado FROM pedido_items WHERE pedido_id = 1').all();
+    const ramen = items.find(i => i.producto_nombre === 'Ramen');
+    const cafe = items.find(i => i.producto_nombre === 'Café');
+
+    expect(ramen.estado).toBe('LISTO');
+    expect(cafe.estado).toBe('PENDIENTE');
+
+    const pedido = testDb.prepare('SELECT estado FROM pedidos WHERE id = 1').get();
+    expect(pedido.estado).toBe('ABIERTO'); // Order overall is NOT ready until cafe is also ready
   });
 });

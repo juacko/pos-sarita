@@ -622,6 +622,7 @@ function createPedidosRouter(io) {
     }
   });
 
+  // ─── COCINA ───
   router.get('/cocina', (req, res) => {
     try {
       const pedidos = db.prepare(`
@@ -629,7 +630,7 @@ function createPedidosRouter(io) {
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
-        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION')
+        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION', 'LISTO')
         ORDER BY p.created_at ASC
       `).all();
 
@@ -640,7 +641,8 @@ function createPedidosRouter(io) {
           WHERE pedido_id = ? AND estado != 'CANCELADO'
             AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
         `).all(pedido.id);
-        if (pedido.items.length > 0) resultado.push(pedido);
+        const tieneItemsPendientes = pedido.items.some(i => i.estado !== 'LISTO' && i.estado !== 'ENTREGADO');
+        if (pedido.items.length > 0 && tieneItemsPendientes) resultado.push(pedido);
       }
 
       res.json(resultado);
@@ -690,7 +692,7 @@ function createPedidosRouter(io) {
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
-        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION')
+        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION', 'LISTO')
         ORDER BY p.created_at ASC
       `).all();
 
@@ -701,7 +703,8 @@ function createPedidosRouter(io) {
           WHERE pedido_id = ? AND estado != 'CANCELADO'
             AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
         `).all(pedido.id);
-        if (pedido.items.length > 0) resultado.push(pedido);
+        const tieneItemsPendientes = pedido.items.some(i => i.estado !== 'LISTO' && i.estado !== 'ENTREGADO');
+        if (pedido.items.length > 0 && tieneItemsPendientes) resultado.push(pedido);
       }
 
       res.json(resultado);
@@ -1135,7 +1138,7 @@ function createPedidosRouter(io) {
   });
 
   router.patch('/:id/items/estado', (req, res) => {
-    const { estado } = req.body;
+    const { estado, destino, destino_impresion } = req.body;
     const validStates = ['PENDIENTE', 'COCINANDO', 'LISTO', 'ENTREGADO', 'CANCELADO'];
 
     if (!validStates.includes(estado)) {
@@ -1143,15 +1146,53 @@ function createPedidosRouter(io) {
     }
 
     try {
-      const pedido = db.prepare('SELECT id FROM pedidos WHERE id = ?').get(req.params.id);
+      const pedido = db.prepare('SELECT id, mesa_id FROM pedidos WHERE id = ?').get(req.params.id);
       if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
 
-      db.prepare('UPDATE pedido_items SET estado = ? WHERE pedido_id = ? AND estado != ?')
-        .run(estado, req.params.id, 'CANCELADO');
+      const targetDestino = destino || destino_impresion;
+      if (targetDestino === 'cocina') {
+        db.prepare(`
+          UPDATE pedido_items SET estado = ?
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
+        `).run(estado, req.params.id);
+      } else if (targetDestino === 'barra') {
+        db.prepare(`
+          UPDATE pedido_items SET estado = ?
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
+        `).run(estado, req.params.id);
+      } else {
+        db.prepare('UPDATE pedido_items SET estado = ? WHERE pedido_id = ? AND estado != ?')
+          .run(estado, req.params.id, 'CANCELADO');
+      }
 
-      const items = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != \'CANCELADO\'').all(req.params.id);
+      // Recalcular estado global del pedido
+      const allActiveItems = db.prepare("SELECT estado FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(req.params.id);
+      if (allActiveItems.length > 0) {
+        const allReady = allActiveItems.every(i => i.estado === 'LISTO' || i.estado === 'ENTREGADO');
+        const anyCooking = allActiveItems.some(i => i.estado === 'COCINANDO');
+
+        let nuevoEstadoPedido = null;
+        if (allReady) nuevoEstadoPedido = 'LISTO';
+        else if (anyCooking) nuevoEstadoPedido = 'EN_PREPARACION';
+
+        if (nuevoEstadoPedido) {
+          db.prepare("UPDATE pedidos SET estado = ?, updated_at = datetime('now') WHERE id = ?").run(nuevoEstadoPedido, req.params.id);
+        }
+      }
+
+      const items = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(req.params.id);
+      const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+      const mesaData = pedidoActualizado ? db.prepare(`
+        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+      `).get(pedidoActualizado.mesa_id) : null;
+
+      io.emit('pedido:actualizado', pedidoActualizado);
+      if (mesaData) io.emit('mesa:updated', mesaData);
       io.emit('item:actualizado', { pedido_id: Number(req.params.id) });
-      res.json({ ok: true, items });
+
+      res.json({ ok: true, items, pedido: pedidoActualizado });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -1175,6 +1216,31 @@ function createPedidosRouter(io) {
         JOIN pedidos p ON p.id = pi.pedido_id
         WHERE pi.id = ?
       `).get(req.params.idItem);
+
+      if (item) {
+        // Recalcular estado global del pedido
+        const allActiveItems = db.prepare("SELECT estado FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(item.pedido_id);
+        if (allActiveItems.length > 0) {
+          const allReady = allActiveItems.every(i => i.estado === 'LISTO' || i.estado === 'ENTREGADO');
+          const anyCooking = allActiveItems.some(i => i.estado === 'COCINANDO');
+
+          let nuevoEstadoPedido = null;
+          if (allReady) nuevoEstadoPedido = 'LISTO';
+          else if (anyCooking) nuevoEstadoPedido = 'EN_PREPARACION';
+
+          if (nuevoEstadoPedido) {
+            db.prepare("UPDATE pedidos SET estado = ?, updated_at = datetime('now') WHERE id = ?").run(nuevoEstadoPedido, item.pedido_id);
+          }
+        }
+
+        const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(item.pedido_id);
+        const mesaData = pedidoActualizado ? db.prepare(`
+          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        `).get(pedidoActualizado.mesa_id) : null;
+
+        io.emit('pedido:actualizado', pedidoActualizado);
+        if (mesaData) io.emit('mesa:updated', mesaData);
+      }
 
       io.emit('item:actualizado', item);
       res.json(item);

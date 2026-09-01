@@ -96,17 +96,11 @@
     }
 
     function marcarPreparando(pedidoId) {
-      fetch(`/api/pedidos/${pedidoId}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'EN_PREPARACION' })
-      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
-
       fetch(`/api/pedidos/${pedidoId}/items/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'COCINANDO' })
-      }).catch(console.error);
+        body: JSON.stringify({ estado: 'COCINANDO', destino: 'cocina' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
     }
 
     async function marcarListo(pedidoId, pendientes) {
@@ -120,17 +114,11 @@
         if (!ok) return;
       }
 
-      fetch(`/api/pedidos/${pedidoId}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'LISTO' })
-      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
-
       fetch(`/api/pedidos/${pedidoId}/items/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'LISTO' })
-      }).catch(console.error);
+        body: JSON.stringify({ estado: 'LISTO', destino: 'cocina' })
+      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
     }
 
     function marcarItemCocinado(itemId, checked) {
