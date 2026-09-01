@@ -430,13 +430,39 @@
         }
 
         toast('✅ Pago registrado correctamente.', 'ok');
+        const pedIdTmp = currentQrPedidoId;
         closeQrPagoModal();
-        await loadMesas();
-        const mesaRow = allMesas.find(m => m.id === posMesaId);
-        if (mesaRow) {
-          abrirPOS(mesaRow);
+
+        let cfgPostPago = null;
+        try {
+          const resCfg = await fetch('/api/configuracion/post_pago');
+          if (resCfg.ok) cfgPostPago = await resCfg.json();
+        } catch (e) {}
+
+        if (window.mostrarModalPostPago) {
+          window.mostrarModalPostPago({
+            pedidoId: pedIdTmp,
+            mesaId: posMesaId,
+            mesaNumero: posMesaNumero,
+            configPostPago: cfgPostPago,
+            onComplete: async () => {
+              await loadMesas();
+              const mesaRow = allMesas.find(m => m.id === posMesaId);
+              if (mesaRow) {
+                abrirPOS(mesaRow);
+              } else {
+                showMesasView();
+              }
+            }
+          });
         } else {
-          showMesasView();
+          await loadMesas();
+          const mesaRow = allMesas.find(m => m.id === posMesaId);
+          if (mesaRow) {
+            abrirPOS(mesaRow);
+          } else {
+            showMesasView();
+          }
         }
       } catch (err) {
         alert(err.message);

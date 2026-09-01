@@ -93,9 +93,41 @@
         configGlobal = await res.json();
         renderConfigModalPago();
         renderConfigHoraCorte();
+        renderConfigPostPago();
       } catch (e) {
         showToast('Error al cargar configuración', 'error');
       }
+    }
+
+    function renderConfigPostPago() {
+      const cfg = configGlobal?.post_pago || {};
+      const elMesa = document.getElementById('cfgPostPagoMesa');
+      const elTicket = document.getElementById('cfgPostPagoTicket');
+      const elDefault = document.getElementById('cfgPostPagoTicketDefault');
+      if (elMesa) elMesa.value = cfg.liberar_mesa || 'preguntar';
+      if (elTicket) elTicket.value = cfg.imprimir_ticket || 'preguntar';
+      if (elDefault) elDefault.value = String(cfg.ticket_marcado_defecto === true);
+    }
+
+    async function saveConfigPostPago() {
+      const valor = {
+        liberar_mesa: document.getElementById('cfgPostPagoMesa')?.value || 'preguntar',
+        imprimir_ticket: document.getElementById('cfgPostPagoTicket')?.value || 'preguntar',
+        ticket_marcado_defecto: document.getElementById('cfgPostPagoTicketDefault')?.value === 'true'
+      };
+      try {
+        const res = await fetch('/api/admin/configuracion/post_pago', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor })
+        });
+        if (res.ok) {
+          showToast('Preferencia post-pago guardada', 'success');
+          configGlobal.post_pago = valor;
+        } else {
+          showToast('Error al guardar preferencia', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     function renderConfigHoraCorte() {

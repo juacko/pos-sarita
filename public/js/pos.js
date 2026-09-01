@@ -1754,8 +1754,28 @@ async function procesarPago() {
   }
 
   closeCobroModal();
-  await verPedidoExistente(posMesaData.id);
-  await loadMesas();
+
+  let cfgPostPago = null;
+  try {
+    const resCfg = await fetch('/api/configuracion/post_pago');
+    if (resCfg.ok) cfgPostPago = await resCfg.json();
+  } catch (e) {}
+
+  if (window.mostrarModalPostPago) {
+    window.mostrarModalPostPago({
+      pedidoId: cobroPedidoRef?.id,
+      mesaId: posMesaData?.id,
+      mesaNumero: posMesaData?.numero,
+      configPostPago: cfgPostPago,
+      onComplete: async () => {
+        if (posMesaData) await verPedidoExistente(posMesaData.id);
+        if (typeof loadMesas === 'function') await loadMesas();
+      }
+    });
+  } else {
+    await verPedidoExistente(posMesaData.id);
+    await loadMesas();
+  }
 }
 
 // ─── MODAL SIN CAJA ABIERTA ───

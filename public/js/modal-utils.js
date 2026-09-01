@@ -218,12 +218,109 @@ window.customAlert = function({
     const cleanup = () => {
       overlay.classList.remove('active');
       setTimeout(() => overlay.remove(), 150);
-      resolve(true);
     };
 
-    document.getElementById('customAlertOkBtn').onclick = cleanup;
-    overlay.onclick = (e) => {
-      if (e.target === overlay) cleanup();
+    document.getElementById('customAlertOkBtn').onclick = () => {
+      cleanup();
+      resolve();
     };
   });
+};
+
+/**
+ * Modal Post-Pago para confirmar la emisión de ticket (ahorro de papel) y la liberación de mesa.
+ */
+window.mostrarModalPostPago = function({ pedidoId, mesaId, mesaNumero, configPostPago, onComplete }) {
+  const cfg = configPostPago || {};
+  const modoMesa = cfg.liberar_mesa || 'preguntar';
+  const modoTicket = cfg.imprimir_ticket || 'preguntar';
+  const ticketDefecto = cfg.ticket_marcado_defecto === true || modoTicket === 'si';
+
+  // Si la configuración no requiere preguntar, procesar directamente
+  if (modoMesa !== 'preguntar' && modoTicket !== 'preguntar') {
+    const acciones = [];
+    if (modoTicket === 'si' && pedidoId) {
+      acciones.push(fetch(`/api/pedidos/${pedidoId}/reimprimir`, { method: 'POST' }).catch(console.error));
+    }
+    if (modoMesa === 'si' && mesaId) {
+      acciones.push(fetch(`/api/mesas/${mesaId}/liberar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mesero_id: null })
+      }).catch(console.error));
+    }
+    Promise.all(acciones).then(() => { if (onComplete) onComplete(); });
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay active';
+  overlay.style.zIndex = '999999';
+
+  const checkMesa = modoMesa !== 'no' ? 'checked' : '';
+  const checkTicket = ticketDefecto ? 'checked' : '';
+  const textoMesa = mesaNumero ? `Mesa ${mesaNumero}` : 'la mesa';
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width: 440px; border-radius: var(--radius-lg); text-align: left; padding: 24px 24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <div style="width:46px;height:46px;border-radius:12px;background:#ECFDF5;color:#059669;display:flex;align-items:center;justify-content:center;font-size:1.5rem;">
+          ✅
+        </div>
+        <div>
+          <h3 style="font-size:1.15rem;font-weight:800;color:#1E293B;margin:0;">¡Pago Registrado!</h3>
+          <div style="font-size:0.8rem;color:#64748B;">Acciones adicionales post-pago</div>
+        </div>
+      </div>
+
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px;margin-bottom:20px;display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="postPagoCheckTicket" ${checkTicket} style="width:20px;height:20px;accent-color:#3B82F6;">
+          <div>
+            <div style="font-weight:700;font-size:0.9rem;color:#334155;">🖨️ Imprimir Ticket de Venta</div>
+            <div style="font-size:0.75rem;color:#64748B;">Emitir nota de venta en la impresora de caja.</div>
+          </div>
+        </label>
+
+        <div style="border-top:1px solid #E2E8F0;"></div>
+
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="postPagoCheckMesa" ${checkMesa} style="width:20px;height:20px;accent-color:#10B981;">
+          <div>
+            <div style="font-weight:700;font-size:0.9rem;color:#334155;">🪑 Liberar ${textoMesa} inmediatamente</div>
+            <div style="font-size:0.75rem;color:#64748B;">Cambiar estado de la mesa a LIBRE para nuevos clientes.</div>
+          </div>
+        </label>
+      </div>
+
+      <button id="postPagoConfirmBtn" class="btn btn-primary btn-block" style="padding:12px;font-size:0.95rem;font-weight:700;">
+        ✔ Confirmar y Continuar
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('postPagoConfirmBtn').onclick = async () => {
+    const doTicket = document.getElementById('postPagoCheckTicket').checked;
+    const doMesa = document.getElementById('postPagoCheckMesa').checked;
+
+    overlay.classList.remove('active');
+    setTimeout(() => overlay.remove(), 150);
+
+    const promesas = [];
+    if (doTicket && pedidoId) {
+      promesas.push(fetch(`/api/pedidos/${pedidoId}/reimprimir`, { method: 'POST' }).catch(console.error));
+    }
+    if (doMesa && mesaId) {
+      promesas.push(fetch(`/api/mesas/${mesaId}/liberar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mesero_id: null })
+      }).catch(console.error));
+    }
+
+    await Promise.all(promesas);
+    if (onComplete) onComplete();
+  };
 };

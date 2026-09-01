@@ -353,6 +353,44 @@
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px;" id="cfgModalMetodos"></div>
         </div>
 
+        <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">🧾 Acciones Post-Pago (Ahorro de Papel & Mesas)</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Configura qué sucede tras cobrar una mesa en el POS (impresión opcional de ticket y liberación).</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfigPostPago()">💾 Guardar preferencia</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
+            <div>
+              <label style="font-size:0.85rem;font-weight:600;color:#334155;display:block;margin-bottom:6px;">🪑 Liberación de Mesa al Pagar</label>
+              <select id="cfgPostPagoMesa" class="form-control">
+                <option value="preguntar">Preguntar siempre (Modal Post-Pago)</option>
+                <option value="si">Liberar mesa automáticamente</option>
+                <option value="no">Mantener mesa ocupada</option>
+              </select>
+            </div>
+
+            <div>
+              <label style="font-size:0.85rem;font-weight:600;color:#334155;display:block;margin-bottom:6px;">📄 Impresión de Ticket de Venta (Boleta)</label>
+              <select id="cfgPostPagoTicket" class="form-control">
+                <option value="preguntar">Preguntar siempre (Modal Post-Pago)</option>
+                <option value="si">Imprimir siempre automáticamente</option>
+                <option value="no">No imprimir ticket</option>
+              </select>
+            </div>
+
+            <div>
+              <label style="font-size:0.85rem;font-weight:600;color:#334155;display:block;margin-bottom:6px;">🌱 Casilla de Ticket por Defecto (Ahorro de Papel)</label>
+              <select id="cfgPostPagoTicketDefault" class="form-control">
+                <option value="false">Desmarcada (Ahorro de Papel — Recomendado)</option>
+                <option value="true">Marcada por defecto</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div id="cfgOtrosWrap"></div>
       </div>
     </div>
