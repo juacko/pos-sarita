@@ -5,6 +5,7 @@ const stockService = require('../services/StockService');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const cajaRepo = require('../repositories/CajaRepository');
 const pedidoRepo = require('../repositories/PedidoRepository');
+const cajaController = require('../controllers/CajaController');
 
 function createAdminRouter(io) {
   const router = Router();

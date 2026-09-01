@@ -6,6 +6,7 @@ const stockService = require('../services/StockService');
 const pagoService = require('../services/PagoService');
 const pedidoRepo = require('../repositories/PedidoRepository');
 const mesaRepo = require('../repositories/MesaRepository');
+const pedidoController = require('../controllers/PedidoController');
 
 function createPedidosRouter(io) {
   const router = Router();
