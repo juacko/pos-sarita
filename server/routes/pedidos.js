@@ -32,9 +32,6 @@ function createPedidosRouter(io) {
   function emitirStockActualizado(affectedProducts) {
     return stockService.emitirStockActualizado(affectedProducts, io);
   }
-      });
-    }
-  }
 
   // ---- HELPERS MOVIMIENTO ENTRE MESAS ----
   function recalcularTotalPedido(pedidoId) {
@@ -342,6 +339,67 @@ function createPedidosRouter(io) {
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
+    }
+  });
+
+  router.patch('/:id/items/estado', (req, res) => {
+    const { estado, destino, destino_impresion } = req.body;
+    const validStates = ['PENDIENTE', 'COCINANDO', 'LISTO', 'ENTREGADO', 'CANCELADO'];
+
+    if (!validStates.includes(estado)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
+
+    try {
+      const pedido = db.prepare('SELECT id, mesa_id FROM pedidos WHERE id = ?').get(req.params.id);
+      if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+      const targetDestino = destino || destino_impresion;
+      if (targetDestino === 'cocina') {
+        db.prepare(`
+          UPDATE pedido_items SET estado = ?
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
+        `).run(estado, req.params.id);
+      } else if (targetDestino === 'barra') {
+        db.prepare(`
+          UPDATE pedido_items SET estado = ?
+          WHERE pedido_id = ? AND estado != 'CANCELADO'
+            AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
+        `).run(estado, req.params.id);
+      } else {
+        db.prepare('UPDATE pedido_items SET estado = ? WHERE pedido_id = ? AND estado != ?')
+          .run(estado, req.params.id, 'CANCELADO');
+      }
+
+      // Recalcular estado global del pedido
+      const allActiveItems = db.prepare("SELECT estado FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(req.params.id);
+      if (allActiveItems.length > 0) {
+        const allReady = allActiveItems.every(i => i.estado === 'LISTO' || i.estado === 'ENTREGADO');
+        const anyCooking = allActiveItems.some(i => i.estado === 'COCINANDO');
+
+        let nuevoEstadoPedido = null;
+        if (allReady) nuevoEstadoPedido = 'LISTO';
+        else if (anyCooking) nuevoEstadoPedido = 'EN_PREPARACION';
+
+        if (nuevoEstadoPedido) {
+          db.prepare("UPDATE pedidos SET estado = ?, updated_at = datetime('now') WHERE id = ?").run(nuevoEstadoPedido, req.params.id);
+        }
+      }
+
+      const items = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(req.params.id);
+      const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+      const mesaData = pedidoActualizado ? db.prepare(`
+        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+      `).get(pedidoActualizado.mesa_id) : null;
+
+      io.emit('pedido:actualizado', pedidoActualizado);
+      if (mesaData) io.emit('mesa:updated', mesaData);
+      io.emit('item:actualizado', { pedido_id: Number(req.params.id) });
+
+      res.json({ ok: true, items, pedido: pedidoActualizado });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 
