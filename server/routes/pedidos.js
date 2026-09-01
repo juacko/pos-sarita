@@ -2,6 +2,8 @@ const { Router } = require('express');
 const db = require('../db');
 const printers = require('../printers');
 const pagos = require('../metodos-pago');
+const stockService = require('../services/StockService');
+const pagoService = require('../services/PagoService');
 
 function createPedidosRouter(io) {
   const router = Router();
@@ -20,64 +22,16 @@ function createPedidosRouter(io) {
 
   // ---- HELPERS CONTROL DE STOCK ----
   function validarYDescontarStock(items) {
-    const requestedPerProduct = {};
-    for (const it of items || []) {
-      const prodId = it.producto_id || it.id;
-      if (!prodId) continue;
-      requestedPerProduct[prodId] = (requestedPerProduct[prodId] || 0) + (it.cantidad || 1);
-    }
-
-    const affectedProducts = [];
-    for (const [prodId, reqQty] of Object.entries(requestedPerProduct)) {
-      const prod = db.prepare('SELECT id, nombre, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
-      if (!prod || !prod.controlar_stock) continue;
-
-      if (prod.stock_actual < reqQty) {
-        throw {
-          status: 400,
-          error: prod.stock_actual <= 0
-            ? `El producto "${prod.nombre}" se encuentra AGOTADO.`
-            : `Stock insuficiente para "${prod.nombre}". Solicitado: ${reqQty}, Disponible en cocina/barra: ${prod.stock_actual}.`
-        };
-      }
-
-      db.prepare('UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?').run(reqQty, prodId);
-      const updated = db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
-      affectedProducts.push(updated);
-    }
-
-    return affectedProducts;
+    return stockService.validarYDescontarStock(items);
   }
 
   function reponerStock(items) {
-    const qtyPerProduct = {};
-    for (const it of items || []) {
-      const prodId = it.producto_id || it.id;
-      if (!prodId) continue;
-      qtyPerProduct[prodId] = (qtyPerProduct[prodId] || 0) + (it.cantidad || 1);
-    }
-
-    const affectedProducts = [];
-    for (const [prodId, qty] of Object.entries(qtyPerProduct)) {
-      const prod = db.prepare('SELECT id, controlar_stock, stock_minimo FROM productos WHERE id = ?').get(prodId);
-      if (!prod || !prod.controlar_stock) continue;
-
-      db.prepare('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?').run(qty, prodId);
-      const updated = db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
-      affectedProducts.push(updated);
-    }
-
-    return affectedProducts;
+    return stockService.reponerStock(items);
   }
 
   function emitirStockActualizado(affectedProducts) {
-    if (!io || !affectedProducts || !affectedProducts.length) return;
-    for (const p of affectedProducts) {
-      io.emit('stock:actualizado', {
-        producto_id: p.id,
-        controlar_stock: p.controlar_stock,
-        stock_actual: p.stock_actual,
-        stock_minimo: p.stock_minimo
+    return stockService.emitirStockActualizado(affectedProducts, io);
+  }
       });
     }
   }

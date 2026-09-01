@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const db = require('../db');
 const printers = require('../printers');
+const stockService = require('../services/StockService');
 
 function createAdminRouter(io) {
   const router = Router();
@@ -767,19 +768,7 @@ function createAdminRouter(io) {
 
         // Reponer stock de los items activos que se anulan
         const itemsToRestore = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(pedido.id);
-        const qtyPerProduct = {};
-        for (const it of itemsToRestore) {
-          if (!it.producto_id) continue;
-          qtyPerProduct[it.producto_id] = (qtyPerProduct[it.producto_id] || 0) + (it.cantidad || 1);
-        }
-        for (const [prodId, qty] of Object.entries(qtyPerProduct)) {
-          const prod = db.prepare('SELECT id, controlar_stock, stock_minimo FROM productos WHERE id = ?').get(prodId);
-          if (prod && prod.controlar_stock) {
-            db.prepare('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?').run(qty, prodId);
-            const actProd = db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
-            affectedStockProducts.push(actProd);
-          }
-        }
+        affectedStockProducts = stockService.reponerStock(itemsToRestore);
 
         db.prepare("UPDATE pedidos SET estado = 'CANCELADO', motivo_cancelacion = ?, anulado_por = ?, updated_at = datetime('now') WHERE id = ?")
           .run(motivo.trim(), usuario_id || null, pedido.id);
