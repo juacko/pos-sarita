@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const db = require('../db');
+const productoRepo = require('../repositories/ProductoRepository');
 
 function createProductosRouter(io) {
   const router = Router();

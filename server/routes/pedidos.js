@@ -4,6 +4,8 @@ const printers = require('../printers');
 const pagos = require('../metodos-pago');
 const stockService = require('../services/StockService');
 const pagoService = require('../services/PagoService');
+const pedidoRepo = require('../repositories/PedidoRepository');
+const mesaRepo = require('../repositories/MesaRepository');
 
 function createPedidosRouter(io) {
   const router = Router();

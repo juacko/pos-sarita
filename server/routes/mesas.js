@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const db = require('../db');
 const { acquireTableLock, releaseTableLock } = require('../table-lock');
+const mesaRepo = require('../repositories/MesaRepository');
 
 function createMesasRouter(io) {
   const router = Router();
