@@ -2,9 +2,11 @@ const { Router } = require('express');
 const db = require('../db');
 const printers = require('../printers');
 const stockService = require('../services/StockService');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 function createAdminRouter(io) {
   const router = Router();
+  router.use(requireAuth());
 
   // ─── CONFIGURACION ───
   router.get('/configuracion', (req, res) => {
@@ -749,11 +751,9 @@ function createAdminRouter(io) {
         return res.status(400).json({ error: 'El motivo de anulación es requerido' });
       }
 
-      if (!usuario_id) {
-        return res.status(403).json({ error: 'Solo el administrador o el cajero pueden anular pedidos' });
-      }
-      const usuario = db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(usuario_id);
-      if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'cajero')) {
+      const uid = req.usuario?.id || usuario_id;
+      const rolCheck = verificarRolAdminCajero(uid, req);
+      if (rolCheck.error) {
         return res.status(403).json({ error: 'Solo el administrador o el cajero pueden anular pedidos' });
       }
 
@@ -821,13 +821,14 @@ function createAdminRouter(io) {
   });
 
   // ─── GESTIÓN DE PEDIDOS PAGADOS ───
-  function verificarRolAdminCajero(usuario_id) {
-    if (!usuario_id) return { error: 'Solo el administrador o el cajero pueden realizar esta acción' };
-    const usuario = db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(usuario_id);
+  function verificarRolAdminCajero(usuario_id, req) {
+    const uid = req?.usuario?.id || usuario_id;
+    if (!uid) return { error: 'Solo el administrador o el cajero pueden realizar esta acción' };
+    const usuario = req?.usuario ? req.usuario : db.prepare('SELECT id, rol FROM usuarios WHERE id = ?').get(uid);
     if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'cajero')) {
       return { error: 'Solo el administrador o el cajero pueden realizar esta acción' };
     }
-    return { ok: true, rol: usuario.rol };
+    return { ok: true, rol: usuario.rol, id: usuario.id };
   }
 
   function sesionCajaAbierta() {

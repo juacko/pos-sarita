@@ -52,6 +52,7 @@ function updateUserInfo() {
 }
 
 function logout() {
+  fetch('/api/usuarios/logout', { method: 'POST' }).catch(() => {});
   currentUser = null;
   localStorage.removeItem('posUser');
   document.getElementById('loginScreen').style.display = 'flex';

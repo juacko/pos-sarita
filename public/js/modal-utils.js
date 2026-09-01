@@ -3,6 +3,31 @@
  * Reemplaza los popups nativos confirm(), prompt() y alert() del navegador por modales estilizados.
  */
 
+// Interceptor global de fetch para enviar el header x-session-token si hay usuario en localStorage
+(function() {
+  const originalFetch = window.fetch;
+  window.fetch = function(url, options = {}) {
+    try {
+      const savedUser = localStorage.getItem('posUser');
+      if (savedUser) {
+        const user = JSON.parse(savedUser);
+        if (user && user.token) {
+          options = options || {};
+          options.headers = options.headers || {};
+          if (options.headers instanceof Headers) {
+            if (!options.headers.has('x-session-token')) {
+              options.headers.append('x-session-token', user.token);
+            }
+          } else {
+            options.headers['x-session-token'] = options.headers['x-session-token'] || user.token;
+          }
+        }
+      }
+    } catch (e) {}
+    return originalFetch.call(this, url, options);
+  };
+})();
+
 window.customConfirm = function({
   title = '¿Confirmar Acción?',
   message = '',

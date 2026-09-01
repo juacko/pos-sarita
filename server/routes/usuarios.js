@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const db = require('../db');
+const { generarTokenSesion, destruirSesion } = require('../middleware/auth');
 
 function createUsuariosRouter() {
   const router = Router();
@@ -11,7 +12,21 @@ function createUsuariosRouter() {
     const usuario = db.prepare('SELECT id, nombre, rol FROM usuarios WHERE pin = ? AND activo = 1').get(pin);
     if (!usuario) return res.status(401).json({ error: 'PIN incorrecto' });
 
-    res.json(usuario);
+    const token = generarTokenSesion(usuario.id);
+
+    res.json({
+      token,
+      usuario: { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol },
+      id: usuario.id,
+      nombre: usuario.nombre,
+      rol: usuario.rol
+    });
+  });
+
+  router.post('/logout', (req, res) => {
+    const token = req.headers['x-session-token'];
+    if (token) destruirSesion(token);
+    res.json({ ok: true });
   });
 
   router.get('/', (req, res) => {

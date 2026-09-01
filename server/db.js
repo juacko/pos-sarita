@@ -246,6 +246,14 @@ db.exec(`
     valor TEXT NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS sesiones (
+    token TEXT PRIMARY KEY,
+    usuario_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
 `);
 
 function migrateColumns() {
