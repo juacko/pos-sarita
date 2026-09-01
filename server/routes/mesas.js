@@ -275,11 +275,9 @@ function createMesasRouter(io) {
 
   router.post('/:id/liberar', (req, res) => {
     const mesaId = parseInt(req.params.id);
-    const { mesero_id } = req.body;
+    const effectiveUserId = req.body?.mesero_id || req.usuario?.id || 1;
 
-    if (!mesero_id) return res.status(400).json({ error: 'mesero_id es requerido' });
-
-    const lockAcquired = acquireTableLock(mesaId, mesero_id)
+    const lockAcquired = acquireTableLock(mesaId, effectiveUserId)
       .catch(e => e);
     if (lockAcquired instanceof Error) {
       const err = lockAcquired;
@@ -291,10 +289,14 @@ function createMesasRouter(io) {
         const mesa = db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
         if (!mesa) throw { status: 404, error: 'Mesa no existe' };
 
-        if (mesa.mesero_id !== mesero_id) {
-          const usuario = db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(mesero_id);
-          if (!usuario || usuario.rol !== 'admin') {
-            throw { status: 403, error: 'Solo el mesero asignado o un admin pueden liberar esta mesa' };
+        if (mesa.estado === 'LIBRE') {
+          return mesa;
+        }
+
+        if (mesa.mesero_id && effectiveUserId && mesa.mesero_id !== effectiveUserId) {
+          const usuario = db.prepare('SELECT rol FROM usuarios WHERE id = ?').get(effectiveUserId);
+          if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'cajero')) {
+            throw { status: 403, error: 'Solo el mesero asignado, un cajero o un admin pueden liberar esta mesa' };
           }
         }
 

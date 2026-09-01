@@ -443,7 +443,7 @@
           window.mostrarModalPostPago({
             pedidoId: pedIdTmp,
             mesaId: posMesaId,
-            mesaNumero: posMesaNumero,
+            mesaNumero: posMesaData ? (posMesaData.numero || posMesaData.nombre) : '',
             configPostPago: cfgPostPago,
             onComplete: async () => {
               await loadMesas();
