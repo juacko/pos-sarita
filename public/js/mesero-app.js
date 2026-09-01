@@ -431,6 +431,8 @@
 
         toast('✅ Pago registrado correctamente.', 'ok');
         const pedIdTmp = currentQrPedidoId;
+        const mIdTmp = posMesaId;
+        const mNumTmp = posMesaData ? (posMesaData.numero || posMesaData.nombre) : '';
         closeQrPagoModal();
 
         let cfgPostPago = null;
@@ -442,13 +444,13 @@
         if (window.mostrarModalPostPago) {
           window.mostrarModalPostPago({
             pedidoId: pedIdTmp,
-            mesaId: posMesaId,
-            mesaNumero: posMesaData ? (posMesaData.numero || posMesaData.nombre) : '',
+            mesaId: mIdTmp,
+            mesaNumero: mNumTmp,
             configPostPago: cfgPostPago,
             onComplete: async () => {
               await loadMesas();
-              const mesaRow = allMesas.find(m => m.id === posMesaId);
-              if (mesaRow) {
+              const mesaRow = allMesas.find(m => m.id === mIdTmp);
+              if (mesaRow && mesaRow.estado !== 'LIBRE' && mesaRow.pedido_activo_id) {
                 abrirPOS(mesaRow);
               } else {
                 showMesasView();
@@ -457,8 +459,8 @@
           });
         } else {
           await loadMesas();
-          const mesaRow = allMesas.find(m => m.id === posMesaId);
-          if (mesaRow) {
+          const mesaRow = allMesas.find(m => m.id === mIdTmp);
+          if (mesaRow && mesaRow.estado !== 'LIBRE' && mesaRow.pedido_activo_id) {
             abrirPOS(mesaRow);
           } else {
             showMesasView();
