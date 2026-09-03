@@ -37,6 +37,10 @@ class ProductoRepository {
     return p;
   }
 
+  obtenerBasico(id) {
+    return this.db.prepare('SELECT id, nombre, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(id);
+  }
+
   actualizarStock(id, stockActual, controlarStock = undefined, stockMinimo = undefined) {
     if (controlarStock !== undefined && stockMinimo !== undefined) {
       this.db.prepare('UPDATE productos SET stock_actual = ?, controlar_stock = ?, stock_minimo = ? WHERE id = ?')
@@ -44,6 +48,11 @@ class ProductoRepository {
     } else {
       this.db.prepare('UPDATE productos SET stock_actual = ? WHERE id = ?').run(stockActual, id);
     }
+    return this.db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(id);
+  }
+
+  incrementarStock(id, cantidad) {
+    this.db.prepare('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?').run(cantidad, id);
     return this.db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(id);
   }
 }

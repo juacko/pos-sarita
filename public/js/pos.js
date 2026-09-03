@@ -1410,6 +1410,10 @@ function aplicarVisibilidadCobro() {
 
 function calcularTotalCobro() {
   if (!cobroPedidoRef) return 0;
+  if (cobroPedidoRef.resumen_pago) {
+    return cobroPedidoRef.resumen_pago.totalFinal;
+  }
+  // Fallback for safety during transition
   const totalBruto = cobroPedidoRef.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
   const descuentos = cobroPedidoRef.descuentos || [];
   let totalDescuento = 0;

@@ -1,12 +1,19 @@
-const db = require('../db');
+const defaultDb = require('../db');
+const productoRepoDef = require('../repositories/ProductoRepository');
 
 /**
  * Servicio de gestión de Stock de productos.
  * Encapsula la lógica de verificación, descuento y reposición de stock.
  */
 class StockService {
-  constructor(database = db) {
+  constructor(database = defaultDb, productoRepo = null) {
     this.db = database;
+    if (productoRepo) {
+      this.productoRepo = productoRepo;
+    } else {
+      const { ProductoRepository } = require('../repositories/ProductoRepository');
+      this.productoRepo = new ProductoRepository(database);
+    }
   }
 
   /**
@@ -25,7 +32,7 @@ class StockService {
     const affectedProducts = [];
     for (const [prodIdStr, requestedQty] of Object.entries(qtyPerProduct)) {
       const prodId = parseInt(prodIdStr, 10);
-      const prod = this.db.prepare('SELECT id, nombre, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+      const prod = this.productoRepo.obtenerBasico(prodId);
       if (!prod) continue;
 
       if (prod.controlar_stock) {
@@ -36,8 +43,7 @@ class StockService {
           throw { status: 400, error: `Stock insuficiente para "${prod.nombre}". Quedan ${prod.stock_actual} unidad(es)` };
         }
 
-        this.db.prepare('UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?').run(requestedQty, prodId);
-        const updated = this.db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+        const updated = this.productoRepo.incrementarStock(prodId, -requestedQty);
         affectedProducts.push(updated);
       }
     }
@@ -60,10 +66,9 @@ class StockService {
     const affectedProducts = [];
     for (const [prodIdStr, qty] of Object.entries(qtyPerProduct)) {
       const prodId = parseInt(prodIdStr, 10);
-      const prod = this.db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+      const prod = this.productoRepo.obtenerBasico(prodId);
       if (prod && prod.controlar_stock) {
-        this.db.prepare('UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?').run(qty, prodId);
-        const updated = this.db.prepare('SELECT id, controlar_stock, stock_actual, stock_minimo FROM productos WHERE id = ?').get(prodId);
+        const updated = this.productoRepo.incrementarStock(prodId, qty);
         affectedProducts.push(updated);
       }
     }

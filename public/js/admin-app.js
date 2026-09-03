@@ -94,6 +94,7 @@
         renderConfigModalPago();
         renderConfigHoraCorte();
         renderConfigPostPago();
+        renderConfigImpresionComandas();
       } catch (e) {
         showToast('Error al cargar configuración', 'error');
       }
@@ -126,6 +127,60 @@
           configGlobal.post_pago = valor;
         } else {
           showToast('Error al guardar preferencia', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    function renderConfigImpresionComandas() {
+      const wrap = document.getElementById('cfgImpresionComandasWrap');
+      if (!wrap) return;
+      const cfg = configGlobal?.impresion_comandas || { cocina: true, barra: true };
+      
+      wrap.innerHTML = `
+        <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">🖨️ Impresión de Comandas (Paperless)</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Activa o desactiva la impresión física de tickets. Si se desactiva, los pedidos solo aparecerán en las pantallas (KDS).</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfigImpresionComandas()">💾 Guardar preferencia</button>
+          </div>
+          <div style="display:flex;gap:20px;">
+            <div class="form-group" style="flex:1;">
+              <label>Impresora Cocina</label>
+              <select id="cfgImpresionCocina" class="form-control">
+                <option value="true" ${cfg.cocina !== false ? 'selected' : ''}>Sí (Imprimir tickets)</option>
+                <option value="false" ${cfg.cocina === false ? 'selected' : ''}>No (Solo KDS)</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Impresora Barra</label>
+              <select id="cfgImpresionBarra" class="form-control">
+                <option value="true" ${cfg.barra !== false ? 'selected' : ''}>Sí (Imprimir tickets)</option>
+                <option value="false" ${cfg.barra === false ? 'selected' : ''}>No (Solo KDS)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function saveConfigImpresionComandas() {
+      const valor = {
+        cocina: document.getElementById('cfgImpresionCocina')?.value === 'true',
+        barra: document.getElementById('cfgImpresionBarra')?.value === 'true'
+      };
+      try {
+        const res = await fetch('/api/admin/configuracion/impresion_comandas', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor })
+        });
+        if (res.ok) {
+          showToast('Configuración de comandas guardada', 'success');
+          configGlobal.impresion_comandas = valor;
+        } else {
+          showToast('Error al guardar', 'error');
         }
       } catch (e) { showToast('Error de conexión', 'error'); }
     }

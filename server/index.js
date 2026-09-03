@@ -21,32 +21,34 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-app.use('/api/mesas', createMesasRouter(io));
-app.use('/api/pedidos', createPedidosRouter(io));
-app.use('/api/productos', createProductosRouter(io));
-app.use('/api/usuarios', createUsuariosRouter());
-app.use('/api/admin', createAdminRouter(io));
+const { requireAuth } = require('./middleware/auth');
 
-app.get('/api/printers/config', (req, res) => {
+app.use('/api/mesas', requireAuth(), createMesasRouter(io));
+app.use('/api/pedidos', requireAuth(), createPedidosRouter(io));
+app.use('/api/productos', requireAuth(), createProductosRouter(io));
+app.use('/api/usuarios', createUsuariosRouter());
+app.use('/api/admin', requireAuth(), createAdminRouter(io));
+
+app.get('/api/printers/config', requireAuth(), (req, res) => {
   res.json(printers.getConfig());
 });
 
-app.get('/api/configuracion/:clave', (req, res) => {
+app.get('/api/configuracion/:clave', requireAuth(), (req, res) => {
   const fila = db.prepare('SELECT valor FROM configuracion WHERE clave = ?').get(req.params.clave);
   if (!fila) return res.status(404).json({ error: 'Clave no encontrada' });
   try { res.json(JSON.parse(fila.valor)); } catch { res.json(fila.valor); }
 });
 
-app.post('/api/printers/config', (req, res) => {
+app.post('/api/printers/config', requireAuth(), (req, res) => {
   res.json(printers.updateConfig(req.body));
 });
 
-app.post('/api/printers/test/:printerName', (req, res) => {
+app.post('/api/printers/test/:printerName', requireAuth(), (req, res) => {
   const result = printers.testPrinter(req.params.printerName);
   res.json(result);
 });
 
-app.get('/api/printers/detect', (req, res) => {
+app.get('/api/printers/detect', requireAuth(), (req, res) => {
   try {
     const detected = printers.detectPrinters();
     res.json(detected);

@@ -1,12 +1,27 @@
-const db = require('../db');
+const defaultDb = require('../db');
+const cajaRepoDef = require('../repositories/CajaRepository');
+const pedidoRepoDef = require('../repositories/PedidoRepository');
 
 /**
  * Servicio de gestión de Pagos y Descuentos.
  * Encapsula la lógica financiera de cálculo de totales, descuentos, pendientes y sesiones de caja.
  */
 class PagoService {
-  constructor(database = db) {
+  constructor(database = defaultDb, cajaRepo = null, pedidoRepo = null) {
     this.db = database;
+    if (cajaRepo) {
+      this.cajaRepo = cajaRepo;
+    } else {
+      const { CajaRepository } = require('../repositories/CajaRepository');
+      this.cajaRepo = new CajaRepository(database);
+    }
+    
+    if (pedidoRepo) {
+      this.pedidoRepo = pedidoRepo;
+    } else {
+      const { PedidoRepository } = require('../repositories/PedidoRepository');
+      this.pedidoRepo = new PedidoRepository(database);
+    }
   }
 
   /**
@@ -14,7 +29,7 @@ class PagoService {
    * @returns {Object|null} Objeto sesión de caja abierta o null si no hay ninguna
    */
   obtenerSesionCajaAbierta() {
-    return this.db.prepare("SELECT * FROM caja_sesiones WHERE estado = 'ABIERTA' ORDER BY id DESC LIMIT 1").get() || null;
+    return this.cajaRepo.obtenerSesionActiva();
   }
 
   /**
@@ -23,15 +38,9 @@ class PagoService {
    * @returns {Object} { totalBruto, descuentoPorcentaje, descuentoFijo, totalDescuento, totalFinal }
    */
   calcularTotalConDescuentos(pedidoId) {
-    const pedido = this.db.prepare('SELECT total FROM pedidos WHERE id = ?').get(pedidoId);
-    if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
-
-    const totalBruto = pedido.total || 0;
-    const descuentoRow = this.db.prepare(`
-      SELECT COALESCE(SUM(CASE WHEN tipo = 'porcentaje' THEN 0 ELSE valor END), 0) as fijo,
-             COALESCE(SUM(CASE WHEN tipo = 'porcentaje' THEN valor ELSE 0 END), 0) as pct
-      FROM descuentos WHERE pedido_id = ?
-    `).get(pedidoId);
+    const totalBruto = this.pedidoRepo.obtenerTotal(pedidoId);
+    if (totalBruto === null) throw { status: 404, error: 'Pedido no encontrado' };
+    const descuentoRow = this.pedidoRepo.obtenerTotalesDescuentos(pedidoId);
 
     const descuentoPorcentaje = descuentoRow ? descuentoRow.pct || 0 : 0;
     const descuentoFijo = descuentoRow ? descuentoRow.fijo || 0 : 0;
@@ -57,8 +66,7 @@ class PagoService {
    */
   obtenerResumenPago(pedidoId) {
     const calc = this.calcularTotalConDescuentos(pedidoId);
-    const pagadoAnterior = this.db.prepare('SELECT COALESCE(SUM(monto), 0) as total FROM pagos WHERE pedido_id = ?')
-      .get(pedidoId).total;
+    const pagadoAnterior = this.pedidoRepo.obtenerTotalPagado(pedidoId);
 
     const pendiente = Math.max(0, calc.totalFinal - pagadoAnterior);
     const completado = pagadoAnterior >= calc.totalFinal - 0.01;

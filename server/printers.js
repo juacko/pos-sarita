@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const { textoDeMetodo } = require('./metodos-pago');
+const db = require('./db');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'printers-config.json');
 const RAWRINT_PS1 = path.join(__dirname, 'rawprint.ps1');
@@ -58,7 +59,7 @@ function cmdAlign(n) { return [ESC, 0x61, n]; }                               //
 function cmdSize(n) { return [GS, 0x21, n]; }                                 // GS ! n (tamaño fuente)
 function cmdBold(on) { return [ESC, 0x45, on ? 1 : 0]; }                      // ESC E n
 function cmdFeed(n) { return [ESC, 0x64, n]; }                                // ESC d n (avance n lineas)
-function cmdCut() { return [GS, 0x56, 0x42]; }                                // GS V 66 (corte total)
+function cmdCut() { return [GS, 0x56, 0x42, 0x00]; }                          // GS V 66 0 (corte con avance 0)
 function cmdSpacing(n) { return [ESC, 0x33, n]; }                             // ESC 3 n (espaciado lineas en dots)
 
 // Tamaños de fuente (GS ! n): bits 0-2 = ancho (0=1x,1=2x,2=3x), bits 4-6 = alto
@@ -81,10 +82,12 @@ function buildEscPos(lines, printerName) {
   out.push(...cmdSpacing(24)); // espaciado compacto para aprovechar papel
 
   const textBytes = (t) => {
-    for (const ch of t) {
+    // Normalizar texto para eliminar tildes y convertir ñ en n, etc.
+    const normalized = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    for (const ch of normalized) {
       const code = ch.codePointAt(0);
       if (code < 128) out.push(code);
-      else out.push(0x3f); // '?' para caracteres no ASCII en fuentes base
+      else out.push(0x3f); // '?' para otros caracteres no ASCII (ej. emojis, monedas raras)
     }
   };
 
@@ -546,20 +549,35 @@ function generateComandaBarraText(pedido, items, mesa) {
   return buildEscPos(lines, 'barra');
 }
 
+function getImpresionComandasConfig() {
+  try {
+    const row = db.prepare("SELECT valor FROM configuracion WHERE clave = 'impresion_comandas'").get();
+    if (row && row.valor) {
+      return JSON.parse(row.valor);
+    }
+  } catch (e) {}
+  return { cocina: true, barra: true }; // Default
+}
+
 function printComandaBarra(pedido, items, mesa) {
+  const cfg = getImpresionComandasConfig();
+  if (cfg.barra === false) return { ok: true, reason: 'paperless' };
+
   const buffer = generateComandaBarraText(pedido, items, mesa);
   return printRawEscPos(buffer, 'barra');
 }
 
 function printComanda(pedido, items, mesa) {
+  const cfg = getImpresionComandasConfig();
+
   const itemsCocina = items.filter(i => ['cocina', 'ambos'].includes(i.destino_impresion || 'cocina'));
   const itemsBarra  = items.filter(i => ['barra',  'ambos'].includes(i.destino_impresion || 'cocina'));
 
   const results = [];
-  if (itemsCocina.length) {
+  if (itemsCocina.length && cfg.cocina !== false) {
     results.push(printRawEscPos(generateComandaText(pedido, itemsCocina, mesa), 'cocina'));
   }
-  if (itemsBarra.length) {
+  if (itemsBarra.length && cfg.barra !== false) {
     results.push(printRawEscPos(generateComandaBarraText(pedido, itemsBarra, mesa), 'barra'));
   }
   return results[0] || { ok: true };

@@ -31,8 +31,13 @@ class ProductoController {
       const prod = this.productoRepo.obtenerPorId(id);
       if (!prod) return res.status(404).json({ error: 'Producto no encontrado' });
 
-      const nuevoStock = stock_actual != null ? Math.max(0, parseInt(stock_actual, 10) || 0) : prod.stock_actual;
-      const actualizado = this.productoRepo.actualizarStock(id, nuevoStock, controlar_stock, stock_minimo);
+      const nuevoStock = stock_actual !== undefined && stock_actual !== null ? Math.max(0, parseInt(stock_actual, 10) || 0) : prod.stock_actual;
+      const nuevoControlarStock = controlar_stock !== undefined ? controlar_stock : prod.controlar_stock;
+      const nuevoStockMinimo = stock_minimo !== undefined ? stock_minimo : prod.stock_minimo;
+
+      console.log('DEBUG PATCH STOCK:', { id, reqBody: req.body, nuevoStock, nuevoControlarStock, nuevoStockMinimo });
+
+      const actualizado = this.productoRepo.actualizarStock(id, nuevoStock, nuevoControlarStock, nuevoStockMinimo);
 
       if (io) {
         io.emit('stock:actualizado', {
