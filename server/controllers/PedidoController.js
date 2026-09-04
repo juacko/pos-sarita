@@ -22,7 +22,7 @@ class PedidoController {
 
   actualizarEstadoItemsMasivo(req, res, io) {
     const { id } = req.params;
-    const { estado, destino, destino_impresion } = req.body;
+    const { estado, destino, destino_impresion, item_ids } = req.body;
     const validStates = ['PENDIENTE', 'COCINANDO', 'LISTO', 'ENTREGADO', 'CANCELADO'];
 
     if (!validStates.includes(estado)) {
@@ -34,7 +34,7 @@ class PedidoController {
       if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
 
       const targetDestino = destino || destino_impresion;
-      this.pedidoRepo.actualizarEstadoItemsMasivo(id, estado, targetDestino);
+      this.pedidoRepo.actualizarEstadoItemsMasivo(id, estado, targetDestino, item_ids);
       this.pedidoRepo.recalcularEstadoGlobalPedido(id);
 
       const pedidoActualizado = this.pedidoRepo.obtenerPorId(id);
@@ -604,7 +604,7 @@ class PedidoController {
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
-        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION', 'LISTO')
+        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION', 'LISTO', 'CERRADO')
         ORDER BY p.created_at ASC
       `).all();
 
@@ -639,20 +639,24 @@ class PedidoController {
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
-        WHERE p.estado IN ('LISTO', 'ENTREGADO', 'CERRADO')
-          AND p.created_at >= ? AND p.created_at <= ?
-        ORDER BY p.created_at DESC
+        WHERE p.created_at >= ? AND p.created_at <= ?
+        ORDER BY p.updated_at DESC
       `).all(ini, fin);
 
+      const resultado = [];
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
           SELECT * FROM pedido_items
           WHERE pedido_id = ? AND estado != 'CANCELADO'
             AND (destino_impresion = 'cocina' OR destino_impresion = 'ambos' OR destino_impresion IS NULL)
         `).all(pedido.id);
+        
+        if (pedido.items.length === 0) continue;
+        const todosListos = pedido.items.every(i => i.estado === 'LISTO' || i.estado === 'ENTREGADO');
+        if (todosListos) resultado.push(pedido);
       }
 
-      res.json(pedidos);
+      res.json(resultado);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -665,7 +669,7 @@ class PedidoController {
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
-        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION', 'LISTO')
+        WHERE p.estado IN ('ABIERTO', 'EN_PREPARACION', 'LISTO', 'CERRADO')
         ORDER BY p.created_at ASC
       `).all();
 
@@ -700,20 +704,24 @@ class PedidoController {
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
-        WHERE p.estado IN ('LISTO', 'ENTREGADO', 'CERRADO')
-          AND p.created_at >= ? AND p.created_at <= ?
-        ORDER BY p.created_at DESC
+        WHERE p.created_at >= ? AND p.created_at <= ?
+        ORDER BY p.updated_at DESC
       `).all(ini, fin);
 
+      const resultado = [];
       for (const pedido of pedidos) {
         pedido.items = db.prepare(`
           SELECT * FROM pedido_items
           WHERE pedido_id = ? AND estado != 'CANCELADO'
             AND (destino_impresion = 'barra' OR destino_impresion = 'ambos')
         `).all(pedido.id);
+
+        if (pedido.items.length === 0) continue;
+        const todosListos = pedido.items.every(i => i.estado === 'LISTO' || i.estado === 'ENTREGADO');
+        if (todosListos) resultado.push(pedido);
       }
 
-      res.json(pedidos);
+      res.json(resultado);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

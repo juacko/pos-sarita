@@ -25,28 +25,31 @@
       container.innerHTML = '';
       for (const pedido of pedidos) {
         const card = document.createElement('div');
-        const isUrgente = pedido.estado === 'ABIERTO' && Date.now() - new Date(pedido.created_at).getTime() > 600000;
+        const isUrgente = pedido.estado !== 'CERRADO' && Date.now() - new Date(pedido.created_at).getTime() > 600000;
         card.className = `comanda-card${isUrgente ? ' urgente' : ''}`;
+        if (pedido.estado === 'CERRADO') card.style.borderTop = '4px solid #10B981';
 
         const tiempo = timeSince(new Date(pedido.created_at + 'Z'));
 
+        card.id = `pedido-card-${pedido.id}`;
         card.innerHTML = `
           <div class="comanda-header">
             <div>
               <div class="comanda-mesa">
-                ${pedido.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🛵 DELIVERY</span> ' :
-                  pedido.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🥡 PARA LLEVAR</span> ' : ''}
+                ${pedido.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🏍️ DELIVERY</span> ' :
+                  pedido.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🛍️ PARA LLEVAR</span> ' : ''}
                 ${pedido.area_tipo === 'SALON' || !pedido.area_tipo ? `Mesa ${pedido.mesa_numero || pedido.mesa_nombre || 'N/A'}` : (pedido.mesa_nombre || 'Delivery')}
               </div>
               <div style="font-size:0.75rem;color:var(--gray);">
                 Pedido #${pedido.id} ${pedido.mesero_nombre ? '| ' + pedido.mesero_nombre : ''}
+                ${pedido.estado === 'CERRADO' ? '<span style="color:#10B981;font-weight:bold;margin-left:8px;padding:2px 6px;background:#D1FAE5;border-radius:4px;">💸 PAGADO</span>' : ''}
               </div>
               ${(pedido.cliente_nombre || pedido.cliente_telefono || pedido.cliente_direccion || pedido.hora_recogida) ? `
               <div class="comanda-cliente">
                 ${pedido.cliente_nombre ? `👤 ${pedido.cliente_nombre}` : ''}
-                ${pedido.cliente_telefono ? ` · 📞 ${pedido.cliente_telefono}` : ''}
+                ${pedido.cliente_telefono ? ` 📞 ${pedido.cliente_telefono}` : ''}
                 ${pedido.cliente_direccion ? `<br>📍 ${pedido.cliente_direccion}` : ''}
-                ${pedido.hora_recogida ? `<br>🕐 Recoger: ${pedido.hora_recogida}` : ''}
+                ${pedido.hora_recogida ? `<br>⏰ Recoger: ${pedido.hora_recogida}` : ''}
               </div>` : ''}
             </div>
             <div class="comanda-time">${tiempo}</div>
@@ -63,7 +66,7 @@
                 const esNuevo = item.estado === 'PENDIENTE' && item.created_at && (Date.now() - new Date(item.created_at + 'Z').getTime()) < 3 * 60 * 1000;
                 return `
                 <div class="comanda-item ${item.estado === 'LISTO' ? 'listo' : ''}">
-                  <input type="checkbox" class="comanda-item-check" onchange="marcarItemPreparado(${item.id}, this.checked)" ${item.estado === 'LISTO' ? 'checked' : ''}>
+                  <input type="checkbox" class="comanda-item-check" data-item-id="${item.id}" onchange="toggleItemLocal(this, '${item.estado}', true)" ${item.estado === 'LISTO' ? 'checked disabled' : ''}>
                   <div style="display:flex;align-items:center;flex:1;">
                     <span class="comanda-item-qty">${item.cantidad}</span>
                     <div class="comanda-item-info">
@@ -85,8 +88,8 @@
             <button class="btn btn-primary btn-sm" onclick="marcarPreparando(${pedido.id})" ${pedido.estado !== 'ABIERTO' ? 'disabled' : ''}>
               🍹 Preparando
             </button>
-            <button class="btn btn-success btn-sm" onclick="marcarListo(${pedido.id}, ${(pedido.items || []).filter(i => i.estado !== 'LISTO').length})" ${pedido.estado === 'LISTO' || pedido.estado === 'ENTREGADO' || pedido.estado === 'CERRADO' ? 'disabled' : ''}>
-              ✅ Marcar todo listo
+            <button class="btn btn-success btn-sm btn-despachar" onclick="despacharSeleccionados(${pedido.id}, 'barra')" disabled>
+              ✔️ Despachar
             </button>
           </div>
         `;
@@ -103,29 +106,54 @@
       }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
     }
 
-    async function marcarListo(pedidoId, pendientes) {
-      if (pendientes > 0) {
-        const ok = await customConfirm({
-          title: 'Items Pendientes',
-          message: `Hay ${pendientes} item(s) de barra sin marcar. ¿Marcar todo como listo de todas formas?`,
-          confirmText: 'Sí, marcar listo',
-          icon: '🍹'
-        });
-        if (!ok) return;
+    function toggleItemLocal(checkbox, originalState, isBarra) {
+      const itemDiv = checkbox.closest('.comanda-item');
+      const card = checkbox.closest('.comanda-card');
+      const badge = itemDiv.querySelector('.comanda-item-status');
+
+      itemDiv.classList.toggle('listo', checkbox.checked);
+
+      if (checkbox.checked) {
+        badge.className = 'comanda-item-status badge-green badge';
+        badge.textContent = 'LISTO';
+      } else {
+        const isPrep = originalState === 'COCINANDO';
+        badge.className = `comanda-item-status badge-${isPrep ? 'blue' : 'yellow'} badge`;
+        badge.textContent = isPrep ? (isBarra ? 'PREPARANDO' : 'COCINANDO') : originalState;
+      }
+
+      const totalItems = card.querySelectorAll('.comanda-item-check').length;
+      const checkedItems = card.querySelectorAll('.comanda-item-check:checked').length;
+      const progressDiv = card.querySelector('.comanda-progreso');
+      
+      if (progressDiv) {
+        const todosListos = (checkedItems === totalItems);
+        progressDiv.className = `comanda-progreso${todosListos ? ' completo' : ''}`;
+        progressDiv.innerHTML = `${todosListos ? '✅ ' : ''}${checkedItems}/${totalItems} listos`;
+      }
+      
+      const despacharBtn = card.querySelector('.btn-despachar');
+      if (despacharBtn) {
+        const activeChecks = card.querySelectorAll('.comanda-item-check:checked:not([disabled])');
+        despacharBtn.disabled = activeChecks.length === 0;
+      }
+    }
+
+    function despacharSeleccionados(pedidoId, destino) {
+      const card = document.getElementById(`pedido-card-${pedidoId}`);
+      if (!card) return;
+      const checks = card.querySelectorAll('.comanda-item-check:checked:not([disabled])');
+      const itemIds = Array.from(checks).map(c => parseInt(c.dataset.itemId));
+      
+      if (itemIds.length === 0) {
+        showToast('Selecciona al menos un trago para despachar', 'warning');
+        return;
       }
 
       fetch(`/api/pedidos/${pedidoId}/items/estado`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: 'LISTO', destino: 'barra' })
-      }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
-    }
-
-    function marcarItemPreparado(itemId, checked) {
-      fetch(`/api/pedidos/items/${itemId}/estado`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: checked ? 'LISTO' : 'PENDIENTE' })
+        body: JSON.stringify({ estado: 'LISTO', destino: destino, item_ids: itemIds })
       }).then(r => r.ok ? loadPedidos() : null).catch(console.error);
     }
 

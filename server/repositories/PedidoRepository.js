@@ -87,7 +87,16 @@ class PedidoRepository {
     `).get(itemId);
   }
 
-  actualizarEstadoItemsMasivo(pedidoId, estado, destino = null) {
+  actualizarEstadoItemsMasivo(pedidoId, estado, destino = null, itemIds = null) {
+    if (itemIds && Array.isArray(itemIds) && itemIds.length > 0) {
+      const placeholders = itemIds.map(() => '?').join(',');
+      this.db.prepare(`
+        UPDATE pedido_items SET estado = ?
+        WHERE pedido_id = ? AND estado != 'CANCELADO' AND id IN (${placeholders})
+      `).run(estado, pedidoId, ...itemIds);
+      return;
+    }
+
     if (destino === 'cocina') {
       this.db.prepare(`
         UPDATE pedido_items SET estado = ?
@@ -107,6 +116,11 @@ class PedidoRepository {
   }
 
   recalcularEstadoGlobalPedido(pedidoId) {
+    const pedidoActual = this.db.prepare("SELECT estado FROM pedidos WHERE id = ?").get(pedidoId);
+    if (!pedidoActual || pedidoActual.estado === 'CERRADO' || pedidoActual.estado === 'CANCELADO') {
+      return pedidoActual ? pedidoActual.estado : null;
+    }
+
     const allActiveItems = this.db.prepare("SELECT estado FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(pedidoId);
     if (allActiveItems.length === 0) return null;
 
@@ -117,7 +131,7 @@ class PedidoRepository {
     if (allReady) nuevoEstado = 'LISTO';
     else if (anyCooking) nuevoEstado = 'EN_PREPARACION';
 
-    if (nuevoEstado) {
+    if (nuevoEstado && nuevoEstado !== pedidoActual.estado) {
       this.db.prepare("UPDATE pedidos SET estado = ?, updated_at = datetime('now') WHERE id = ?").run(nuevoEstado, pedidoId);
     }
     return nuevoEstado;
