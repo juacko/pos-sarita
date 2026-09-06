@@ -810,7 +810,7 @@ class PedidoController {
 
   pagarPedido(req, res, io) {
     try {
-      const { metodo, monto, usuario_id, referencia, notas, propina, imprimir_ticket = true } = req.body;
+      const { metodo, monto, usuario_id, referencia, notas, propina, imprimir_ticket = false } = req.body;
       if (!metodo || !pagos.esMetodoValido(metodo)) {
         return res.status(400).json({ error: 'Método de pago inválido o no habilitado' });
       }
@@ -1237,6 +1237,7 @@ class PedidoController {
 
 module.exports = new PedidoController();
 module.exports.PedidoController = PedidoController;
+
 
 
 
