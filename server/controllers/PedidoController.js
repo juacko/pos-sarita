@@ -287,7 +287,7 @@ class PedidoController {
             JSON.stringify(item.agregados || []),
             item.detalle || '', destino
           );
-          insertedItemIds.push(insRes.lastInsertRowid);
+          insertedItemIds.push(Number(insRes.lastInsertRowid));
           total += item.cantidad * (precioBase + precioAdic);
         }
 
@@ -309,7 +309,7 @@ class PedidoController {
         const nuevosItems = itemsData.filter(i => insertedItemIds.includes(i.id));
 
         io.emit('pedido:actualizado', pedidoActualizado);
-        if (nuevosItems.length > 0) io.emit('kds:ring_bell');
+        io.emit('kds:ring_bell');
 
         printers.printComanda(pedidoActualizado, nuevosItems.length ? nuevosItems : itemsData, mesa);
 
@@ -1235,5 +1235,7 @@ class PedidoController {
 
 module.exports = new PedidoController();
 module.exports.PedidoController = PedidoController;
+
+
 
 
