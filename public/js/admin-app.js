@@ -186,50 +186,75 @@
       } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
-    function renderConfigKdsAudio() {
+        function renderConfigKdsAudio() {
       const wrap = document.getElementById('cfgKdsAudioWrap');
       if (!wrap) return;
-      const cfg = configGlobal?.kds_audio || { tipo: 'default' };
+      const cfgCocina = configGlobal?.kds_audio_cocina || { tipo: 'default' };
+      const cfgBarra = configGlobal?.kds_audio_barra || { tipo: 'default' };
       
-      wrap.innerHTML = `
+      const opcionesSelect = 
+        <option value="default">Predeterminado (MP3 Clásico)</option>
+        <optgroup label="Sonidos Graves (Recomendados para Cocina)">
+          <option value="grave_campana">Campana Grave</option>
+          <option value="grave_timbre">Timbre Oscuro</option>
+          <option value="grave_alarma">Alarma Baja</option>
+          <option value="grave_gong">Gong Sintético</option>
+          <option value="grave_zumbido">Zumbido de Máquina</option>
+        </optgroup>
+        <optgroup label="Sonidos Agudos (Recomendados para Barra)">
+          <option value="agudo_timbre">Timbre Agudo</option>
+          <option value="agudo_doble">Doble Ding</option>
+          <option value="agudo_cristal">Cristal / Copa</option>
+          <option value="agudo_alerta">Alerta Rápida</option>
+          <option value="agudo_pajaro">Pájaro Cibernético</option>
+        </optgroup>
+      ;
+      
+      wrap.innerHTML = 
         <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
             <div>
-              <div style="font-weight:700;font-size:1rem;">🔊 Audio KDS (Cocina y Barra)</div>
-              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Elige el sonido que se reproducirá cuando entre un nuevo pedido a las pantallas de Cocina y Barra.</div>
+              <div style="font-weight:700;font-size:1rem;">🔔 Sonidos KDS (Cocina y Barra)</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Configura sonidos independientes para distinguir rápidamente a qué área llegó el pedido.</div>
             </div>
-            <button class="btn btn-primary" onclick="saveConfigKdsAudio()">💾 Guardar Audio</button>
+            <button class="btn btn-primary" onclick="saveConfigKdsAudio()">💾 Guardar Audios</button>
           </div>
-          <div style="display:flex;gap:20px;">
-            <div class="form-group" style="flex:1;">
-              <label>Tipo de Sonido</label>
-              <select id="cfgKdsAudioTipo" class="form-control">
-                <option value="default" ${cfg.tipo === 'default' ? 'selected' : ''}>Predeterminado (Campanita 1)</option>
-                <option value="campana2" ${cfg.tipo === 'campana2' ? 'selected' : ''}>Campana de Recepción</option>
-                <option value="alarma" ${cfg.tipo === 'alarma' ? 'selected' : ''}>Alarma de Cocina</option>
-                <option value="timbre" ${cfg.tipo === 'timbre' ? 'selected' : ''}>Timbre Corto</option>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+            <div class="form-group">
+              <label>Sonido para 🍳 Cocina</label>
+              <select id="cfgKdsAudioCocina" class="form-control">
+                 + opcionesSelect + 
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Sonido para 🍹 Barra</label>
+              <select id="cfgKdsAudioBarra" class="form-control">
+                 + opcionesSelect + 
               </select>
             </div>
           </div>
         </div>
-      `;
+      ;
+      
+      setTimeout(() => {
+        document.getElementById('cfgKdsAudioCocina').value = cfgCocina.tipo || 'default';
+        document.getElementById('cfgKdsAudioBarra').value = cfgBarra.tipo || 'default';
+      }, 0);
     }
 
     async function saveConfigKdsAudio() {
-      const valor = {
-        tipo: document.getElementById('cfgKdsAudioTipo')?.value || 'default'
-      };
+      const valCocina = { tipo: document.getElementById('cfgKdsAudioCocina')?.value || 'default' };
+      const valBarra = { tipo: document.getElementById('cfgKdsAudioBarra')?.value || 'default' };
       try {
-        const res = await fetch('/api/admin/configuracion/kds_audio', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ valor })
-        });
-        if (res.ok) {
-          showToast('Configuración de audio guardada', 'success');
-          configGlobal.kds_audio = valor;
+        const resC = await fetch('/api/admin/configuracion/kds_audio_cocina', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valor: valCocina }) });
+        const resB = await fetch('/api/admin/configuracion/kds_audio_barra', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valor: valBarra }) });
+        
+        if (resC.ok && resB.ok) {
+          showToast('Audios KDS guardados con éxito', 'success');
+          configGlobal.kds_audio_cocina = valCocina;
+          configGlobal.kds_audio_barra = valBarra;
         } else {
-          showToast('Error al guardar audio', 'error');
+          showToast('Error al guardar los audios', 'error');
         }
       } catch (e) { showToast('Error de conexión', 'error'); }
     }
@@ -2585,4 +2610,5 @@
       sidebar.classList.toggle('open');
       overlay.classList.toggle('active');
     }
+
 

@@ -355,7 +355,7 @@
       }
     });
 
-    let kdsAudioConfig = 'default';
+    let kdsAudioCocina = 'default';
     let audioContextUnlocked = false;
 
     fetch('/api/admin/configuracion')
@@ -381,31 +381,55 @@
       osc.stop(startTime + duration);
     }
 
-    function playKdsAudio() {
-      if (kdsAudioConfig === 'default') {
-        new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
-        return;
-      }
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        const ctx = new AudioContext();
-        
-        if (kdsAudioConfig === 'campana2') {
-          playTone(ctx, 880, 0, 0.3);
-          playTone(ctx, 1108.73, 0.2, 0.4);
-        } else if (kdsAudioConfig === 'alarma') {
-          for(let i=0; i<4; i++) playTone(ctx, 600, i*0.2, 0.1, 'square');
-        } else if (kdsAudioConfig === 'timbre') {
-          playTone(ctx, 440, 0, 0.1, 'sawtooth');
-          playTone(ctx, 440, 0.15, 0.1, 'sawtooth');
-        }
-      } catch(e) {}
+    function playKdsAudio(type) {
+  if (type === 'default') {
+    new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
+    return;
+  }
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    
+    // Graves (Cocina)
+    if (type === 'grave_campana') {
+      playTone(ctx, 350, 0, 0.5, 'sine');
+      playTone(ctx, 350, 0.1, 0.4, 'triangle');
+    } else if (type === 'grave_timbre') {
+      playTone(ctx, 220, 0, 0.2, 'square');
+      playTone(ctx, 220, 0.3, 0.2, 'square');
+    } else if (type === 'grave_alarma') {
+      for(let i=0; i<3; i++) playTone(ctx, 150, i*0.25, 0.15, 'sawtooth');
+    } else if (type === 'grave_gong') {
+      playTone(ctx, 110, 0, 1.0, 'sine');
+      playTone(ctx, 220, 0, 0.8, 'triangle');
+    } else if (type === 'grave_zumbido') {
+      playTone(ctx, 90, 0, 0.4, 'square');
     }
-
+    // Agudos (Barra)
+    else if (type === 'agudo_timbre') {
+      playTone(ctx, 880, 0, 0.1, 'sine');
+      playTone(ctx, 880, 0.15, 0.1, 'sine');
+    } else if (type === 'agudo_doble') {
+      playTone(ctx, 1200, 0, 0.15, 'triangle');
+      playTone(ctx, 1600, 0.2, 0.2, 'triangle');
+    } else if (type === 'agudo_cristal') {
+      playTone(ctx, 2000, 0, 0.4, 'sine');
+      playTone(ctx, 2400, 0.1, 0.3, 'sine');
+    } else if (type === 'agudo_alerta') {
+      for(let i=0; i<4; i++) playTone(ctx, 1500, i*0.1, 0.05, 'square');
+    } else if (type === 'agudo_pajaro') {
+      playTone(ctx, 2500, 0, 0.1, 'sine');
+      playTone(ctx, 1800, 0.1, 0.15, 'sine');
+      playTone(ctx, 3000, 0.25, 0.1, 'sine');
+    } else {
+      playTone(ctx, 440, 0, 0.1, 'sawtooth');
+    }
+  } catch(e) {}
+}
     function activarSonidoKds() {
       audioContextUnlocked = true;
-      playKdsAudio(); // Play once to unlock the audio context for the browser
+      playKdsAudio(kdsAudioCocina); // Play once to unlock the audio context for the browser
       const btn = document.getElementById('btnAudioToggle');
       if (btn) {
         btn.style.background = '#e5e7eb';
@@ -414,11 +438,11 @@
       }
     }
 
-    socket.on('kds:ring_bell', () => { if (audioContextUnlocked || kdsAudioConfig === 'default') playKdsAudio(); });
+    socket.on('kds:ring_cocina', () => { if (audioContextUnlocked || kdsAudioCocina === 'default') playKdsAudio(kdsAudioCocina); });
     socket.on('pedido:nuevo', () => {
       loadPedidos();
-      if (audioContextUnlocked || kdsAudioConfig === 'default') {
-        playKdsAudio();
+      if (audioContextUnlocked || kdsAudioCocina === 'default') {
+        playKdsAudio(kdsAudioCocina);
       }
     });
 
@@ -429,3 +453,6 @@
     setInterval(updateClock, 1000);
     updateClock();
     loadPedidos();
+
+
+

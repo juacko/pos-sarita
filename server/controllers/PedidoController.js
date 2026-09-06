@@ -232,7 +232,8 @@ class PedidoController {
       `).get(mesa_id);
 
       io.emit('pedido:nuevo', { pedido, items: itemsData });
-      io.emit('kds:ring_bell');
+      if (itemsData.some(i => i.destino_impresion === 'cocina' || (!i.destino_impresion && i.categoria_id && i.categoria_id !== 2))) io.emit('kds:ring_cocina');
+        if (itemsData.some(i => i.destino_impresion === 'barra' || (!i.destino_impresion && i.categoria_id === 2))) io.emit('kds:ring_barra');
       io.emit('mesa:updated', mesaData);
       this.emitirStockActualizado(affectedStockProducts, io);
 
@@ -309,7 +310,8 @@ class PedidoController {
         const nuevosItems = itemsData.filter(i => insertedItemIds.includes(i.id));
 
         io.emit('pedido:actualizado', pedidoActualizado);
-        io.emit('kds:ring_bell');
+        if (nuevosItems.some(i => i.destino_impresion === 'cocina' || (!i.destino_impresion && i.categoria_id && i.categoria_id !== 2))) io.emit('kds:ring_cocina');
+        if (nuevosItems.some(i => i.destino_impresion === 'barra' || (!i.destino_impresion && i.categoria_id === 2))) io.emit('kds:ring_barra');
 
         printers.printComanda(pedidoActualizado, nuevosItems.length ? nuevosItems : itemsData, mesa);
 
@@ -1235,6 +1237,8 @@ class PedidoController {
 
 module.exports = new PedidoController();
 module.exports.PedidoController = PedidoController;
+
+
 
 
 
