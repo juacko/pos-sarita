@@ -361,8 +361,8 @@
     fetch('/api/admin/configuracion')
       .then(r => r.json())
       .then(c => {
-        if (c && c.kds_audio && c.kds_audio.tipo) {
-          kdsAudioConfig = c.kds_audio.tipo;
+        if (c && c.kds_audio_cocina && c.kds_audio_cocina.tipo) {
+          kdsAudioCocina = c.kds_audio_cocina.tipo;
         }
       })
       .catch(console.error);
@@ -453,6 +453,7 @@
     setInterval(updateClock, 1000);
     updateClock();
     loadPedidos();
+
 
 
 
