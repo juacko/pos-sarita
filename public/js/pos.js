@@ -1226,8 +1226,83 @@ function renderPagados() {
 async function verPedidoPagado(id) {
   const res = await fetch(`/api/pedidos/${id}`);
   if (!res.ok) return showToast('No se pudo cargar el pedido', 'error');
-  pedidoExistente = await res.json();
-  await verPedidoExistente(id);
+  const pedido = await res.json();
+  
+  if (pedido.estado === 'CERRADO' || pedido.estado === 'CANCELADO') {
+    abrirModalDetallePagado(pedido);
+  } else {
+    pedidoExistente = pedido;
+    await verPedidoExistente(id);
+  }
+}
+
+function abrirModalDetallePagado(pedido) {
+  document.getElementById('dpTitulo').textContent = `#${pedido.id}`;
+  document.getElementById('dpSubtitulo').textContent = `${pedido.mesa_nombre || 'Mesa ' + pedido.mesa_numero} — ${pedido.created_at}`;
+
+  // Items
+  const itemsHTML = (pedido.items || []).map(i => {
+    let tachado = i.estado === 'CANCELADO' ? 'text-decoration:line-through;color:var(--gray);' : 'border-bottom:1px solid #f1f5f9;';
+    let itemTotal = i.cantidad * (i.precio_unitario + (i.precio_adicional || 0));
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;${tachado}">
+      <span style="flex:1;"><b>${i.cantidad}x</b> ${i.producto_nombre}${i.precio_adicional ? ' <small>(+adic)</small>' : ''}</span>
+      <span style="font-weight:600;">S/${itemTotal.toFixed(2)}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('dpItems').innerHTML = itemsHTML || '<div style="color:var(--gray);">Sin items</div>';
+
+  // Montos
+  const resPago = pedido.resumen_pago || {};
+  let montosHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:0.75rem;color:var(--gray);">Total Final</div>
+        <div style="font-size:1.4rem;font-weight:800;color:var(--green);line-height:1.1;">S/${(resPago.totalFinal || 0).toFixed(2)}</div>
+      </div>
+      <div style="text-align:right;font-size:0.8rem;color:var(--gray);">
+        <div>Subtotal: <span style="font-weight:600;">S/${(resPago.totalBruto || 0).toFixed(2)}</span></div>
+        ${resPago.totalDescuento > 0 ? `<div style="color:var(--red);">Descuento: <span style="font-weight:600;">-S/${resPago.totalDescuento.toFixed(2)}</span></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('dpMontos').innerHTML = montosHTML;
+
+  // Pagos
+  let pagosHTML = `<div style="font-weight:700;font-size:0.85rem;margin-bottom:8px;color:#334155;">💰 Pagos Realizados</div>`;
+  if (pedido.pagos && pedido.pagos.length) {
+    pagosHTML += pedido.pagos.map(p => `
+      <div style="display:flex;justify-content:space-between;padding:4px 0;">
+        <span style="text-transform:capitalize;">${p.metodo}${p.propina > 0 ? ' <small style="color:var(--gray);">+ prop S/' + p.propina.toFixed(2) + '</small>' : ''}</span>
+        <span style="font-weight:600;">S/${p.monto.toFixed(2)}</span>
+      </div>
+    `).join('');
+  } else {
+    pagosHTML += `<div style="color:var(--gray);">Sin pagos registrados</div>`;
+  }
+  document.getElementById('dpPagos').innerHTML = pagosHTML;
+
+  // Acciones
+  const btnReimprimir = document.getElementById('dpBtnReimprimir');
+  btnReimprimir.onclick = () => reimprimirTicketPagado(pedido.id);
+
+  document.getElementById('detallePagadoModal').classList.add('active');
+}
+
+function closeDetallePagadoModal() {
+  document.getElementById('detallePagadoModal').classList.remove('active');
+}
+
+async function reimprimirTicketPagado(id) {
+  try {
+    const res = await fetch(`/api/pedidos/${id}/reimprimir`, { method: 'POST' });
+    if (res.ok) {
+      showToast('Reimprimiendo ticket...', 'success');
+    } else {
+      showToast('Error al reimprimir', 'error');
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+  }
 }
 
 async function eliminarPedidoPagadoId(id) {

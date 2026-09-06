@@ -781,5 +781,27 @@
   <script src="/js/login.js"></script>
   <script src="/js/mesas.js"></script>
   <script src="/js/pos.js"></script>
+
+
+  <!-- MODAL DETALLE PAGADO -->
+  <div id="detallePagadoModal" class="modal-overlay" onclick="if(event.target===this)closeDetallePagadoModal()">
+    <div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
+      <div class="modal-header">
+        <h2>Detalle del Ticket <span id="dpTitulo"></span></h2>
+        <button class="modal-close" onclick="closeDetallePagadoModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div style="text-align:center;font-size:0.85rem;color:var(--gray);margin-bottom:12px;font-weight:600;" id="dpSubtitulo"></div>
+        <div id="dpItems" style="font-size:0.85rem;margin-bottom:16px;"></div>
+        <div style="background:var(--gray-light);border-radius:10px;padding:12px;margin-bottom:16px;" id="dpMontos"></div>
+        <div style="border:1px solid #E2E8F0;border-radius:8px;padding:12px;font-size:0.85rem;margin-bottom:16px;" id="dpPagos"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeDetallePagadoModal()">Cerrar</button>
+        <button class="btn btn-primary" id="dpBtnReimprimir">🖨️ Reimprimir Ticket</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
+
