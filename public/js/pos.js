@@ -1414,7 +1414,7 @@ function calcularTotalCobro() {
     return cobroPedidoRef.resumen_pago.totalFinal;
   }
   // Fallback for safety during transition
-  const totalBruto = cobroPedidoRef.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  const totalBruto = (cobroPedidoRef.items || []).filter(i => i.estado !== 'CANCELADO').reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
   const descuentos = cobroPedidoRef.descuentos || [];
   let totalDescuento = 0;
   for (const d of descuentos) {
@@ -1435,25 +1435,11 @@ async function abrirModalCobro() {
   cobroPedidoRef = pedidoExistente;
   cobroValeData = null;
 
-  const totalBruto = cobroPedidoRef.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
-  const total = calcularTotalCobro();
-  const pagado = (cobroPedidoRef.pagos || []).reduce((s, p) => s + p.monto, 0);
-  const pendiente = Math.max(0, total - pagado);
-
   document.getElementById('cobroPedidoId').textContent = cobroPedidoRef.id;
-  document.getElementById('cobroSubtotal').textContent = `S/${totalBruto.toFixed(2)}`;
+  
+  refreshCobroMontos();
 
-  const descRow = document.getElementById('cobroDescuentoRow');
-  const totalDescuento = totalBruto - total;
-  if (totalDescuento > 0) {
-    descRow.style.display = 'flex';
-    document.getElementById('cobroDescuentoMonto').textContent = `-S/${totalDescuento.toFixed(2)}`;
-  } else {
-    descRow.style.display = 'none';
-  }
-
-  document.getElementById('cobroTotal').textContent = `S/${pendiente.toFixed(2)}`;
-
+  const pagado = (cobroPedidoRef.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pagadoInfo = document.getElementById('cobroPagadoInfo');
   if (pagado > 0) {
     pagadoInfo.style.display = 'block';
@@ -1562,18 +1548,25 @@ function renderDescuentosAplicados() {
 }
 
 function refreshCobroMontos() {
-  const totalBruto = (cobroPedidoRef?.items || []).reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  if (!cobroPedidoRef) return;
+  const itemsValidos = (cobroPedidoRef.items || []).filter(i => i.estado !== 'CANCELADO');
+  const fallbackBruto = itemsValidos.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
+  
+  const totalBruto = cobroPedidoRef.resumen_pago ? cobroPedidoRef.resumen_pago.totalBruto : fallbackBruto;
   const total = calcularTotalCobro();
-  const pagado = (cobroPedidoRef?.pagos || []).reduce((s, p) => s + p.monto, 0);
+  const pagado = (cobroPedidoRef.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pendiente = Math.max(0, total - pagado);
   
+  const subtotalEl = document.getElementById('cobroSubtotal');
+  if (subtotalEl) subtotalEl.textContent = `S/${totalBruto.toFixed(2)}`;
+
   const descRow = document.getElementById('cobroDescuentoRow');
   const totalDescuento = totalBruto - total;
   if (descRow) {
-    if (totalDescuento > 0) {
+    if (totalDescuento > 0.01) {
       descRow.style.display = 'flex';
-      const descTotalEl = document.getElementById('cobroDescuentoTotal');
-      if (descTotalEl) descTotalEl.textContent = `-S/${totalDescuento.toFixed(2)}`;
+      const descMontoEl = document.getElementById('cobroDescuentoMonto');
+      if (descMontoEl) descMontoEl.textContent = `-S/${totalDescuento.toFixed(2)}`;
     } else {
       descRow.style.display = 'none';
     }
