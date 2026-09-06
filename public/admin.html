@@ -86,7 +86,7 @@
 
         .mobile-menu-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; }
     .mobile-menu-overlay.active { display: block; }
-    .btn-hamburger { display: none; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 4px 8px; margin-right: 12px; }
+    .btn-hamburger { display: none; background: none; border: none; color: var(--text-dark); font-size: 1.5rem; cursor: pointer; padding: 4px 8px; margin-right: 12px; }
     
     @media (max-width: 768px) {
       .btn-hamburger { display: block; }
@@ -143,17 +143,62 @@
       flex-shrink: 0;
       font-weight: 700;
     }
+    }
+    .caja-tab {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-family: var(--font-display);
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+    .caja-tab:hover { background: var(--surface-hover); }
+    .caja-tab-active {
+      background: var(--surface) !important;
+      color: var(--text-dark);
+      font-weight: 800;
+      box-shadow: var(--shadow-sm);
+    }
+    .caja-timeline-item {
+      display: flex;
+      gap: 12px;
+      padding: 14px 18px;
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      margin-bottom: 8px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      align-items: flex-start;
+      transition: all 0.15s var(--ease-out);
+    }
+    .caja-timeline-item:hover { transform: translateX(3px); border-color: var(--border-focus); }
+    .caja-timeline-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+      font-weight: 700;
+    }
     .caja-timeline-body { flex: 1; min-width: 0; }
     .caja-timeline-meta { font-size: 0.78rem; color: var(--text-muted); }
   </style>
   <script src="/js/modal-utils.js"></script>
 </head>
 <body>
-  <div class="header">
-    <h1>⚙️ Admin - POS Sarita</h1>
+  <div class="header" style="display:flex;align-items:center;padding:12px 24px;">
+    <button class="btn-hamburger" onclick="toggleAdminMenu()">☰</button>
+    <h1 style="margin:0;flex:1;">🍕 Admin - POS Sarita</h1>
     <div>
-      <a href="/" class="btn btn-outline btn-sm">← POS</a>
-      <a href="/mesero.html" class="btn btn-outline btn-sm">Meseros</a>
+      <a href="/" class="btn btn-outline btn-sm">Ir al POS</a>
     </div>
   </div>
 
@@ -697,6 +742,8 @@
   <script src="/js/admin-app.js"></script>
 </body>
 </html>
+
+
 
 
 
