@@ -1391,7 +1391,7 @@ function renderPagosCobro() {
       <select id="cobroPagoMetodo-${i}" class="form-control" style="flex:1;font-size:0.85rem;padding:6px;" onchange="cambioFilaPagoMetodo(${i}, this.value)">
         ${visibles.map(m => `<option value="${m.key}" ${p.metodo === m.key ? 'selected' : ''}>${m.label} ${m.texto}</option>`).join('')}
       </select>
-      <input id="cobroPagoMonto-${i}" type="number" step="0.01" min="0" value="${(p.monto || 0).toFixed(2)}" class="form-control" style="width:110px;font-weight:700;font-size:0.9rem;text-align:right;" oninput="cambioFilaPagoMonto(${i}, this.value)">
+      <input id="cobroPagoMonto-${i}" type="number" inputmode="decimal" step="0.01" min="0" value="${(p.monto || 0).toFixed(2)}" class="form-control" style="width:110px;font-weight:700;font-size:0.9rem;text-align:right;" oninput="cambioFilaPagoMonto(${i}, this.value)">
       ${cobroPagos.length > 1 ? `<button class="btn btn-outline" style="padding:3px 9px;color:#DC2626;font-size:0.8rem;" onclick="quitarFilaPago(${i})">✕</button>` : ''}
     </div>
   `).join('');
@@ -1930,7 +1930,7 @@ function abrirOpcionesItemPOS(itemId, cantidadActual, precioOriginal, precioAdic
       </div>
       
       <label style="display:block; font-size:0.85rem; font-weight:700; color:#334155; margin-bottom:4px;">Ajuste de Precio (Adicional / Descuento)</label>
-      <input type="number" id="itemPrecioAdicionalPOS" class="form-control" value="${precioAdicional}" step="0.5" ${!puedeEditar ? 'disabled' : ''} style="font-size:1.1rem; font-weight:700;">
+      <input type="number" inputmode="decimal" id="itemPrecioAdicionalPOS" class="form-control" value="${precioAdicional}" step="0.5" ${!puedeEditar ? 'disabled' : ''} style="font-size:1.1rem; font-weight:700;">
       <p style="font-size:0.75rem; color:#64748B; margin:4px 0 0 0;">Usa números negativos para descuentos (ej: -5.00).</p>
     </div>
   `;
@@ -2868,7 +2868,7 @@ function renderListaStockRapido() {
 
           <div style="display:flex; align-items:center; gap:4px; opacity:${activo ? '1' : '0.4'}; pointer-events:${activo ? 'auto' : 'none'};">
             <button class="btn btn-sm btn-outline" onclick="cambiarStockRapido(${p.id}, -1)" style="padding:4px 10px; font-size:1rem; font-weight:bold; min-width:32px;">-</button>
-            <input type="number" min="0" value="${stock}" onchange="fijarStockRapido(${p.id}, this.value)" style="width:55px; text-align:center; padding:5px 4px; border:1px solid #CBD5E1; border-radius:6px; font-weight:700; font-size:0.95rem;">
+            <input type="number" inputmode="numeric" min="0" value="${stock}" onchange="fijarStockRapido(${p.id}, this.value)" style="width:55px; text-align:center; padding:5px 4px; border:1px solid #CBD5E1; border-radius:6px; font-weight:700; font-size:0.95rem;">
             <button class="btn btn-sm btn-outline" onclick="cambiarStockRapido(${p.id}, 1)" style="padding:4px 10px; font-size:1rem; font-weight:bold; min-width:32px;">+</button>
             <button class="btn btn-sm btn-danger" onclick="agotarStockRapido(${p.id})" title="Marcar como agotado (0)" style="padding:4px 8px; font-size:0.8rem; font-weight:600; margin-left:4px;">🚫 0</button>
           </div>
@@ -2951,3 +2951,4 @@ async function agotarStockRapido(prodId) {
     showToast('Error al agotar stock', 'error');
   }
 }
+

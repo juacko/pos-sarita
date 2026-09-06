@@ -309,7 +309,7 @@
               </div>
               <div class="form-group">
                 <label>Monto (S/)</label>
-                <input id="movMonto" type="number" step="0.01" min="0.01" class="form-control" placeholder="0.00">
+                <input id="movMonto" type="number" inputmode="decimal" step="0.01" min="0.01" class="form-control" placeholder="0.00">
               </div>
               <div class="form-group">
                 <label>De quién / Para quién</label>
@@ -470,7 +470,7 @@
       <div class="modal-body">
         <div class="form-row">
           <div class="form-group"><label>Nombre</label><input id="prodNombre" class="form-control" placeholder="Nombre del producto"></div>
-          <div class="form-group"><label>Precio base (S/)</label><input id="prodPrecio" type="number" step="0.5" class="form-control"></div>
+          <div class="form-group"><label>Precio base (S/)</label><input id="prodPrecio" type="number" inputmode="decimal" step="0.5" class="form-control"></div>
         </div>
         <div class="form-group"><label>Descripción</label><textarea id="prodDesc" class="form-control" rows="2" placeholder="Descripción corta"></textarea></div>
         <div class="form-row">
@@ -497,11 +497,11 @@
           <div id="stockFieldsRow" style="display:none; gap:12px; flex:1; align-items:center; justify-content:flex-end;">
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:0.78rem;">Stock Hoy</label>
-              <input id="prodStockActual" type="number" min="0" class="form-control" placeholder="0" style="width:90px; padding:6px 8px;">
+              <input id="prodStockActual" type="number" inputmode="decimal" min="0" class="form-control" placeholder="0" style="width:90px; padding:6px 8px;">
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:0.78rem;" title="Alerta amarilla cuando quede esta cantidad o menos">Alerta Mínimo</label>
-              <input id="prodStockMinimo" type="number" min="0" class="form-control" placeholder="3" style="width:80px; padding:6px 8px;">
+              <input id="prodStockMinimo" type="number" inputmode="decimal" min="0" class="form-control" placeholder="3" style="width:80px; padding:6px 8px;">
             </div>
           </div>
         </div>
@@ -514,7 +514,7 @@
           <div id="variantesList"></div>
           <div class="inline-form">
             <input id="varNombre" placeholder="Ej: Grande">
-            <input id="varPrecio" type="number" step="1" placeholder="+S/ precio" style="width:100px;">
+            <input id="varPrecio" type="number" inputmode="decimal" step="1" placeholder="+S/ precio" style="width:100px;">
             <button onclick="addVariante()">+ Agregar</button>
           </div>
         </div>
@@ -550,7 +550,7 @@
           <div id="agregadosList"></div>
           <div class="inline-form">
             <input id="agrNombre" placeholder="Ej: Queso extra">
-            <input id="agrPrecio" type="number" step="1" placeholder="S/ precio" style="width:100px;">
+            <input id="agrPrecio" type="number" inputmode="decimal" step="1" placeholder="S/ precio" style="width:100px;">
             <button onclick="addAgregado()">+ Agregar</button>
           </div>
         </div>
@@ -600,7 +600,7 @@
         <div id="modalOpcionesList"></div>
         <div class="inline-form">
           <input id="opcNombre" placeholder="Nombre de la opción">
-          <input id="opcPrecio" type="number" step="1" placeholder="+S/ precio" style="width:100px;">
+          <input id="opcPrecio" type="number" inputmode="decimal" step="1" placeholder="+S/ precio" style="width:100px;">
           <button id="btnAddOpcion" onclick="addOpcion()">+ Agregar</button>
         </div>
       </div>
@@ -705,8 +705,8 @@
       </div>
       <div class="modal-body">
         <div class="form-row">
-          <div class="form-group"><label>Número</label><input id="mesaNumero" type="number" min="1" class="form-control" placeholder="Auto"></div>
-          <div class="form-group"><label>Capacidad</label><input id="mesaCapacidad" type="number" min="1" value="4" class="form-control"></div>
+          <div class="form-group"><label>Número</label><input id="mesaNumero" type="number" inputmode="decimal" min="1" class="form-control" placeholder="Auto"></div>
+          <div class="form-group"><label>Capacidad</label><input id="mesaCapacidad" type="number" inputmode="decimal" min="1" value="4" class="form-control"></div>
         </div>
         <div class="form-group"><label>Nombre (opcional)</label><input id="mesaNombre" class="form-control" placeholder="Ej: VIP 1"></div>
         <div class="form-group"><label>Área</label><select id="mesaArea" class="form-control"></select></div>
@@ -735,7 +735,7 @@
             <option value="PARA_LLEVAR">🥡 Para Llevar</option>
           </select>
         </div>
-        <div class="form-group"><label>Orden</label><input id="areaOrden" type="number" class="form-control" placeholder="Auto" style="width:120px;"></div>
+        <div class="form-group"><label>Orden</label><input id="areaOrden" type="number" inputmode="decimal" class="form-control" placeholder="Auto" style="width:120px;"></div>
         <p id="areaError" style="color:#DC2626;font-size:0.8rem;margin:8px 0 0;display:none;"></p>
       </div>
       <div class="modal-footer">
@@ -748,6 +748,7 @@
   <script src="/js/admin-app.js"></script>
 </body>
 </html>
+
 
 
 
