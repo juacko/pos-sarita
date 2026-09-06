@@ -467,7 +467,8 @@ function printRawEscPos(buffer, printerName) {
   try {
     fs.writeFileSync(tmpFile, buffer);
 
-    const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -File "${RAWRINT_PS1}" -Printer "${printerDisplayName}" -FilePath "${tmpFile}"`;
+    console.log("[PRINTER DEBUG] Ejecutando CMD: ", cmd);
+      const cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File "${RAWRINT_PS1}" -Printer "${printerDisplayName}" -FilePath "${tmpFile}"`;
     const output = execSync(cmd, { timeout: 20000, stdio: 'pipe', encoding: 'utf8' });
 
     fs.unlinkSync(tmpFile);
@@ -945,4 +946,5 @@ module.exports = {
   testPrinter,
   detectPrinters
 };
+
 
