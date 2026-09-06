@@ -347,9 +347,70 @@
       }
     });
 
+    let kdsAudioConfig = 'default';
+    let audioContextUnlocked = false;
+
+    fetch('/api/admin/configuracion')
+      .then(r => r.json())
+      .then(c => {
+        if (c && c.kds_audio && c.kds_audio.tipo) {
+          kdsAudioConfig = c.kds_audio.tipo;
+        }
+      })
+      .catch(console.error);
+
+    function playTone(ctx, freq, startTimeOffset, duration, type='sine') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      const startTime = ctx.currentTime + startTimeOffset;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      gain.gain.setValueAtTime(0.5, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+      osc.stop(startTime + duration);
+    }
+
+    function playKdsAudio() {
+      if (kdsAudioConfig === 'default') {
+        new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
+        return;
+      }
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        
+        if (kdsAudioConfig === 'campana2') {
+          playTone(ctx, 880, 0, 0.3);
+          playTone(ctx, 1108.73, 0.2, 0.4);
+        } else if (kdsAudioConfig === 'alarma') {
+          for(let i=0; i<4; i++) playTone(ctx, 600, i*0.2, 0.1, 'square');
+        } else if (kdsAudioConfig === 'timbre') {
+          playTone(ctx, 440, 0, 0.1, 'sawtooth');
+          playTone(ctx, 440, 0.15, 0.1, 'sawtooth');
+        }
+      } catch(e) {}
+    }
+
+    function activarSonidoKds() {
+      audioContextUnlocked = true;
+      playKdsAudio(); // Play once to unlock the audio context for the browser
+      const btn = document.getElementById('btnAudioToggle');
+      if (btn) {
+        btn.style.background = '#e5e7eb';
+        btn.style.color = '#374151';
+        btn.innerText = '✅ Sonido Listo';
+      }
+    }
+
     socket.on('pedido:nuevo', () => {
       loadPedidos();
-      new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACAf39/f4B/f3+AgH9/f3+AgH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af3+AgH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f3+AgH9/f3+Af39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+AgH9/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f3+Af39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gIB/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f3+Af39/gIB/f3+Af39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f3+Af39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gIB/f39/gIB/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f3+Af39/gH9/f4B/f39/gH9/f4B/f39/gH9/f4B/f38=').play().catch(() => {});
+      if (audioContextUnlocked || kdsAudioConfig === 'default') {
+        playKdsAudio();
+      }
     });
     socket.on('pedido:actualizado', () => loadPedidos());
     socket.on('item:actualizado', () => loadPedidos());

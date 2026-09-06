@@ -95,6 +95,7 @@
         renderConfigHoraCorte();
         renderConfigPostPago();
         renderConfigImpresionComandas();
+        renderConfigKdsAudio();
       } catch (e) {
         showToast('Error al cargar configuración', 'error');
       }
@@ -181,6 +182,54 @@
           configGlobal.impresion_comandas = valor;
         } else {
           showToast('Error al guardar', 'error');
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
+    }
+
+    function renderConfigKdsAudio() {
+      const wrap = document.getElementById('cfgKdsAudioWrap');
+      if (!wrap) return;
+      const cfg = configGlobal?.kds_audio || { tipo: 'default' };
+      
+      wrap.innerHTML = `
+        <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">🔊 Audio KDS (Cocina y Barra)</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Elige el sonido que se reproducirá cuando entre un nuevo pedido a las pantallas de Cocina y Barra.</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfigKdsAudio()">💾 Guardar Audio</button>
+          </div>
+          <div style="display:flex;gap:20px;">
+            <div class="form-group" style="flex:1;">
+              <label>Tipo de Sonido</label>
+              <select id="cfgKdsAudioTipo" class="form-control">
+                <option value="default" ${cfg.tipo === 'default' ? 'selected' : ''}>Predeterminado (Campanita 1)</option>
+                <option value="campana2" ${cfg.tipo === 'campana2' ? 'selected' : ''}>Campana de Recepción</option>
+                <option value="alarma" ${cfg.tipo === 'alarma' ? 'selected' : ''}>Alarma de Cocina</option>
+                <option value="timbre" ${cfg.tipo === 'timbre' ? 'selected' : ''}>Timbre Corto</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function saveConfigKdsAudio() {
+      const valor = {
+        tipo: document.getElementById('cfgKdsAudioTipo')?.value || 'default'
+      };
+      try {
+        const res = await fetch('/api/admin/configuracion/kds_audio', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor })
+        });
+        if (res.ok) {
+          showToast('Configuración de audio guardada', 'success');
+          configGlobal.kds_audio = valor;
+        } else {
+          showToast('Error al guardar audio', 'error');
         }
       } catch (e) { showToast('Error de conexión', 'error'); }
     }
