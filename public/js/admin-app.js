@@ -186,13 +186,13 @@
       } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
-        function renderConfigKdsAudio() {
+            function renderConfigKdsAudio() {
       const wrap = document.getElementById('cfgKdsAudioWrap');
       if (!wrap) return;
       const cfgCocina = configGlobal?.kds_audio_cocina || { tipo: 'default' };
       const cfgBarra = configGlobal?.kds_audio_barra || { tipo: 'default' };
       
-      const opcionesSelect = 
+      const opcionesSelect = `
         <option value="default">Predeterminado (MP3 Clásico)</option>
         <optgroup label="Sonidos Graves (Recomendados para Cocina)">
           <option value="grave_campana">Campana Grave</option>
@@ -207,10 +207,9 @@
           <option value="agudo_cristal">Cristal / Copa</option>
           <option value="agudo_alerta">Alerta Rápida</option>
           <option value="agudo_pajaro">Pájaro Cibernético</option>
-        </optgroup>
-      ;
+        </optgroup>`;
       
-      wrap.innerHTML = 
+      wrap.innerHTML = `
         <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
             <div>
@@ -233,8 +232,7 @@
               </select>
             </div>
           </div>
-        </div>
-      ;
+        </div>`;
       
       setTimeout(() => {
         document.getElementById('cfgKdsAudioCocina').value = cfgCocina.tipo || 'default';
@@ -2610,5 +2608,9 @@
       sidebar.classList.toggle('open');
       overlay.classList.toggle('active');
     }
+
+
+
+
 
 
