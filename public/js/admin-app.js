@@ -222,13 +222,13 @@
             <div class="form-group">
               <label>Sonido para 🍳 Cocina</label>
               <select id="cfgKdsAudioCocina" class="form-control">
-                 + opcionesSelect + 
+                 ${opcionesSelect} 
               </select>
             </div>
             <div class="form-group">
               <label>Sonido para 🍹 Barra</label>
               <select id="cfgKdsAudioBarra" class="form-control">
-                 + opcionesSelect + 
+                 ${opcionesSelect} 
               </select>
             </div>
           </div>
@@ -2608,6 +2608,7 @@
       sidebar.classList.toggle('open');
       overlay.classList.toggle('active');
     }
+
 
 
 
