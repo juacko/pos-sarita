@@ -439,12 +439,7 @@
     }
 
     socket.on('kds:ring_cocina', () => { if (audioContextUnlocked || kdsAudioCocina === 'default') playKdsAudio(kdsAudioCocina); });
-    socket.on('pedido:nuevo', () => {
-      loadPedidos();
-      if (audioContextUnlocked || kdsAudioCocina === 'default') {
-        playKdsAudio(kdsAudioCocina);
-      }
-    });
+    socket.on('pedido:nuevo', () => loadPedidos());
 
     socket.on('pedido:actualizado', () => loadPedidos());
     socket.on('item:actualizado', () => loadPedidos());
@@ -453,6 +448,7 @@
     setInterval(updateClock, 1000);
     updateClock();
     loadPedidos();
+
 
 
 

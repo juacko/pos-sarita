@@ -431,12 +431,7 @@
     }
 
     socket.on('kds:ring_barra', () => { if (audioContextUnlocked || kdsAudioBarra === 'default') playKdsAudio(kdsAudioBarra); });
-    socket.on('pedido:nuevo', () => {
-      loadPedidos();
-      if (audioContextUnlocked || kdsAudioBarra === 'default') {
-        playKdsAudio(kdsAudioBarra);
-      }
-    });
+    socket.on('pedido:nuevo', () => loadPedidos());
     socket.on('pedido:actualizado', () => loadPedidos());
     socket.on('item:actualizado', () => loadPedidos());
     socket.on('mesa:updated', () => loadPedidos());
@@ -444,6 +439,7 @@
     setInterval(updateClock, 1000);
     updateClock();
     loadPedidos();
+
 
 
 
