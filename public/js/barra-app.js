@@ -406,6 +406,7 @@
       }
     }
 
+    socket.on('kds:ring_bell', () => { if (audioContextUnlocked || kdsAudioConfig === 'default') playKdsAudio(); });
     socket.on('pedido:nuevo', () => {
       loadPedidos();
       if (audioContextUnlocked || kdsAudioConfig === 'default') {
