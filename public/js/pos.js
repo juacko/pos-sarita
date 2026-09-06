@@ -1455,7 +1455,8 @@ async function abrirModalCobro() {
 
   const visibles = metodosVisibles();
   cobroMetodo = visibles[0]?.key || 'efectivo';
-  cobroPagos = [{ metodo: cobroMetodo, monto: Math.round(pendiente * 100) / 100 }];
+  const pendienteActual = calcularPendienteCobro();
+  cobroPagos = [{ metodo: cobroMetodo, monto: Math.round(pendienteActual * 100) / 100 }];
   renderPagosCobro();
 
   document.getElementById('cobroValeCodigo').value = '';
