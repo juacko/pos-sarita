@@ -1205,7 +1205,8 @@ class PedidoController {
       const descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(req.params.id);
       io.emit('pedido:actualizado', db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id));
 
-      res.json({ ok: true, descuentos });
+      const resumen_pago = pagoService.obtenerResumenPago(req.params.id);
+      res.json({ ok: true, descuentos, resumen_pago });
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
@@ -1220,7 +1221,10 @@ class PedidoController {
 
       db.prepare('DELETE FROM descuentos WHERE id = ? AND pedido_id = ?').run(req.params.descId, req.params.id);
       io.emit('pedido:actualizado', db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id));
-      res.json({ ok: true });
+      
+      const descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(req.params.id);
+      const resumen_pago = pagoService.obtenerResumenPago(req.params.id);
+      res.json({ ok: true, descuentos, resumen_pago });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

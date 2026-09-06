@@ -1516,6 +1516,7 @@ async function aplicarDescuento() {
     if (res.ok) {
       const data = await res.json();
       cobroPedidoRef.descuentos = data.descuentos;
+      if (data.resumen_pago) cobroPedidoRef.resumen_pago = data.resumen_pago;
       document.getElementById('cobroDescValor').value = '';
       document.getElementById('cobroDescMotivo').value = '';
       renderDescuentosAplicados();
@@ -1535,7 +1536,9 @@ async function eliminarDescuento(descId) {
   try {
     const res = await fetch(`/api/pedidos/${cobroPedidoRef.id}/descuento/${descId}`, { method: 'DELETE' });
     if (res.ok) {
-      cobroPedidoRef.descuentos = (cobroPedidoRef.descuentos || []).filter(d => d.id !== descId);
+      const data = await res.json();
+      cobroPedidoRef.descuentos = data.descuentos || (cobroPedidoRef.descuentos || []).filter(d => d.id !== descId);
+      if (data.resumen_pago) cobroPedidoRef.resumen_pago = data.resumen_pago;
       renderDescuentosAplicados();
       refreshCobroMontos();
       showToast('Descuento eliminado', 'success');
@@ -1559,10 +1562,26 @@ function renderDescuentosAplicados() {
 }
 
 function refreshCobroMontos() {
+  const totalBruto = (cobroPedidoRef?.items || []).reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
   const total = calcularTotalCobro();
   const pagado = (cobroPedidoRef?.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pendiente = Math.max(0, total - pagado);
-  document.getElementById('cobroTotal').textContent = `S/${pendiente.toFixed(2)}`;
+  
+  const descRow = document.getElementById('cobroDescuentoRow');
+  const totalDescuento = totalBruto - total;
+  if (descRow) {
+    if (totalDescuento > 0) {
+      descRow.style.display = 'flex';
+      const descTotalEl = document.getElementById('cobroDescuentoTotal');
+      if (descTotalEl) descTotalEl.textContent = `-S/${totalDescuento.toFixed(2)}`;
+    } else {
+      descRow.style.display = 'none';
+    }
+  }
+
+  const totalEl = document.getElementById('cobroTotal');
+  if (totalEl) totalEl.textContent = `S/${pendiente.toFixed(2)}`;
+  
   ajustarUltimaFila();
 }
 
