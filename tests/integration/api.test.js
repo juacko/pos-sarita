@@ -148,4 +148,55 @@ describe('Integration API Tests', () => {
     const pedido = testDb.prepare('SELECT estado FROM pedidos WHERE id = 1').get();
     expect(pedido.estado).toBe('ABIERTO'); // Order overall is NOT ready until cafe is also ready
   });
+
+  it('POST /api/test/pagar procesa pago en efectivo y calcula cambio', async () => {
+    testDb.prepare("INSERT INTO caja_sesiones (id, usuario_id, estado) VALUES (1, 1, 'ABIERTA')").run();
+    testDb.prepare("INSERT INTO pedidos (id, mesa_id, mesa_numero, total, estado) VALUES (2, 1, 1, 40, 'ABIERTO')").run();
+
+    app.post('/api/test/pedidos/:id/pagar', (req, res) => {
+      const { metodo, monto, monto_recibido } = req.body;
+      const pedido = testDb.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+      const pendiente = pedido.total;
+      const montoCobrar = metodo === 'efectivo' ? Math.min(monto, pendiente) : monto;
+      const efectivoRecibido = metodo === 'efectivo' ? (parseFloat(monto_recibido) || monto) : 0;
+      const cambio = metodo === 'efectivo' ? Math.max(0, efectivoRecibido - montoCobrar) : 0;
+
+      testDb.prepare('INSERT INTO pagos (pedido_id, monto, metodo) VALUES (?, ?, ?)').run(pedido.id, montoCobrar, metodo);
+      testDb.prepare("UPDATE pedidos SET estado = 'CERRADO' WHERE id = ?").run(pedido.id);
+
+      res.json({ ok: true, cambio, pagadoTotal: montoCobrar, fullyPaid: true });
+    });
+
+    const res = await request(app)
+      .post('/api/test/pedidos/2/pagar')
+      .send({ metodo: 'efectivo', monto: 50, monto_recibido: 50 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.cambio).toBe(10);
+    expect(res.body.fullyPaid).toBe(true);
+
+    const pagoRegistrado = testDb.prepare('SELECT * FROM pagos WHERE pedido_id = 2').get();
+    expect(pagoRegistrado.monto).toBe(40); // Imputado max a la deuda
+  });
+
+  it('POST /api/test/mesas/:id/liberar rechaza liberación si tiene saldo pendiente', async () => {
+    testDb.prepare("INSERT INTO pedidos (id, mesa_id, mesa_numero, total, estado) VALUES (3, 1, 1, 50, 'ABIERTO')").run();
+    testDb.prepare("INSERT INTO pagos (pedido_id, monto, metodo) VALUES (3, 20, 'efectivo')").run();
+
+    app.post('/api/test/mesas/:id/liberar', (req, res) => {
+      const mesaId = req.params.id;
+      const pedido = testDb.prepare("SELECT * FROM pedidos WHERE mesa_id = ? AND estado != 'CANCELADO' ORDER BY id DESC LIMIT 1").get(mesaId);
+      const pagado = testDb.prepare("SELECT COALESCE(SUM(monto), 0) as pagado FROM pagos WHERE pedido_id = ?").get(pedido.id).pagado;
+      const pendiente = pedido.total - pagado;
+
+      if (pendiente > 0.01) {
+        return res.status(409).json({ error: `Saldo pendiente: S/${pendiente.toFixed(2)}` });
+      }
+      res.json({ ok: true });
+    });
+
+    const res = await request(app).post('/api/test/mesas/1/liberar');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Saldo pendiente');
+  });
 });

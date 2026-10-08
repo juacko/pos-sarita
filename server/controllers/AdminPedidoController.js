@@ -75,7 +75,8 @@ class AdminPedidoController {
 
   agregarPago(req, res) {
     try {
-      const { metodo, monto, propina, referencia, notas, usuario_id, motivo } = req.body;
+      const { metodo, monto, propina, referencia, notas, motivo } = req.body;
+      const usuario_id = req.usuario?.id || req.body.usuario_id;
       const rolCheck = adminPedidoRepo.verificarRolAdminCajero(usuario_id);
       if (rolCheck.error) return res.status(403).json({ error: rolCheck.error });
       if (!metodo || !pagos.esMetodoValido(metodo)) return res.status(400).json({ error: 'Método de pago inválido o deshabilitado' });
@@ -128,7 +129,8 @@ class AdminPedidoController {
 
   actualizarPago(req, res) {
     try {
-      const { metodo, referencia, notas, propina, usuario_id, motivo } = req.body;
+      const { metodo, referencia, notas, propina, motivo } = req.body;
+      const usuario_id = req.usuario?.id || req.body.usuario_id;
       const rolCheck = adminPedidoRepo.verificarRolAdminCajero(usuario_id);
       if (rolCheck.error) return res.status(403).json({ error: rolCheck.error });
       if (metodo && !pagos.esMetodoValido(metodo)) return res.status(400).json({ error: 'Método de pago inválido o deshabilitado' });
@@ -165,8 +167,9 @@ class AdminPedidoController {
 
   eliminarPago(req, res) {
     try {
-      const { motivo, usuario_id } = req.body;
+      const { motivo } = req.body;
       if (!motivo || !motivo.trim()) return res.status(400).json({ error: 'El motivo de la devolución es requerido' });
+      const usuario_id = req.usuario?.id || req.body.usuario_id;
       const rolCheck = adminPedidoRepo.verificarRolAdminCajero(usuario_id);
       if (rolCheck.error) return res.status(403).json({ error: rolCheck.error });
 
@@ -195,6 +198,9 @@ class AdminPedidoController {
           adminPedidoRepo.registrarLogPago(pedido.id, pg.id, 'QUITAR', motivo.trim(), `Devolución pago ${pg.metodo} S/${pg.monto.toFixed(2)}`, usuario_id);
         }
 
+        const itemsToRestore = adminPedidoRepo.obtenerItemsActivos(pedido.id);
+        const affectedStockProducts = stockService.reponerStock(itemsToRestore);
+
         adminPedidoRepo.anularPedidoCompleto(pedido.id, `Devolución: ${motivo.trim()}`, usuario_id);
 
         let mesa = null;
@@ -204,13 +210,21 @@ class AdminPedidoController {
             mesa = adminPedidoRepo.liberarMesa(mesaRow.id, usuario_id, `Pedido #${pedido.id} anulado (devolución): ${motivo.trim()}`);
           }
         }
-        return { mesa };
+        return { mesa, affectedStockProducts };
       });
 
       const pedidoFinal = adminPedidoRepo.obtenerPedidoPorId(req.params.id);
       if (this.io) {
         this.io.emit('pedido:actualizado', pedidoFinal);
         if (result.mesa) this.io.emit('mesa:updated', result.mesa);
+        if (result.affectedStockProducts && result.affectedStockProducts.length) {
+          for (const p of result.affectedStockProducts) {
+            this.io.emit('stock:actualizado', {
+              producto_id: p.id, controlar_stock: p.controlar_stock,
+              stock_actual: p.stock_actual, stock_minimo: p.stock_minimo
+            });
+          }
+        }
       }
       res.json({ ok: true, pedido: pedidoFinal, mesa: result.mesa, devolucion: true });
     } catch (err) {
@@ -221,8 +235,9 @@ class AdminPedidoController {
 
   eliminarPedido(req, res) {
     try {
-      const { motivo, usuario_id } = req.body;
+      const { motivo } = req.body;
       if (!motivo || !motivo.trim()) return res.status(400).json({ error: 'El motivo de la eliminación es requerido' });
+      const usuario_id = req.usuario?.id || req.body.usuario_id;
       const rolCheck = adminPedidoRepo.verificarRolAdminCajero(usuario_id);
       if (rolCheck.error) return res.status(403).json({ error: rolCheck.error });
 
@@ -254,6 +269,9 @@ class AdminPedidoController {
           adminPedidoRepo.registrarEgresoGenerico(pedido.id, totalDevuelto, usuario_id, motivo.trim());
         }
 
+        const itemsToRestore = adminPedidoRepo.obtenerItemsActivos(pedido.id);
+        const affectedStockProducts = stockService.reponerStock(itemsToRestore);
+
         adminPedidoRepo.anularPedidoCompleto(pedido.id, `Eliminación: ${motivo.trim()}`, usuario_id);
         adminPedidoRepo.registrarLogPago(pedido.id, null, 'ELIMINAR', motivo.trim(), `Pedido eliminado, ${pagosList.length} pago(s) devuelto(s)`, usuario_id);
 
@@ -264,13 +282,21 @@ class AdminPedidoController {
             mesa = adminPedidoRepo.liberarMesa(mesaRow.id, usuario_id, `Pedido #${pedido.id} eliminado: ${motivo.trim()}`);
           }
         }
-        return { mesa };
+        return { mesa, affectedStockProducts };
       });
 
       const pedidoFinal = adminPedidoRepo.obtenerPedidoPorId(req.params.id);
       if (this.io) {
         this.io.emit('pedido:actualizado', pedidoFinal);
         if (result.mesa) this.io.emit('mesa:updated', result.mesa);
+        if (result.affectedStockProducts && result.affectedStockProducts.length) {
+          for (const p of result.affectedStockProducts) {
+            this.io.emit('stock:actualizado', {
+              producto_id: p.id, controlar_stock: p.controlar_stock,
+              stock_actual: p.stock_actual, stock_minimo: p.stock_minimo
+            });
+          }
+        }
       }
       res.json({ ok: true, pedido: pedidoFinal, mesa: result.mesa, devolucion: true });
     } catch (err) {

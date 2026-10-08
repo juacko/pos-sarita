@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 class CategoriaRepository {
   constructor(database = defaultDb) {
@@ -14,7 +15,7 @@ class CategoriaRepository {
   }
 
   crear(nombre, color, destino) {
-    const r = this.db.prepare('INSERT INTO categorias (nombre, color, destino) VALUES (?, ?, ?)').run(nombre, color || '#6B7280', destino || 'cocina');
+    const r = this.db.prepare('INSERT INTO categorias (nombre, color, destino, uuid) VALUES (?, ?, ?, ?)').run(nombre, color || '#6B7280', destino || 'cocina', generateUUID());
     return this.obtenerPorId(r.lastInsertRowid);
   }
 

@@ -22,11 +22,26 @@
     let actividadDestino = null;
     let mesaDestinoElegida = null;
     let moverSeleccion = new Set();
+    let configAvancePlatos = 'resumen';
+
+    async function loadConfigAvancePlatos() {
+      try {
+        const res = await fetch('/api/configuracion/avance_platos');
+        if (res.ok) {
+          const val = await res.json();
+          configAvancePlatos = val || 'resumen';
+        }
+      } catch (e) {
+        configAvancePlatos = 'resumen';
+      }
+    }
 
     // ---- SOCKET ----
     const socket = io();
     socket.on('connect', () => console.log('Conectado'));
     socket.on('mesa:updated', () => loadMesas());
+    socket.on('pedido:actualizado', () => loadMesas());
+    socket.on('item:actualizado', () => loadMesas());
     socket.on('stock:actualizado', (data) => {
       if (typeof productos !== 'undefined' && Array.isArray(productos)) {
         const p = productos.find(x => x.id === data.producto_id);
@@ -37,6 +52,10 @@
           renderProductos();
         }
       }
+    });
+    socket.on('printer:error', ({ impresora }) => {
+      const area = (impresora || 'cocina').toUpperCase();
+      toast(`🖨️ No imprimió en ${area} · Verificar papel/conexión`, 'error', 7000);
     });
 
     // ---- LOGIN ----
@@ -70,10 +89,29 @@
       }
     }
     function logout() {
+      fetch('/api/usuarios/logout', { method: 'POST' }).catch(() => {});
       currentUser = null; localStorage.removeItem('posUser');
       document.getElementById('loginScreen').style.display = 'flex';
       document.getElementById('appContent').style.display = 'none'; clearPin();
     }
+
+    // ---- MENU MAS OPCIONES (3 PUNTOS) ----
+    function toggleMenuMesero(e) {
+      if (e) e.stopPropagation();
+      const menu = document.getElementById('meseroDropdownMenu');
+      if (menu) {
+        menu.classList.toggle('show');
+      }
+    }
+
+    // Cerrar menú al hacer click fuera
+    document.addEventListener('click', (e) => {
+      const container = document.getElementById('meseroMenuContainer');
+      const menu = document.getElementById('meseroDropdownMenu');
+      if (container && menu && !container.contains(e.target)) {
+        menu.classList.remove('show');
+      }
+    });
 
     // ---- APP ----
     async function initApp() {
@@ -81,12 +119,13 @@
       canalesOcultos = localStorage.getItem(canalesStorageKey) === '1';
       const esAdmin = currentUser && currentUser.rol === 'admin';
       document.getElementById('adminLink').style.display = esAdmin ? '' : 'none';
-      await loadAreas();
+      await Promise.all([loadAreas(), loadConfigAvancePlatos()]);
       await Promise.all([loadMesas(), loadCategorias(), loadProductos()]);
     }
 
     async function loadMesas() {
       try {
+        await loadConfigAvancePlatos();
         const res = await fetch('/api/mesas');
         allMesas = await res.json();
         renderCanales(allMesas);
@@ -196,11 +235,11 @@
 
           let totalHtml = '';
           let pendienteHtml = '';
+          const pendienteVal = m.pedido_total != null ? Math.max(0, m.pedido_total - (m.pedido_pagado || 0) - (m.pedido_descuento || 0)) : 0;
           if (m.pedido_total != null && (m.estado === 'OCUPADO' || m.estado === 'CERRANDO')) {
-            const pendiente = Math.max(0, m.pedido_total - (m.pedido_pagado || 0) - (m.pedido_descuento || 0));
             totalHtml = `<div class="total">S/${m.pedido_total.toFixed(2)}</div>`;
             if (estadoEfectivo !== 'PAGADO') {
-              pendienteHtml = `<div class="pendiente">Pendiente: S/${pendiente.toFixed(2)}</div>`;
+              pendienteHtml = `<div class="pendiente">Pendiente: S/${pendienteVal.toFixed(2)}</div>`;
             }
           }
 
@@ -216,7 +255,7 @@
             pagoHtml = `<div class="tiempo sinpedido">⏱ sin pedido · ${timeSince(new Date(m.pagado_desde + 'Z'))}</div>`;
           }
 
-          const sinPedido = !esPagado && m.estado === 'OCUPADO' && !m.tiene_pedido_activo && m.minutos_sin_pedido != null;
+          const sinPedido = !esPagado && m.estado === 'OCUPADO' && !m.tiene_pedido_activo && m.minutos_sin_pedido != null && pendienteVal <= 0.01;
           let sinPedidoHtml = '';
           if (sinPedido) {
             sinPedidoHtml = `<div class="tiempo sinpedido">⏱ ${m.minutos_sin_pedido} min sin pedido</div>`;
@@ -225,11 +264,53 @@
             }
           }
 
+          let cocinaBadgeHtml = '';
+          if (enAtencion && !esPagado && configAvancePlatos !== 'oculto' && m.items_totales > 0) {
+            const listos = m.items_listos || 0;
+            const totales = m.items_totales;
+            const todosListos = listos >= totales;
+            const bg = todosListos ? '#10B981' : (listos > 0 ? '#0D9488' : '#F59E0B');
+            const shadow = todosListos ? 'box-shadow:0 0 8px rgba(16,185,129,0.6);animation:pulse 1.5s infinite;' : '';
+            const icon = todosListos ? '✅' : (listos > 0 ? '🔔' : '⏳');
+
+            let badgeTexto = `${icon} ${listos}/${totales} listos`;
+
+            if (configAvancePlatos === 'detallado') {
+              const desglose = [];
+              if (m.items_barra_totales > 0) {
+                desglose.push(`🍹${m.items_barra_listos || 0}/${m.items_barra_totales}`);
+              }
+              if (m.items_cocina_totales > 0) {
+                desglose.push(`🍳${m.items_cocina_listos || 0}/${m.items_cocina_totales}`);
+              }
+              if (desglose.length > 0) {
+                badgeTexto += ` (${desglose.join(' · ')})`;
+              }
+            }
+
+            const tooltip = `Avance: ${listos} de ${totales} platos listos${m.items_barra_totales ? ` | Barra: ${m.items_barra_listos || 0}/${m.items_barra_totales}` : ''}${m.items_cocina_totales ? ` | Cocina: ${m.items_cocina_listos || 0}/${m.items_cocina_totales}` : ''}`;
+            cocinaBadgeHtml = `<div title="${tooltip}" style="background:${bg};color:white;font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:12px;display:inline-flex;align-items:center;gap:4px;margin-top:4px;${shadow}">${badgeTexto}</div>`;
+          }
+
+          const esSalonPrincipal = !m.area_nombre || m.area_nombre.toLowerCase() === 'salón principal' || m.area_nombre.toLowerCase() === 'salon principal';
+          let displayTitulo = m.numero;
+          let displaySub = '';
+
+          if (m.nombre && m.nombre.trim() && !/^Mesa \d+$/i.test(m.nombre.trim())) {
+            displayTitulo = m.nombre.trim();
+          } else if (!esSalonPrincipal && m.area_nombre) {
+            displayTitulo = `${m.area_nombre} ${m.numero}`;
+          }
+
+          const isLongTitle = String(displayTitulo).length > 7;
+
           card.innerHTML = `
             <div class="info-top">${totalHtml}</div>
             <div class="info-mid">
-              <div class="num">${m.numero}</div>
+              <div class="num ${isLongTitle ? 'long-title' : ''}">${displayTitulo}</div>
+              ${displaySub ? `<div class="mesa-nombre-sub">${displaySub}</div>` : ''}
               <div class="status">${estadoEfectivo}</div>
+              ${cocinaBadgeHtml}
               <div class="mesero-name">${m.mesero_nombre || ''}</div>
               ${tiempoHtml}
             </div>
@@ -257,6 +338,14 @@
 
     async function liberarMesaRapida(mesaId) {
       if (!currentUser) return;
+      const mesa = allMesas.find(m => m.id === mesaId);
+      if (mesa && mesa.pedido_total != null) {
+        const pendiente = Math.max(0, mesa.pedido_total - (mesa.pedido_pagado || 0) - (mesa.pedido_descuento || 0));
+        if (pendiente > 0.01) {
+          toast(`No se puede liberar: tiene un saldo pendiente de S/${pendiente.toFixed(2)}`, 'err');
+          return;
+        }
+      }
       const ok = await customConfirm({
         title: '¿Liberar Mesa?',
         message: 'Esta mesa está ocupada sin pedido. ¿Deseas liberarla?',
@@ -317,7 +406,17 @@
 
     async function liberarMesaMesero() {
       if (!posMesaData || !currentUser) return;
-      if (posMesaData.pedido_activo_id) {
+      const pTotal = posMesaData.pedido_total != null ? posMesaData.pedido_total : 0;
+      const pPagado = posMesaData.pedido_pagado || 0;
+      const pDescuento = posMesaData.pedido_descuento || 0;
+      const pendiente = Math.max(0, pTotal - pPagado - pDescuento);
+
+      if (pendiente > 0.01) {
+        toast(`No se puede liberar: la mesa tiene un saldo pendiente de S/${pendiente.toFixed(2)}. Debe cobrarse o anularse primero.`, 'err');
+        return;
+      }
+
+      if (posMesaData.pedido_activo_id && posMesaData.estado_ejefe !== 'PAGADO') {
         const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
         if (puedeAnular) {
           const okAnular = await customConfirm({
@@ -357,19 +456,54 @@
         toast('Error de conexión', 'err');
       }
     }
-    function toast(msg, tipo) {
+
+    async function liberarYIniciarNuevoPedido() {
+      if (!posMesaData || !currentUser) return;
+      const ok = await customConfirm({
+        title: 'Nueva Cuenta',
+        message: `La cuenta anterior ya fue pagada.\n\n¿Liberar la mesa e iniciar una NUEVA orden para ${posMesaData.nombre || 'Mesa ' + posMesaData.numero}?`,
+        confirmText: 'Sí, nueva orden',
+        icon: '✨'
+      });
+      if (!ok) return;
+
+      try {
+        const r = await fetch(`/api/mesas/${posMesaData.id}/liberar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mesero_id: currentUser.id })
+        });
+        if (r.ok) {
+          const mesaActualizada = await r.json();
+          posMesaData = mesaActualizada;
+          posMesaId = mesaActualizada.id;
+          pedidoActivoItems = [];
+          document.getElementById('posTableStatus').textContent = 'LIBRE · ' + (currentUser.nombre || '');
+          toast('Mesa liberada para nueva orden', 'ok');
+          loadMesas();
+          mostrarCatalogo(true);
+        } else {
+          const e = await r.json();
+          toast(e.error || 'Error al liberar mesa', 'err');
+        }
+      } catch (e) {
+        toast('Error de conexión', 'err');
+      }
+    }
+    function toast(msg, tipo, durationMs = 2000) {
       if (tipo === 'success') tipo = 'ok';
       if (tipo === 'warning') tipo = 'warn';
       if (tipo === 'error') tipo = 'err';
       const el = document.createElement('div');
-      el.className = `toast-mesero ${tipo}`;
+      el.className = `toast-mesero ${tipo}${durationMs > 3000 ? ' toast-persistente' : ''}`;
       el.textContent = msg;
       document.body.appendChild(el);
       setTimeout(() => {
         el.style.opacity = '0';
-        el.style.transform = 'translateY(10px)';
-        setTimeout(() => el.remove(), 300);
-      }, 2000);
+        el.style.transform = 'translate(-50%, 8px)';
+        el.style.transition = 'opacity 0.25s, transform 0.25s';
+        setTimeout(() => el.remove(), 250);
+      }, durationMs);
     }
 
     function avisarMesasSinPedido() {
@@ -529,11 +663,13 @@
         if (mesa.es_virtual && mesa.pedido_activo_id) {
           const pr = await fetch(`/api/pedidos/${mesa.pedido_activo_id}`);
           const pedido = await pr.json();
+          const tipoVirtual = mesa.area_tipo || pedido.area_tipo || (mesa.nombre?.toLowerCase().includes('delivery') ? 'DELIVERY' : 'PARA_LLEVAR');
           pedidoCliente = {
             nombre: pedido.cliente_nombre || '', telefono: pedido.cliente_telefono || '',
             direccion: pedido.cliente_direccion || '', hora: pedido.hora_recogida || '',
-            tipo: mesa.area_tipo
+            tipo: tipoVirtual
           };
+          if (!mesa.area_tipo) mesa.area_tipo = tipoVirtual;
         }
         abrirPOS(mesa);
         loadMesas();
@@ -631,7 +767,7 @@
       const bar = document.getElementById('posClienteBar');
       if (!bar) return;
       const isVirtual = posMesaData && posMesaData.es_virtual;
-      if (!isVirtual) { bar.style.display = 'none'; return; }
+      if (!isVirtual) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
       bar.style.display = 'block';
       if (pedidoCliente && pedidoCliente.nombre) {
         const tipo = pedidoCliente.tipo === 'DELIVERY' ? '🛵 Delivery' : '🥡 Para Llevar';
@@ -646,7 +782,7 @@
     }
 
     function editarCliente() {
-      const tipo = posMesaData?.area_tipo === 'DELIVERY' ? 'DELIVERY' : 'PARA_LLEVAR';
+      const tipo = (posMesaData?.area_tipo || pedidoCliente?.tipo || (posMesaData?.nombre?.toLowerCase().includes('delivery') ? 'DELIVERY' : null)) === 'DELIVERY' ? 'DELIVERY' : 'PARA_LLEVAR';
       abrirClienteForm(tipo, 'editar', pedidoCliente);
     }
 
@@ -662,6 +798,9 @@
     async function abrirPOS(mesa) {
       posMesaId = mesa.id;
       posMesaData = mesa;
+      if (!mesa.es_virtual) {
+        pedidoCliente = null;
+      }
 
       const headerMesero = document.querySelector('.header-mesero');
       if (headerMesero) headerMesero.style.display = 'none';
@@ -705,6 +844,21 @@
           const res = await fetch(`/api/pedidos/${mesa.pedido_activo_id}`);
           if (res.ok) {
             const pedido = await res.json();
+            if (mesa.es_virtual) {
+              const tipoVirtual = mesa.area_tipo || pedido.area_tipo || (mesa.nombre?.toLowerCase().includes('delivery') ? 'DELIVERY' : 'PARA_LLEVAR');
+              pedidoCliente = {
+                nombre: pedido.cliente_nombre || '',
+                telefono: pedido.cliente_telefono || '',
+                direccion: pedido.cliente_direccion || '',
+                hora: pedido.hora_recogida || '',
+                tipo: tipoVirtual
+              };
+              if (!mesa.area_tipo) mesa.area_tipo = tipoVirtual;
+              renderPosClienteBar();
+            } else {
+              pedidoCliente = null;
+              renderPosClienteBar();
+            }
             pedidoActivoItems = (pedido.items || []).filter(i => i.estado !== 'CANCELADO');
             if (pedidoActivoItems.length > 0) {
               const itemsList = pedidoActivoItems.map((i, idx) => {
@@ -774,14 +928,42 @@
         existingOrderHtml = '<p style="color:#64748b; text-align:center; padding:20px;">No hay pedido activo.</p>';
       }
 
+      const estadoEfectivo = mesa.estado_ejefe || mesa.estado;
+      const esPagadoMesa = estadoEfectivo === 'PAGADO' || mesa.es_pedido_pagado;
+      if (esPagadoMesa) {
+        existingOrderHtml = `
+          <div style="background:#ECFDF5; border:1px solid #A7F3D0; border-radius:12px; padding:12px 14px; margin-bottom:12px; display:flex; align-items:center; gap:10px; color:#065F46;">
+            <span style="font-size:1.5rem;">💰</span>
+            <div style="flex:1;">
+              <div style="font-weight:700; font-size:0.95rem;">Cuenta Pagada al 100%</div>
+              <div style="font-size:0.82rem; color:#047857; margin-top:2px;">Esta orden ya fue cobrada y cerrada. Para registrar nuevos consumos, libere la mesa o use "Nueva Cuenta".</div>
+            </div>
+          </div>
+        ` + existingOrderHtml;
+      }
+
       resumenPedido.innerHTML = existingOrderHtml;
 
       // Configurar ActionBar y Más opciones
-      const estadoEfectivo = mesa.estado_ejefe || mesa.estado;
+      const btnAgregar = document.getElementById('btnActionAgregarProductos');
+      if (btnAgregar) {
+        if (esPagadoMesa) {
+          btnAgregar.innerHTML = '🔄 Liberar e Iniciar Nuevo Pedido';
+          btnAgregar.style.background = '#2563EB';
+          btnAgregar.style.borderColor = '#2563EB';
+          btnAgregar.onclick = () => liberarYIniciarNuevoPedido();
+        } else {
+          btnAgregar.innerHTML = '➕ Agregar productos';
+          btnAgregar.style.background = '#10B981';
+          btnAgregar.style.borderColor = '#10B981';
+          btnAgregar.onclick = () => mostrarCatalogo(true);
+        }
+      }
+
       let pendiente = 0;
-      if (mesa.pedido_activo_id && pedidoActivoItems.length > 0 && estadoEfectivo !== 'PAGADO') {
+      if (mesa.pedido_activo_id && pedidoActivoItems.length > 0) {
         const pTotal = mesa.pedido_total || 0;
-        const pPagado = 0;
+        const pPagado = mesa.pedido_pagado || 0;
         const pDescuento = mesa.pedido_descuento || 0;
         pendiente = Math.max(0, pTotal - pPagado - pDescuento);
       }
@@ -799,14 +981,16 @@
 
       // Más Opciones Modal
       const puedeAnular = currentUser && (currentUser.rol === 'admin' || currentUser.rol === 'cajero');
+      const puedeLiberarDirecto = (pendiente <= 0.01) && (!mesa.pedido_activo_id || pedidoActivoItems.length === 0 || esPagadoMesa);
       masOpcionesBody.innerHTML = `
-        ${pedidoActivoItems.length > 0 ? `
+        ${esPagadoMesa ? `<button class="btn btn-primary" style="padding:14px; font-size:1rem; font-weight:700; background:#2563EB; border-color:#2563EB;" onclick="closeMasOpcionesModal(); liberarYIniciarNuevoPedido()">🔄 Liberar e Iniciar Nuevo Pedido</button>` : ''}
+        ${pedidoActivoItems.length > 0 && !esPagadoMesa ? `
           <button class="btn btn-outline" style="padding:14px; font-size:1rem; font-weight:600;" onclick="closeMasOpcionesModal(); abrirMoverPedido()">↔️ Mover a otra mesa</button>
           <button class="btn btn-outline" style="padding:14px; font-size:1rem; font-weight:600;" onclick="closeMasOpcionesModal(); abrirUnirMesa()">🔗 Unir con mesa</button>
         ` : ''}
         ${mesa.estado === 'RESERVADO' ? `<button class="btn btn-primary" style="padding:14px; font-size:1rem; font-weight:600;" onclick="closeMasOpcionesModal(); ocuparMesa(${mesa.id})">✅ Ocupar ahora</button>` : ''}
-        <button class="btn btn-outline" style="padding:14px; font-size:1rem; font-weight:600;" onclick="closeMasOpcionesModal(); liberarMesaMesero()">🚪 Liberar mesa</button>
-        ${(mesa.pedido_activo_id && puedeAnular) ? `
+        ${puedeLiberarDirecto ? `<button class="btn btn-outline" style="padding:14px; font-size:1rem; font-weight:600;" onclick="closeMasOpcionesModal(); liberarMesaMesero()">🚪 Liberar mesa</button>` : ''}
+        ${(mesa.pedido_activo_id && puedeAnular && !esPagadoMesa) ? `
           <button class="btn btn-outline" style="padding:14px; font-size:1rem; font-weight:600; color:#DC2626; border-color:#FCA5A5;" onclick="closeMasOpcionesModal(); anularPedidoMesero()">🚫 Anular pedido</button>
         ` : ''}
       `;
@@ -822,6 +1006,10 @@
     }
 
     function mostrarCatalogo(focusSearch = false) {
+      if (posMesaData && (posMesaData.estado_ejefe === 'PAGADO' || posMesaData.es_pedido_pagado)) {
+        liberarYIniciarNuevoPedido();
+        return;
+      }
       pedidoItems = []; // Limpiar carrito nuevo
       renderCart();
       document.getElementById('mesaResumenView').style.display = 'none';
@@ -1072,8 +1260,8 @@
       pedidoCliente = null;
       closeCartModal();
 
-      // Limpiar cualquier toast pegado
-      document.querySelectorAll('.toast-mesero').forEach(t => t.remove());
+      // Limpiar cualquier toast temporal previo (mantener errores importantes como fallos de impresora)
+      document.querySelectorAll('.toast-mesero:not(.err):not(.toast-persistente)').forEach(t => t.remove());
 
       loadMesas();
     }
@@ -1661,6 +1849,10 @@
     async function sumarProductoOrden(idx) {
       const it = pedidoActivoItems[idx];
       if (!it || !posMesaData?.pedido_activo_id) return;
+      if (posMesaData.estado_ejefe === 'PAGADO' || posMesaData.es_pedido_pagado) {
+        toast('Esta cuenta ya fue pagada. Debe liberar la mesa para iniciar un nuevo pedido.', 'warn');
+        return;
+      }
       const item = {
         producto_id: it.producto_id,
         nombre: it.producto_nombre,
@@ -1718,7 +1910,7 @@
 
       try {
         let res;
-        if (posMesaData && posMesaData.pedido_activo_id) {
+        if (posMesaData && posMesaData.pedido_activo_id && posMesaData.estado_ejefe !== 'PAGADO' && !posMesaData.es_pedido_pagado) {
           res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items: pedidoItems, nota: null })
@@ -1795,11 +1987,98 @@
         try {
           currentUser = JSON.parse(saved);
           if (currentUser.rol === 'mesero' || currentUser.rol === 'admin') {
-            document.getElementById('loginScreen').style.display = 'none';
-            document.getElementById('appContent').style.display = 'block';
-            document.getElementById('userBadge').textContent = currentUser.nombre;
+            const loginScreen = document.getElementById('loginScreen');
+            const appContent = document.getElementById('appContent');
+            const userBadge = document.getElementById('userBadge');
+
+            if (loginScreen) loginScreen.style.display = 'none';
+            if (appContent) appContent.style.display = 'block';
+            if (userBadge) userBadge.textContent = currentUser.nombre;
             initApp();
+
+            // Validar token con el backend en segundo plano
+            fetch('/api/usuarios/me')
+              .then(async (res) => {
+                if (res.ok) {
+                  const data = await res.json();
+                  currentUser = { ...currentUser, ...data.usuario };
+                  if (userBadge) userBadge.textContent = currentUser.nombre;
+                } else if (res.status === 401) {
+                  currentUser = null;
+                  localStorage.removeItem('posUser');
+                  if (loginScreen) loginScreen.style.display = 'flex';
+                  if (appContent) appContent.style.display = 'none';
+                  const errEl = document.getElementById('loginError');
+                  if (errEl) errEl.textContent = 'Tu sesión ha expirado. Ingresa tu PIN nuevamente.';
+                  clearPin();
+                }
+              })
+              .catch(() => {
+                // No desloguear ante caídas de red transitorias
+              });
           }
-        } catch (e) { localStorage.removeItem('posUser'); }
+        } catch (e) {
+          currentUser = null;
+          localStorage.removeItem('posUser');
+          const loginScreen = document.getElementById('loginScreen');
+          const appContent = document.getElementById('appContent');
+          if (loginScreen) loginScreen.style.display = 'flex';
+          if (appContent) appContent.style.display = 'none';
+        }
       }
-    })();
+    })();
+
+    // ---- PWA & PANTALLA COMPLETA NATIVA ----
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btnInstall = document.getElementById('btnInstallPWA');
+      if (btnInstall) btnInstall.style.display = 'inline-flex';
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredPrompt = null;
+      const btnInstall = document.getElementById('btnInstallPWA');
+      if (btnInstall) btnInstall.style.display = 'none';
+      console.log('PWA instalada con éxito');
+    });
+
+    async function instalarPWA() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+          deferredPrompt = null;
+        }
+      } else {
+        togglePantallaCompleta();
+      }
+    }
+
+    function togglePantallaCompleta() {
+      const doc = window.document;
+      const docEl = doc.documentElement;
+
+      const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+      const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+      if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+        if (requestFullScreen) {
+          requestFullScreen.call(docEl).catch(() => {});
+        }
+      } else {
+        if (cancelFullScreen) {
+          cancelFullScreen.call(doc).catch(() => {});
+        }
+      }
+    }
+
+    // ---- PWA SERVICE WORKER ----
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('PWA ServiceWorker registrado:', reg.scope))
+          .catch(err => console.log('ServiceWorker no disponible:', err));
+      });
+    }

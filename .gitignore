@@ -5,3 +5,4 @@ data/*.db-shm
 prints/
 .env
 data/*.backup*
+data/*.bin

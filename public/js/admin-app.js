@@ -10,19 +10,51 @@
     let cajaTabActual = 'flujo';
     let reporteTabActual = 'ventas';
 
-    // Load user from localStorage
+    // Load user from localStorage & validate session
     try {
       const saved = localStorage.getItem('posUser');
       if (saved) currentUser = JSON.parse(saved);
     } catch (e) {}
 
+    // Función de logout para admin
+    function logoutAdmin() {
+      fetch('/api/usuarios/logout', { method: 'POST' }).catch(() => {});
+      localStorage.removeItem('posUser');
+      currentUser = null;
+      window.location.href = '/?logout=1';
+    }
+
+    // Validar sesión inmediatamente con backend
+    (async function verificarSesionAdmin() {
+      if (!currentUser || currentUser.rol !== 'admin') {
+        localStorage.removeItem('posUser');
+        window.location.href = '/?expired=1';
+        return;
+      }
+      try {
+        const res = await fetch('/api/usuarios/me');
+        if (!res.ok) {
+          localStorage.removeItem('posUser');
+          window.location.href = '/?expired=1';
+        }
+      } catch (e) {
+        // En caso de error de red, el interceptor 401 manejará si no hay auth
+      }
+    })();
+
     // ---- NAV ----
     function showSection(s) { toggleAdminMenu(true);
       document.querySelectorAll('.section').forEach(el => el.style.display = 'none');
       document.querySelectorAll('.admin-sidebar a').forEach(el => el.classList.remove('active'));
-      document.getElementById('sec-' + s).style.display = 'block';
+      const secTarget = document.getElementById('sec-' + s);
+      if (secTarget) {
+        secTarget.style.display = 'block';
+      } else {
+        console.warn(`Sección no encontrada: sec-${s}`);
+      }
       const enlace = document.querySelector(`.admin-sidebar a[data-sec="${s}"]`);
       if (enlace) enlace.classList.add('active');
+      if (s === 'dashboard') loadDashboard();
       if (s === 'productos') loadProductos();
       if (s === 'categorias') loadCategorias();
       if (s === 'reportes') { reporteTabActual = 'ventas'; switchReporteTab('ventas'); }
@@ -35,7 +67,18 @@
     const _seccionHash = (location.hash || '').replace('#', '');
     if (_seccionHash && document.getElementById('sec-' + _seccionHash)) {
       showSection(_seccionHash);
+    } else {
+      showSection('dashboard');
     }
+
+    window.addEventListener('hashchange', () => {
+      const h = (location.hash || '').replace('#', '');
+      if (h && document.getElementById('sec-' + h)) {
+        showSection(h);
+      } else {
+        showSection('dashboard');
+      }
+    });
 
     // Cargar config al inicio para labels de métodos en reportes/caja/editar pagos
     loadConfiguracion();
@@ -96,6 +139,7 @@
         renderConfigPostPago();
         renderConfigImpresionComandas();
         renderConfigKdsAudio();
+        renderConfigAvancePlatos();
       } catch (e) {
         showToast('Error al cargar configuración', 'error');
       }
@@ -257,9 +301,59 @@
       } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
+    function renderConfigAvancePlatos() {
+      const wrap = document.getElementById('cfgAvancePlatosWrap');
+      if (!wrap) return;
+      const modo = configGlobal?.avance_platos || 'resumen';
+
+      wrap.innerHTML = `
+        <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div style="font-weight:700;font-size:1rem;">🍳 Avance de Preparación en Tarjetas de Mesas</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">Configura cómo los meseros y la caja visualizan los platos listos vs totales en cada mesa.</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfigAvancePlatos()">💾 Guardar preferencia</button>
+          </div>
+          <div style="max-width:460px;">
+            <label style="font-size:0.85rem;font-weight:600;color:#334155;display:block;margin-bottom:6px;">Modo de visualización</label>
+            <select id="cfgAvancePlatosModo" class="form-control">
+              <option value="resumen" ${modo === 'resumen' ? 'selected' : ''}>Resumen General (Ej: 🔔 2/4 listos)</option>
+              <option value="detallado" ${modo === 'detallado' ? 'selected' : ''}>Detallado por Área (Ej: 🔔 2/4 listos · 🍹2/2 · 🍳0/2)</option>
+              <option value="oculto" ${modo === 'oculto' ? 'selected' : ''}>Oculto (No mostrar conteo en las tarjetas)</option>
+            </select>
+            <div style="font-size:0.75rem;color:#64748b;margin-top:8px;">
+              💡 <b>Resumen General:</b> Muestra el avance consolidado sin saturar la pantalla.<br>
+              💡 <b>Detallado por Área:</b> Desglosa cocina y barra si la mesa tiene pedidos en ambas áreas.<br>
+              💡 <b>Oculto:</b> Mantiene la tarjeta minimalista solo con el estado de la mesa.
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function saveConfigAvancePlatos() {
+      const modo = document.getElementById('cfgAvancePlatosModo')?.value || 'resumen';
+      try {
+        const res = await fetch('/api/admin/configuracion/avance_platos', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ valor: modo })
+        });
+        if (res.ok) {
+          showToast('Configuración de avance de platos guardada', 'success');
+          configGlobal.avance_platos = modo;
+        } else {
+          showToast('Error al guardar configuración', 'error');
+        }
+      } catch (e) {
+        showToast('Error de conexión', 'error');
+      }
+    }
+
     function renderConfigHoraCorte() {
       const wrap = document.getElementById('cfgOtrosWrap');
-      const hora = configGlobal?.hora_corte || '23:00';
+      const hora = configGlobal?.hora_corte || '23:59';
       wrap.innerHTML = `
         <div style="background:white;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:20px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -663,8 +757,10 @@
           categorias = [];
           if (r.status === 401) showToast('Sesión requerida. Por favor ingresa con tu PIN', 'error');
         }
+        renderCategorias();
       } catch (e) {
         categorias = [];
+        renderCategorias();
       }
     }
 
@@ -744,8 +840,20 @@
 
     async function toggleCategoria(id, active) {
       const c = categorias.find(x => x.id === id);
+      const prevActivo = c ? c.activo : !active;
       if (c) c.activo = active ? 1 : 0;
-      await fetch('/api/admin/categorias/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ...c, activo: active ? 1 : 0 }) });
+      try {
+        const res = await fetch('/api/admin/categorias/' + id, {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ ...c, activo: active ? 1 : 0 })
+        });
+        if (!res.ok) throw new Error('Error al actualizar');
+      } catch (e) {
+        if (c) c.activo = prevActivo;
+        renderCategorias();
+        alert('Error al actualizar el estado de la categoría');
+      }
     }
 
     // ---- PRODUCTOS ----
@@ -754,6 +862,15 @@
       const q = (document.getElementById('searchProductos').value || '').toLowerCase();
       let list = productosCompleto.filter(p => p.nombre.toLowerCase().includes(q) || (p.categoria_nombre || '').toLowerCase().includes(q));
       if (!list.length) { w.innerHTML = '<p class="empty-state">Sin productos</p>'; return; }
+
+      const sinStock = (productosCompleto || []).filter(p => !p.controlar_stock && p.activo !== 0);
+      let bannerStockHtml = '';
+      if (sinStock.length > 0) {
+        bannerStockHtml = '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
+          '<span style="font-size:0.85rem;color:#92400E;"><strong>⚠️ ' + sinStock.length + ' producto(s)</strong> no tienen control de stock activado.</span>' +
+          '<button onclick="abrirModalStockMasivo()" class="btn btn-primary" style="font-size:0.8rem;padding:6px 14px;font-weight:700;">📦 Configurar Stock Masivo</button>' +
+          '</div>';
+      }
       let h = '<table><thead><tr><th>Producto</th><th>Categoría</th><th>Destino</th><th>Precio</th><th>Stock Diario</th><th>Variantes</th><th>Mod.</th><th>Agr.</th><th>Activo</th><th>Acción</th></tr></thead><tbody>';
       for (const p of list) {
         const cat = categorias.find(c => c.id === p.categoria_id);
@@ -788,13 +905,26 @@
         </tr>`;
       }
       h += '</tbody></table>';
-      w.innerHTML = h;
+      w.innerHTML = bannerStockHtml + h;
     }
 
     async function toggleProducto(id, active) {
       const p = productosCompleto.find(x => x.id === id);
       if (!p) return;
-      await fetch('/api/admin/productos/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ...p, activo: active ? 1 : 0 }) });
+      const prevActivo = p.activo;
+      p.activo = active ? 1 : 0;
+      try {
+        const res = await fetch('/api/admin/productos/' + id, {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ ...p, activo: active ? 1 : 0 })
+        });
+        if (!res.ok) throw new Error('Error al actualizar');
+      } catch (e) {
+        p.activo = prevActivo;
+        renderProductos();
+        alert('Error al actualizar el estado del producto');
+      }
     }
 
     async function openProductoModal(id) {
@@ -1082,7 +1212,7 @@
             <div style="font-size:0.75rem;color:#94A3B8;">${v.cantidad || 0} pago(s)</div>
           </div>
         `).join('') || '<p style="color:#94A3B8;font-size:0.85rem;">Sin pagos en el periodo</p>';
-      const corte = data.rango?.corte || '23:00';
+      const corte = data.rango?.corte || '23:59';
       const cancelados = data.cancelados || { total: 0, suma: 0 };
       const fuenteTxt = fuente === 'sesion' ? '💰 Sesión de caja' : `📅 Día (corte ${corte})`;
       let h = `<div style="margin-bottom:8px;font-size:0.75rem;color:#94A3B8;">
@@ -1103,7 +1233,11 @@
         </div>
       </div>
       <div style="font-size:0.85rem;font-weight:600;color:#334155;margin:0 0 10px;">Desglose por método (cuadra con caja)</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">${desgloseHtml}</div>`;
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">${desgloseHtml}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
+        <div id="graficaBarrasReporte" style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);"></div>
+        <div id="graficaDonutReporte" style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);"></div>
+      </div>`;
       if (data.pedidos && data.pedidos.length) {
         h += '<div class="table-wrap"><table><thead><tr><th>#</th><th>Mesa</th><th>Hora pago</th><th>Total</th><th>Pagado periodo</th><th>Estado</th><th>Acción</th></tr></thead><tbody>';
         for (const p of data.pedidos) {
@@ -1139,14 +1273,25 @@
         h += '</tbody></table></div>';
       }
       el.innerHTML = h;
+      requestAnimationFrame(() => {
+        const desgloseArr = Object.entries(data.desglose || {})
+          .filter(([_, v]) => v && ((v.total || v.monto || 0) > 0 || (v.cantidad || 0) > 0))
+          .map(([k, v]) => ({ metodo: k, total: v.total || v.monto || 0 }));
+        renderGraficaBarras(data.ventas_por_hora || [], 'graficaBarrasReporte', '📊 Ventas por Hora');
+        renderGraficaDonut(desgloseArr, 'graficaDonutReporte', '💳 Desglose por Método de Pago');
+      });
     }
 
     async function reimprimirPedidoAdmin(pedidoId) {
       try {
         const res = await fetch('/api/pedidos/' + pedidoId + '/reimprimir', { method: 'POST' });
         const data = await res.json();
-        alert(data.ok ? 'Ticket reimpreso' : 'Error al reimprimir: ' + (data.reason || ''));
-      } catch (e) { alert('Error de conexión'); }
+        if (data.ok) {
+          showToast('Ticket enviado a la impresora', 'success');
+        } else {
+          showToast('Error al reimprimir: ' + (data.reason || 'impresora no disponible'), 'error', 6000);
+        }
+      } catch (e) { showToast('Error de conexión', 'error'); }
     }
 
     let adminEditarPagosData = null;
@@ -2585,7 +2730,7 @@
       renderCategorias();
     })();
 
-    function showToast(message, type = 'success') {
+    function showToast(message, type = 'success', duration = 3000) {
       const existing = document.querySelector('.toast');
       if (existing) existing.remove();
       const toast = document.createElement('div');
@@ -2596,8 +2741,9 @@
         toast.style.opacity = '0';
         toast.style.transition = 'opacity 0.3s';
         setTimeout(() => toast.remove(), 300);
-      }, 3000);
-    }    function toggleAdminMenu(forceClose = false) {
+      }, duration);
+    }
+    function toggleAdminMenu(forceClose = false) {
       const sidebar = document.querySelector('.admin-sidebar');
       const overlay = document.getElementById('mobileMenuOverlay');
       if (forceClose) {
@@ -2615,3 +2761,441 @@
 
 
 
+
+
+function renderGraficaBarras(data, containerId, titulo = 'Ventas por Hora') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!data || !data.length) {
+    container.innerHTML = '<div style="font-weight:700;font-size:0.85rem;color:#374151;margin-bottom:8px;">' + titulo + '</div>' +
+      '<div style="color:#94a3b8;text-align:center;padding:40px 20px;font-size:0.85rem;">Sin ventas registradas en las horas de este período</div>';
+    return;
+  }
+  const W = container.clientWidth || 600;
+  const H = 200;
+  const paddingLeft = 45;
+  const paddingBottom = 25;
+  const paddingTop = 20;
+  const paddingRight = 16;
+  const chartW = W - paddingLeft - paddingRight;
+  const chartH = H - paddingTop - paddingBottom;
+  const maxTotal = Math.max(...data.map(d => d.total || 0), 1);
+  const horasCompletas = Array.from({length: 24}, (_, i) => {
+    const h = String(i).padStart(2, '0');
+    const found = data.find(d => d.hora === h);
+    return found || { hora: h, total: 0, pedidos: 0 };
+  }).filter((_, i) => i >= 6 && i <= 23);
+  const barW = chartW / horasCompletas.length;
+  let bars = '', labels = '', yLines = '';
+  [0, 0.5, 1].forEach(p => {
+    const y = paddingTop + chartH * (1 - p);
+    const val = Math.round(maxTotal * p);
+    yLines += '<line x1="' + paddingLeft + '" y1="' + y + '" x2="' + (W - paddingRight) + '" y2="' + y + '" stroke="#f1f5f9" stroke-width="1"/>';
+    yLines += '<text x="' + (paddingLeft - 4) + '" y="' + (y + 4) + '" text-anchor="end" font-size="9" fill="#94a3b8">' + (val > 999 ? (val/1000).toFixed(1)+'k' : val) + '</text>';
+  });
+  horasCompletas.forEach((d, i) => {
+    const barH = chartH * (d.total / maxTotal);
+    const x = paddingLeft + i * barW;
+    const y = paddingTop + chartH - barH;
+    const fill = d.total > 0 ? '#0284C7' : '#f1f5f9';
+    const tooltip = d.total > 0
+      ? `<title>${d.hora}:00 - S/${Number(d.total).toFixed(2)} (${d.pedidos} pedido${d.pedidos === 1 ? '' : 's'})</title>`
+      : `<title>${d.hora}:00 - S/0.00</title>`;
+    bars += '<rect x="' + (x + barW * 0.15) + '" y="' + y + '" width="' + (barW * 0.7) + '" height="' + Math.max(barH, 2) + '" fill="' + fill + '" rx="3">' + tooltip + '</rect>';
+    if (i % 2 === 0) {
+      labels += '<text x="' + (x + barW / 2) + '" y="' + (H - 4) + '" text-anchor="middle" font-size="9" fill="#94a3b8">' + d.hora + '</text>';
+    }
+  });
+  container.innerHTML = '<div style="font-weight:700;font-size:0.85rem;color:#374151;margin-bottom:8px;">' + titulo + '</div>' +
+    '<svg width="100%" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="overflow:visible;">' +
+    yLines + '<line x1="' + paddingLeft + '" y1="' + paddingTop + '" x2="' + paddingLeft + '" y2="' + (paddingTop + chartH) + '" stroke="#cbd5e1" stroke-width="1"/>' +
+    bars + labels + '</svg>';
+}
+
+function renderGraficaDonut(data, containerId, titulo = 'Por Método de Pago') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!data || !data.length) {
+    container.innerHTML = '<div style="font-weight:700;font-size:0.85rem;color:#374151;margin-bottom:8px;">' + titulo + '</div>' +
+      '<div style="color:#94a3b8;text-align:center;padding:40px 20px;font-size:0.85rem;">Sin pagos registrados en este período</div>';
+    return;
+  }
+  const colors = ['#0284C7', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2', '#ec4899', '#f59e0b'];
+  const total = data.reduce((s, d) => s + (d.total || d.monto || 0), 0);
+  if (total <= 0) {
+    container.innerHTML = '<div style="font-weight:700;font-size:0.85rem;color:#374151;margin-bottom:8px;">' + titulo + '</div>' +
+      '<div style="color:#94a3b8;text-align:center;padding:40px 20px;font-size:0.85rem;">Sin pagos registrados en este período</div>';
+    return;
+  }
+  const cx = 75, cy = 75, r = 58, innerR = 34;
+  let startAngle = -Math.PI / 2;
+  let paths = '';
+  let leyenda = '';
+  const nombres = { efectivo: 'Efectivo', yape: 'Yape', tarjeta: 'Tarjeta', vale: 'Vale', transferencia: 'Transferencia', regalo: 'Cortesía', plin: 'Plin', otros: 'Otros' };
+  data.forEach((d, i) => {
+    const valor = d.total || d.monto || 0;
+    const porcentaje = total > 0 ? valor / total : 0;
+    if (porcentaje <= 0.005) return;
+    let angle = porcentaje * 2 * Math.PI;
+    if (angle >= 2 * Math.PI * 0.9999) angle = 2 * Math.PI - 0.001;
+    const endAngle = startAngle + angle;
+    const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle),   y2 = cy + r * Math.sin(endAngle);
+    const ix1 = cx + innerR * Math.cos(endAngle),   iy1 = cy + innerR * Math.sin(endAngle);
+    const ix2 = cx + innerR * Math.cos(startAngle), iy2 = cy + innerR * Math.sin(startAngle);
+    const largeArc = angle > Math.PI ? 1 : 0;
+    const color = colors[i % colors.length];
+    const metodo = d.metodo || d.label || '';
+    const nombre = nombres[metodo] || metodo;
+    const tooltip = `<title>${nombre}: S/${valor.toFixed(2)} (${(porcentaje * 100).toFixed(1)}%)</title>`;
+    paths += '<path d="M ' + x1.toFixed(2) + ' ' + y1.toFixed(2) + ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' 1 ' + x2.toFixed(2) + ' ' + y2.toFixed(2) + ' L ' + ix1.toFixed(2) + ' ' + iy1.toFixed(2) + ' A ' + innerR + ' ' + innerR + ' 0 ' + largeArc + ' 0 ' + ix2.toFixed(2) + ' ' + iy2.toFixed(2) + ' Z" fill="' + color + '" opacity="0.9">' + tooltip + '</path>';
+    leyenda += '<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem;margin-bottom:4px;">' +
+      '<div style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0;"></div>' +
+      '<span style="color:#374151;">' + nombre + '</span>' +
+      '<span style="color:#64748b;margin-left:auto;font-weight:600;">S/' + valor.toFixed(0) + ' (' + (porcentaje * 100).toFixed(0) + '%)</span></div>';
+    startAngle = endAngle;
+  });
+  container.innerHTML = '<div style="font-weight:700;font-size:0.85rem;color:#374151;margin-bottom:8px;">' + titulo + '</div>' +
+    '<div style="display:flex;gap:16px;align-items:center;">' +
+    '<svg width="150" height="150" viewBox="0 0 150 150" style="flex-shrink:0;">' +
+    paths + '<circle cx="' + cx + '" cy="' + cy + '" r="' + innerR + '" fill="white"/>' +
+    '<text x="' + cx + '" y="' + (cy - 3) + '" text-anchor="middle" font-size="8" fill="#64748b">TOTAL</text>' +
+    '<text x="' + cx + '" y="' + (cy + 10) + '" text-anchor="middle" font-size="10" font-weight="700" fill="#1e293b">S/' + total.toFixed(0) + '</text>' +
+    '</svg><div style="flex:1;">' + leyenda + '</div></div>';
+}
+
+function abrirModalStockMasivo() {
+  const modal = document.getElementById('modalStockMasivo');
+  const tbody = document.getElementById('tablaStockMasivoBody');
+  if (!modal || !tbody) return;
+  tbody.innerHTML = (productosCompleto || []).filter(p => p.activo !== 0).map(p => {
+    return '<tr>' +
+      '<td style="font-weight:600;font-size:0.85rem;padding:8px 12px;">' + p.nombre + '</td>' +
+      '<td style="text-align:center;padding:8px;"><input type="checkbox" data-prod-id="' + p.id + '" class="stock-ctrl-check" ' + (p.controlar_stock ? 'checked' : '') + ' style="width:16px;height:16px;cursor:pointer;"></td>' +
+      '<td style="text-align:center;padding:8px;"><input type="number" inputmode="decimal" min="0" class="form-control stock-actual-input" data-prod-id="' + p.id + '" value="' + (p.stock_actual != null ? p.stock_actual : '') + '" style="width:75px;text-align:center;padding:4px 6px;margin:auto;"></td>' +
+      '<td style="text-align:center;padding:8px;"><input type="number" inputmode="decimal" min="0" class="form-control stock-min-input" data-prod-id="' + p.id + '" value="' + (p.stock_minimo != null ? p.stock_minimo : '') + '" style="width:75px;text-align:center;padding:4px 6px;margin:auto;"></td>' +
+      '</tr>';
+  }).join('');
+  modal.style.display = 'flex';
+}
+
+function cerrarModalStockMasivo() {
+  const modal = document.getElementById('modalStockMasivo');
+  if (modal) modal.style.display = 'none';
+}
+
+async function guardarStockMasivo() {
+  const checks = document.querySelectorAll('.stock-ctrl-check');
+  const updates = [];
+  checks.forEach(chk => {
+    const id = chk.getAttribute('data-prod-id');
+    const controlar = chk.checked;
+    const actualEl = document.querySelector('.stock-actual-input[data-prod-id="' + id + '"]');
+    const minEl = document.querySelector('.stock-min-input[data-prod-id="' + id + '"]');
+    updates.push({
+      id: Number(id),
+      controlar_stock: controlar ? 1 : 0,
+      stock_actual: actualEl ? (parseFloat(actualEl.value) || 0) : 0,
+      stock_minimo: minEl ? (parseFloat(minEl.value) || 0) : 0
+    });
+  });
+  try {
+    const res = await fetch('/api/productos/stock-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates })
+    });
+    if (res.ok) {
+      showToast('Stock actualizado correctamente', 'success');
+      cerrarModalStockMasivo();
+      loadProductos();
+    } else {
+      showToast('Error al guardar stock', 'error');
+    }
+  } catch (e) { showToast('Error de conexión', 'error'); }
+}
+
+async function loadDashboard() {
+  const wrap = document.getElementById('dashboardWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<p class="empty-state">Cargando métricas del día...</p>';
+  try {
+    const res = await fetch('/api/admin/dashboard');
+    if (!res.ok) throw new Error('Error al cargar dashboard');
+    const data = await res.json();
+    renderDashboard(data);
+  } catch (e) {
+    wrap.innerHTML = '<p class="empty-state" style="color:#DC2626;">Error al cargar datos del dashboard</p>';
+  }
+}
+
+function renderDashboard(data) {
+  const wrap = document.getElementById('dashboardWrap');
+  if (!wrap) return;
+
+  const v = data.ventas_hoy || { total: 0, propina: 0, pedidos: 0, ticket_promedio: 0 };
+  const pc = data.por_cobrar || { total: 0, mesas: 0 };
+  const proy = data.proyeccion || { total: 0 };
+  const m = data.mesas || { total: 0, ocupadas: 0, libres: 0 };
+  const c = data.caja;
+  const stockBajo = data.stock_bajo || [];
+  const topProductos = data.top_productos || [];
+  const pctOcupadas = m.total > 0 ? Math.round((m.ocupadas / m.total) * 100) : 0;
+  const cajaAbierta = c && c.estado === 'ABIERTA';
+
+  const kpisHtml = `
+    <!-- Fila 1: Métricas de Venta y Proyección -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:16px;">
+      <!-- Total Cobrado (Cerrado) -->
+      <div style="background:white;padding:18px 20px;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:5px solid #059669;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.78rem;color:#64748B;font-weight:700;letter-spacing:0.04em;">TOTAL COBRADO</span>
+          <span style="font-size:1.1rem;">💵</span>
+        </div>
+        <div style="font-size:1.8rem;font-weight:800;color:#059669;margin:6px 0 2px;">S/${Number(v.total).toFixed(2)}</div>
+        <div style="font-size:0.75rem;color:#64748B;">${v.pedidos} pedido(s) cobrado(s) · Ticket prom: <strong>S/${Number(v.ticket_promedio).toFixed(2)}</strong></div>
+      </div>
+
+      <!-- Pendiente por Cobrar en Mesas -->
+      <div style="background:white;padding:18px 20px;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:5px solid #EA580C;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.78rem;color:#64748B;font-weight:700;letter-spacing:0.04em;">POR COBRAR (EN MESAS)</span>
+          <span style="font-size:1.1rem;">⏳</span>
+        </div>
+        <div style="font-size:1.8rem;font-weight:800;color:#EA580C;margin:6px 0 2px;">S/${Number(pc.total).toFixed(2)}</div>
+        <div style="font-size:0.75rem;color:#64748B;"><strong>${pc.mesas}</strong> mesa(s) activas con consumo pendiente</div>
+      </div>
+
+      <!-- Venta Total Proyectada -->
+      <div style="background:white;padding:18px 20px;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:5px solid #2563EB;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.78rem;color:#64748B;font-weight:700;letter-spacing:0.04em;">PROYECCIÓN DEL DÍA</span>
+          <span style="font-size:1.1rem;">📈</span>
+        </div>
+        <div style="font-size:1.8rem;font-weight:800;color:#1E40AF;margin:6px 0 2px;">S/${Number(proy.total).toFixed(2)}</div>
+        <div style="font-size:0.75rem;color:#64748B;">Cobrado (S/${Number(v.total).toFixed(2)}) + Mesas (S/${Number(pc.total).toFixed(2)})</div>
+      </div>
+
+      <!-- Mesas y Ocupación -->
+      <div style="background:white;padding:18px 20px;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:5px solid #F59E0B;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.78rem;color:#64748B;font-weight:700;letter-spacing:0.04em;">OCUPACIÓN SALÓN</span>
+          <span style="font-size:1.1rem;">🪑</span>
+        </div>
+        <div style="font-size:1.8rem;font-weight:800;color:#0F172A;margin:6px 0 2px;">${m.ocupadas} <span style="font-size:0.95rem;color:#94A3B8;font-weight:500;">/ ${m.total} mesas</span></div>
+        <div style="width:100%;background:#F1F5F9;border-radius:6px;height:6px;overflow:hidden;margin-top:4px;">
+          <div style="width:${pctOcupadas}%;background:#F59E0B;height:100%;border-radius:6px;"></div>
+        </div>
+        <div style="font-size:0.72rem;color:#64748B;margin-top:3px;">${m.libres} libres (${pctOcupadas}% ocupado)</div>
+      </div>
+
+      <!-- Caja -->
+      <div style="background:white;padding:18px 20px;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);border-left:5px solid ${cajaAbierta ? '#10B981' : '#EF4444'};">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.78rem;color:#64748B;font-weight:700;letter-spacing:0.04em;">ESTADO DE CAJA</span>
+          <span style="font-size:1.1rem;">💰</span>
+        </div>
+        <div style="font-size:1.45rem;font-weight:800;color:${cajaAbierta ? '#059669' : '#DC2626'};margin:6px 0 2px;">
+          ${cajaAbierta ? '● ABIERTA' : '○ CERRADA'}
+        </div>
+        <div style="font-size:0.75rem;color:#64748B;">
+          ${cajaAbierta ? 'Fondo inicial: S/' + Number(c.fondo_inicial || 0).toFixed(2) : 'Sin sesión activa'}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const chartsHtml = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
+      <div id="dashBarras" style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);"></div>
+      <div id="dashDonut" style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);"></div>
+    </div>
+  `;
+
+  // Top 5 Platos vendidos hoy
+  let topRows = '';
+  if (topProductos.length > 0) {
+    topRows = topProductos.map((tp, idx) => `
+      <tr style="border-bottom:1px solid #F1F5F9;">
+        <td style="padding:8px 10px;font-weight:700;color:#64748B;font-size:0.8rem;width:28px;">#${idx + 1}</td>
+        <td style="padding:8px 10px;font-weight:600;font-size:0.85rem;color:#0F172A;">${tp.producto_nombre}</td>
+        <td style="padding:8px 10px;text-align:center;">
+          <span style="background:#E0E7FF;color:#3730A3;padding:2px 8px;border-radius:6px;font-weight:700;font-size:0.75rem;">${tp.cantidad} un.</span>
+        </td>
+        <td style="padding:8px 10px;text-align:right;font-weight:700;font-size:0.85rem;color:#059669;">S/${Number(tp.total).toFixed(2)}</td>
+      </tr>
+    `).join('');
+  } else {
+    topRows = '<tr><td colspan="4" style="padding:18px;text-align:center;color:#94A3B8;font-size:0.85rem;">Aún no hay platos pedidos hoy</td></tr>';
+  }
+
+  let stockRows = '';
+  if (stockBajo.length > 0) {
+    stockRows = stockBajo.map(p => `
+      <tr style="border-bottom:1px solid #F1F5F9;">
+        <td style="padding:10px 12px;font-weight:600;font-size:0.85rem;">${p.nombre}</td>
+        <td style="padding:10px 12px;text-align:center;">
+          <span style="background:${p.stock_actual <= 0 ? '#FEE2E2' : '#FEF3C7'};color:${p.stock_actual <= 0 ? '#DC2626' : '#D97706'};padding:3px 8px;border-radius:6px;font-weight:700;font-size:0.75rem;">
+            ${p.stock_actual <= 0 ? 'Agotado (0)' : 'Quedan ' + p.stock_actual}
+          </span>
+        </td>
+        <td style="padding:10px 12px;text-align:center;color:#64748B;font-size:0.85rem;">${p.stock_minimo}</td>
+      </tr>
+    `).join('');
+  } else {
+    stockRows = '<tr><td colspan="3" style="padding:24px;text-align:center;color:#10B981;font-weight:600;font-size:0.85rem;">✅ Todos los productos con stock tienen niveles adecuados</td></tr>';
+  }
+
+  // Ventas por Canal (Salón, Delivery, Para Llevar)
+  const ventasCanales = data.ventas_canales || [];
+  const canalConfig = {
+    SALON: { nombre: 'Salón', icono: '🍽️', color: '#2563EB', bg: '#EFF6FF' },
+    DELIVERY: { nombre: 'Delivery', icono: '🛵', color: '#059669', bg: '#ECFDF5' },
+    PARA_LLEVAR: { nombre: 'Para Llevar', icono: '🥡', color: '#D97706', bg: '#FFFBEB' }
+  };
+
+  const totalCanalesVenta = ventasCanales.reduce((acc, c) => acc + (c.total || 0), 0);
+  const totalCanalesPedidos = ventasCanales.reduce((acc, c) => acc + (c.pedidos || 0), 0);
+
+  let canalesRows = '';
+  if (ventasCanales.length > 0) {
+    canalesRows = ventasCanales.map(vc => {
+      const cfg = canalConfig[vc.canal] || { nombre: vc.canal, icono: '📦', color: '#64748B', bg: '#F8FAFC' };
+      const pct = totalCanalesVenta > 0 ? Math.round((vc.total / totalCanalesVenta) * 100) : 0;
+      return `
+        <div style="padding:10px 12px;border-radius:10px;background:${cfg.bg};margin-bottom:10px;border:1px solid ${cfg.color}22;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:1.2rem;">${cfg.icono}</span>
+              <span style="font-weight:700;font-size:0.9rem;color:#0F172A;">${cfg.nombre}</span>
+              <span style="background:white;color:#64748B;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600;border:1px solid #E2E8F0;">
+                ${vc.pedidos} pedido(s)
+              </span>
+            </div>
+            <div style="text-align:right;">
+              <span style="font-weight:800;font-size:0.95rem;color:${cfg.color};">S/${Number(vc.total).toFixed(2)}</span>
+              <span style="font-size:0.75rem;color:#64748B;margin-left:4px;">(${pct}%)</span>
+            </div>
+          </div>
+          <div style="width:100%;background:#E2E8F0;border-radius:6px;height:6px;overflow:hidden;">
+            <div style="width:${pct}%;background:${cfg.color};height:100%;border-radius:6px;"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } else {
+    canalesRows = '<div style="padding:28px;text-align:center;color:#94A3B8;font-size:0.85rem;">Sin pedidos registrados por canal hoy</div>';
+  }
+
+  const bottomHtml = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+      <!-- Ventas por Canal -->
+      <div style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <span style="font-weight:700;font-size:0.95rem;color:#0F172A;">🛵 Ventas por Canal</span>
+          <span style="font-size:0.75rem;color:#64748B;font-weight:600;">Total: S/${Number(totalCanalesVenta).toFixed(2)} (${totalCanalesPedidos} pedidos)</span>
+        </div>
+        <div>
+          ${canalesRows}
+        </div>
+      </div>
+
+      <!-- Top 5 Platos más pedidos -->
+      <div style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <span style="font-weight:700;font-size:0.95rem;color:#0F172A;">🏆 Top 5 Platos del Día</span>
+          <span style="font-size:0.75rem;color:#64748B;font-weight:600;">Demanda en Cocina/Barra</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#F8FAFC;font-size:0.75rem;color:#64748B;border-bottom:1px solid #E2E8F0;">
+                <th style="padding:8px 10px;text-align:left;">#</th>
+                <th style="padding:8px 10px;text-align:left;">Plato / Bebida</th>
+                <th style="padding:8px 10px;text-align:center;">Vendidos</th>
+                <th style="padding:8px 10px;text-align:right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>${topRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Alertas Stock -->
+      <div style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <span style="font-weight:700;font-size:0.95rem;color:#0F172A;">⚠️ Alertas de Stock</span>
+          <button onclick="showSection('productos');setTimeout(abrirModalStockMasivo,200);" class="btn btn-outline btn-sm" style="font-size:0.75rem;">Ajustar Stock</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#F8FAFC;font-size:0.75rem;color:#64748B;border-bottom:1px solid #E2E8F0;">
+                <th style="padding:8px 12px;text-align:left;">Producto</th>
+                <th style="padding:8px 12px;text-align:center;">Actual</th>
+                <th style="padding:8px 12px;text-align:center;">Mínimo</th>
+              </tr>
+            </thead>
+            <tbody>${stockRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Accesos Rápidos -->
+      <div style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <span style="font-weight:700;font-size:0.95rem;color:#0F172A;display:block;margin-bottom:14px;">⚡ Accesos Rápidos</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <a href="/" class="btn btn-primary" style="text-align:center;text-decoration:none;padding:14px 10px;font-size:0.85rem;display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:10px;">
+            <span style="font-size:1.3rem;">🖥️</span>
+            <span>Ir al POS</span>
+          </a>
+          <button onclick="showSection('caja')" class="btn btn-outline" style="padding:14px 10px;font-size:0.85rem;display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:10px;">
+            <span style="font-size:1.3rem;">💰</span>
+            <span>Caja y Corte</span>
+          </button>
+          <button onclick="showSection('reportes')" class="btn btn-outline" style="padding:14px 10px;font-size:0.85rem;display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:10px;">
+            <span style="font-size:1.3rem;">📊</span>
+            <span>Ver Reportes</span>
+          </button>
+          <button onclick="showSection('productos');setTimeout(openProductoModal,200);" class="btn btn-outline" style="padding:14px 10px;font-size:0.85rem;display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:10px;">
+            <span style="font-size:1.3rem;">➕</span>
+            <span>Nuevo Producto</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  wrap.innerHTML = kpisHtml + chartsHtml + bottomHtml;
+
+  requestAnimationFrame(() => {
+    renderGraficaBarras(data.ventas_por_hora || [], 'dashBarras', 'Ventas por Hora del Día');
+    renderGraficaDonut(data.desglose_pagos || [], 'dashDonut', 'Desglose de Pagos de Hoy');
+  });
+}
+
+// ---- SOCKET REALTIME ADMIN ----
+if (typeof io !== 'undefined') {
+  const socketAdmin = io();
+  socketAdmin.on('printer:error', ({ impresora, motivo }) => {
+    showToast(`🖨️ Error de impresora (${impresora}): ${motivo || 'Sin conexión'}`, 'error', 8000);
+  });
+  socketAdmin.on('pedido:actualizado', () => {
+    const secDash = document.getElementById('sec-dashboard');
+    if (secDash && secDash.style.display !== 'none') {
+      loadDashboard();
+    }
+  });
+  socketAdmin.on('mesa:updated', () => {
+    const secDash = document.getElementById('sec-dashboard');
+    if (secDash && secDash.style.display !== 'none') {
+      loadDashboard();
+    }
+  });
+  socketAdmin.on('caja:updated', () => {
+    const secDash = document.getElementById('sec-dashboard');
+    if (secDash && secDash.style.display !== 'none') {
+      loadDashboard();
+    }
+  });
+}

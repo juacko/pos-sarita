@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 class AdminProductoRepository {
   constructor(database = defaultDb) {
@@ -39,7 +40,7 @@ class AdminProductoRepository {
   }
 
   crearProducto(nombre, descripcion, precio, categoria_id, para_llevar, destino_override, controlar_stock, stock_actual, stock_minimo) {
-    const r = this.db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id, para_llevar, destino_override, controlar_stock, stock_actual, stock_minimo) VALUES (?,?,?,?,?,?,?,?,?)')
+    const r = this.db.prepare('INSERT INTO productos (nombre, descripcion, precio, categoria_id, para_llevar, destino_override, controlar_stock, stock_actual, stock_minimo, uuid) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .run(
         nombre,
         descripcion || '',
@@ -49,7 +50,8 @@ class AdminProductoRepository {
         destino_override || null,
         controlar_stock ? 1 : 0,
         Math.max(0, parseInt(stock_actual, 10) || 0),
-        Math.max(0, parseInt(stock_minimo, 10) || 3)
+        Math.max(0, parseInt(stock_minimo, 10) || 3),
+        generateUUID()
       );
     return this.obtenerProductoPorId(r.lastInsertRowid);
   }
@@ -69,8 +71,8 @@ class AdminProductoRepository {
   }
 
   crearVariante(producto_id, nombre, precio_adicional) {
-    const r = this.db.prepare('INSERT INTO variantes (producto_id, nombre, precio_adicional) VALUES (?,?,?)')
-      .run(producto_id, nombre, precio_adicional || 0);
+    const r = this.db.prepare('INSERT INTO variantes (producto_id, nombre, precio_adicional, uuid) VALUES (?,?,?,?)')
+      .run(producto_id, nombre, precio_adicional || 0, generateUUID());
     return this.obtenerVariantePorId(r.lastInsertRowid);
   }
 
@@ -97,8 +99,8 @@ class AdminProductoRepository {
   }
 
   crearModificador(producto_id, nombre, tipo, requerido, max_opciones, depende_variante_id) {
-    const r = this.db.prepare('INSERT INTO modificadores (producto_id, nombre, tipo, requerido, max_opciones, depende_variante_id) VALUES (?,?,?,?,?,?)')
-      .run(producto_id, nombre, tipo || 'select', requerido ? 1 : 0, max_opciones || 1, depende_variante_id || null);
+    const r = this.db.prepare('INSERT INTO modificadores (producto_id, nombre, tipo, requerido, max_opciones, depende_variante_id, uuid) VALUES (?,?,?,?,?,?,?)')
+      .run(producto_id, nombre, tipo || 'select', requerido ? 1 : 0, max_opciones || 1, depende_variante_id || null, generateUUID());
     return this.obtenerModificadorPorId(r.lastInsertRowid);
   }
 
@@ -118,8 +120,8 @@ class AdminProductoRepository {
   }
 
   crearOpcionMod(modificador_id, nombre, precio_adicional) {
-    const r = this.db.prepare('INSERT INTO opciones_mod (modificador_id, nombre, precio_adicional) VALUES (?,?,?)')
-      .run(modificador_id, nombre, precio_adicional || 0);
+    const r = this.db.prepare('INSERT INTO opciones_mod (modificador_id, nombre, precio_adicional, uuid) VALUES (?,?,?,?)')
+      .run(modificador_id, nombre, precio_adicional || 0, generateUUID());
     return this.obtenerOpcionModPorId(r.lastInsertRowid);
   }
 
@@ -142,8 +144,8 @@ class AdminProductoRepository {
   }
 
   crearAgregado(producto_id, nombre, precio, maximo) {
-    const r = this.db.prepare('INSERT INTO agregados (producto_id, nombre, precio, maximo) VALUES (?,?,?,?)')
-      .run(producto_id, nombre, precio, maximo || 5);
+    const r = this.db.prepare('INSERT INTO agregados (producto_id, nombre, precio, maximo, uuid) VALUES (?,?,?,?,?)')
+      .run(producto_id, nombre, precio, maximo || 5, generateUUID());
     return this.obtenerAgregadoPorId(r.lastInsertRowid);
   }
 

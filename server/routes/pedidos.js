@@ -35,8 +35,8 @@ function createPedidosRouter(io) {
   router.patch('/:id/estado', (req, res) => pedidoController.actualizarEstadoPedido(req, res, io));
   router.patch('/items/:idItem/estado', (req, res) => pedidoController.actualizarEstadoItemUnico(req, res, io));
   
-  router.post('/:id/reimprimir', (req, res) => pedidoController.reimprimirTicket(req, res));
-  router.post('/:id/precuenta', (req, res) => pedidoController.imprimirPrecuenta(req, res));
+  router.post('/:id/reimprimir', (req, res) => pedidoController.reimprimirTicket(req, res, io));
+  router.post('/:id/precuenta', (req, res) => pedidoController.imprimirPrecuenta(req, res, io));
   
   router.post('/:id/descuento', (req, res) => pedidoController.agregarDescuento(req, res, io));
   router.delete('/:id/descuento/:descId', (req, res) => pedidoController.eliminarDescuento(req, res, io));

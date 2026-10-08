@@ -1,5 +1,18 @@
     const socket = io();
 
+    function formatMesaLabel(pedido) {
+      if (!pedido) return '';
+      if (pedido.area_tipo === 'DELIVERY') return 'DELIVERY';
+      if (pedido.area_tipo === 'PARA_LLEVAR') return 'PARA LLEVAR';
+      if (pedido.mesa_nombre && pedido.mesa_nombre.trim() && !/^Mesa \d+$/i.test(pedido.mesa_nombre.trim())) {
+        return pedido.mesa_nombre.trim();
+      }
+      if (pedido.area_nombre && pedido.area_nombre.toLowerCase() !== 'salón principal' && pedido.area_nombre.toLowerCase() !== 'salon principal') {
+        return (pedido.area_nombre + ' ' + (pedido.mesa_numero || '')).trim();
+      }
+      return pedido.mesa_nombre ? pedido.mesa_nombre.trim() : ('Mesa ' + (pedido.mesa_numero || 'N/A'));
+    }
+
     function loadPedidos() {
       fetch('/api/pedidos/barra')
         .then(r => r.json())
@@ -38,7 +51,7 @@
               <div class="comanda-mesa">
                 ${pedido.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🏍️ DELIVERY</span> ' :
                   pedido.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🛍️ PARA LLEVAR</span> ' : ''}
-                ${pedido.area_tipo === 'SALON' || !pedido.area_tipo ? `Mesa ${pedido.mesa_numero || pedido.mesa_nombre || 'N/A'}` : (pedido.mesa_nombre || 'Delivery')}
+                ${formatMesaLabel(pedido)}
               </div>
               <div style="font-size:0.75rem;color:var(--gray);">
                 Pedido #${pedido.id} ${pedido.mesero_nombre ? '| ' + pedido.mesero_nombre : ''}
@@ -197,7 +210,7 @@
                   <div class="comanda-mesa">
                     ${p.area_tipo === 'DELIVERY' ? '<span class="comanda-tipo delivery">🛵 DELIVERY</span> ' :
                       p.area_tipo === 'PARA_LLEVAR' ? '<span class="comanda-tipo llevar">🥡 PARA LLEVAR</span> ' : ''}
-                    ${p.area_tipo === 'SALON' || !p.area_tipo ? `Mesa ${p.mesa_numero || p.mesa_nombre || 'N/A'}` : (p.mesa_nombre || 'Delivery')}
+                    ${formatMesaLabel(p)}
                   </div>
                   <div style="font-size:0.75rem;color:var(--gray);">
                     Pedido #${p.id} ${p.mesero_nombre ? '| ' + p.mesero_nombre : ''} | ${new Date(p.created_at + 'Z').toLocaleTimeString('es-MX')}
@@ -432,6 +445,14 @@
 
     socket.on('kds:ring_barra', () => { if (audioContextUnlocked || kdsAudioBarra === 'default') playKdsAudio(kdsAudioBarra); });
     socket.on('pedido:nuevo', () => loadPedidos());
+    socket.on('printer:error', ({ impresora, motivo }) => {
+      const alertDiv = document.getElementById('printerErrorAlert');
+      if (alertDiv) {
+        alertDiv.textContent = `🖨️ Error impresora (${impresora}): ${motivo || 'Sin conexión'}`;
+        alertDiv.style.display = 'block';
+        setTimeout(() => { alertDiv.style.display = 'none'; }, 10000);
+      }
+    });
     socket.on('pedido:actualizado', () => loadPedidos());
     socket.on('item:actualizado', () => loadPedidos());
     socket.on('mesa:updated', () => loadPedidos());

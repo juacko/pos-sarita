@@ -202,8 +202,9 @@
   <div class="header" style="display:flex;align-items:center;padding:12px 24px;">
     <button class="btn-hamburger" onclick="toggleAdminMenu()">☰</button>
     <h1 style="margin:0;flex:1;">🍕 Admin - POS Sarita</h1>
-    <div>
+    <div style="display:flex;align-items:center;gap:8px;">
       <a href="/" class="btn btn-outline btn-sm">Ir al POS</a>
+      <button class="btn btn-outline btn-sm" onclick="logoutAdmin()">Salir</button>
     </div>
   </div>
 
@@ -211,7 +212,8 @@
     <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="toggleAdminMenu()"></div>
         <nav class="admin-sidebar">
       <div class="admin-sidebar-header">Panel de Control</div>
-      <a class="active" data-sec="productos" onclick="showSection('productos')">📦 Productos</a>
+      <a class="active" data-sec="dashboard" onclick="showSection('dashboard')">📈 Dashboard</a>
+      <a data-sec="productos" onclick="showSection('productos')">📦 Productos</a>
       <a data-sec="categorias" onclick="showSection('categorias')">🏷️ Categorías</a>
       <a data-sec="reportes" onclick="showSection('reportes')">📊 Reportes</a>
       <a data-sec="caja" onclick="showSection('caja')">💰 Caja</a>
@@ -220,8 +222,17 @@
     </nav>
 
     <div class="admin-content">
+      <!-- DASHBOARD -->
+      <div id="sec-dashboard" class="section">
+        <div class="toolbar" style="margin-bottom:16px;">
+          <h2 style="margin:0;flex:1;">📈 Dashboard General</h2>
+          <button class="btn btn-outline btn-sm" onclick="loadDashboard()">🔄 Actualizar</button>
+        </div>
+        <div id="dashboardWrap"><p class="empty-state">Cargando métricas del día...</p></div>
+      </div>
+
       <!-- PRODUCTOS -->
-      <div id="sec-productos" class="section">
+      <div id="sec-productos" class="section" style="display:none;">
         <div class="toolbar">
           <h2 style="margin:0;flex:1;">Productos</h2>
           <input class="search-input" id="searchProductos" placeholder="Buscar producto..." oninput="renderProductos()">
@@ -745,6 +756,7 @@
     </div>
   </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/js/admin-app.js"></script>
 </body>
 </html>

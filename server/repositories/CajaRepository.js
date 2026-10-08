@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 /**
  * Repositorio de acceso a datos para Caja Chica, Sesiones y Movimientos.
@@ -14,9 +15,9 @@ class CajaRepository {
 
   abrirSesion(usuarioId, fondoInicial = 0, notas = '') {
     const res = this.db.prepare(`
-      INSERT INTO caja_sesiones (usuario_id, fondo_inicial, estado, notas_apertura, opened_at)
-      VALUES (?, ?, 'ABIERTA', ?, datetime('now'))
-    `).run(usuarioId, fondoInicial, notas);
+      INSERT INTO caja_sesiones (usuario_id, fondo_inicial, estado, notas_apertura, opened_at, uuid)
+      VALUES (?, ?, 'ABIERTA', ?, datetime('now'), ?)
+    `).run(usuarioId, fondoInicial, notas, generateUUID());
     return this.db.prepare('SELECT * FROM caja_sesiones WHERE id = ?').get(res.lastInsertRowid);
   }
 
@@ -65,14 +66,18 @@ class CajaRepository {
 
   registrarMovimiento(tipo, concepto, monto, metodoPago, persona = '', usuarioId = null, notas = '') {
     const res = this.db.prepare(`
-      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `).run(tipo, concepto, monto, metodoPago, persona, usuarioId, notas);
+      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas, created_at, uuid)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+    `).run(tipo, concepto, monto, metodoPago, persona, usuarioId, notas, generateUUID());
     return this.db.prepare('SELECT * FROM caja_movimientos WHERE id = ?').get(res.lastInsertRowid);
   }
 
   obtenerMovimientos() {
     return this.db.prepare('SELECT * FROM caja_movimientos ORDER BY id DESC').all();
+  }
+
+  transaction(callback) {
+    return this.db.transaction(callback)();
   }
 }
 

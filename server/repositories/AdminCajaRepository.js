@@ -1,5 +1,6 @@
 const defaultDb = require('../db');
 const pagos = require('../metodos-pago');
+const { generateUUID } = require('../sync/utils');
 
 class AdminCajaRepository {
   constructor(database = defaultDb) {
@@ -23,8 +24,8 @@ class AdminCajaRepository {
   }
 
   abrirSesionCaja(usuario_id, fondo_inicial, notas, absorbe_desde) {
-    const result = this.db.prepare('INSERT INTO caja_sesiones (usuario_id, fondo_inicial, notas_apertura, absorbe_desde) VALUES (?, ?, ?, ?)')
-      .run(usuario_id, parseFloat(fondo_inicial) || 0, notas || null, absorbe_desde);
+    const result = this.db.prepare('INSERT INTO caja_sesiones (usuario_id, fondo_inicial, notas_apertura, absorbe_desde, uuid) VALUES (?, ?, ?, ?, ?)')
+      .run(usuario_id, parseFloat(fondo_inicial) || 0, notas || null, absorbe_desde, generateUUID());
     return this.db.prepare('SELECT * FROM caja_sesiones WHERE id = ?').get(result.lastInsertRowid);
   }
 
@@ -296,9 +297,9 @@ class AdminCajaRepository {
 
   registrarMovimiento(tipo, concepto, monto, metodo_pago, persona, usuario_id, notas) {
     const r = this.db.prepare(`
-      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(tipo, concepto, monto, metodo_pago, persona || null, usuario_id || null, notas || null);
+      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas, uuid)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(tipo, concepto, monto, metodo_pago, persona || null, usuario_id || null, notas || null, generateUUID());
     return this.db.prepare('SELECT * FROM caja_movimientos WHERE id = ?').get(r.lastInsertRowid);
   }
 

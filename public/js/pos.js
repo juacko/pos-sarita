@@ -14,6 +14,10 @@ async function abrirPOS(mesaId) {
     const res = await fetch(`/api/mesas/${mesaId}`);
     posMesaData = await res.json();
 
+    if (!posMesaData.es_virtual) {
+      pedidoCliente = null;
+    }
+
     if (document.getElementById('mainHeader')) document.getElementById('mainHeader').style.display = 'none';
     document.getElementById('mesasView').style.display = 'none';
     document.getElementById('pedidoView').style.display = 'none';
@@ -45,6 +49,7 @@ function renderPosClienteBar() {
   const isVirtual = posMesaData && posMesaData.es_virtual;
   if (!isVirtual) {
     bar.style.display = 'none';
+    bar.innerHTML = '';
     return;
   }
 
@@ -62,13 +67,19 @@ function renderPosClienteBar() {
 }
 
 function editarCliente() {
-  const tipo = posMesaData?.area_tipo === 'DELIVERY' ? 'DELIVERY' : 'PARA_LLEVAR';
+  const tipo = (posMesaData?.area_tipo || pedidoCliente?.tipo || pedidoExistente?.area_tipo) === 'DELIVERY' ? 'DELIVERY' : 'PARA_LLEVAR';
   abrirClienteForm(tipo, 'editar', pedidoCliente);
 }
 
 function renderPedidoViewCliente() {
   const el = document.getElementById('pedidoViewCliente');
-  if (!el || !pedidoExistente) return;
+  if (!el) return;
+  const isVirtual = posMesaData && posMesaData.es_virtual;
+  if (!isVirtual || !pedidoExistente) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
   const tipo = posMesaData?.area_tipo === 'DELIVERY' ? '🛵 Delivery' : '🥡 Para Llevar';
   let txt = `<strong>${tipo}</strong>`;
   if (pedidoExistente.cliente_nombre) txt += ` · ${esc(pedidoExistente.cliente_nombre)}`;
@@ -85,10 +96,23 @@ function esc(str) {
 
 function showMesasView() {
   document.getElementById('posView').style.display = 'none';
+  const pView = document.getElementById('pedidoView');
+  if (pView) pView.style.display = 'none';
+  const cliEl = document.getElementById('pedidoViewCliente');
+  if (cliEl) {
+    cliEl.style.display = 'none';
+    cliEl.innerHTML = '';
+  }
+  const posCliBar = document.getElementById('posClienteBar');
+  if (posCliBar) {
+    posCliBar.style.display = 'none';
+    posCliBar.innerHTML = '';
+  }
   document.getElementById('mesasView').style.display = 'block';
   posMesaId = null;
   posMesaData = null;
   pedidoCliente = null;
+  pedidoExistente = null;
   pedidoItems = [];
   loadMesas();
 }
@@ -541,12 +565,15 @@ async function enviarPedido() {
     let response;
     
     if (posMesaData.pedido_activo_id) {
+      if (pedidoExistente && pedidoExistente.estado === 'CERRADO') {
+        showToast('Esta cuenta ya está pagada. Debe liberar la mesa antes de registrar un nuevo pedido.', 'warning');
+        return;
+      }
       response = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: pedidoItems, nota: nota || null })
       });
-      showToast('Items agregados al pedido', 'success');
     } else {
       response = await fetch('/api/pedidos', {
         method: 'POST',
@@ -562,10 +589,10 @@ async function enviarPedido() {
           hora_recogida: (pedidoCliente?.tipo === 'PARA_LLEVAR' ? pedidoCliente?.hora : null) || null
         })
       });
-      showToast('Pedido enviado a cocina', 'success');
     }
 
     if (response.ok) {
+      showToast(posMesaData.pedido_activo_id ? 'Items agregados al pedido' : 'Pedido enviado a cocina', 'success');
       pedidoItems = [];
       document.getElementById('notaPedido').value = '';
       renderPedidoItems();
@@ -619,13 +646,18 @@ async function verPedidoExistente(mesaId) {
     pedidoExistente = await res.json();
 
     if (posMesaData.es_virtual) {
+      const tipoVirtual = posMesaData.area_tipo || pedidoExistente.area_tipo || (posMesaData.nombre?.toLowerCase().includes('delivery') ? 'DELIVERY' : 'PARA_LLEVAR');
       pedidoCliente = {
         nombre: pedidoExistente.cliente_nombre || '',
         telefono: pedidoExistente.cliente_telefono || '',
         direccion: pedidoExistente.cliente_direccion || '',
         hora: pedidoExistente.hora_recogida || '',
-        tipo: posMesaData.area_tipo
+        tipo: tipoVirtual
       };
+      if (!posMesaData.area_tipo) posMesaData.area_tipo = tipoVirtual;
+      renderPedidoViewCliente();
+    } else {
+      pedidoCliente = null;
       renderPedidoViewCliente();
     }
 
@@ -816,7 +848,11 @@ async function reimprimirPedido() {
   try {
     const res = await fetch(`/api/pedidos/${pedidoExistente.id}/reimprimir`, { method: 'POST' });
     const data = await res.json();
-    showToast(data.ok ? 'Ticket reimpreso' : 'Error al reimprimir', data.ok ? 'success' : 'warning');
+    if (data.ok) {
+      showToast('Ticket reimpreso', 'success');
+    } else {
+      showToast(`🖨️ Error al reimprimir: ${data.reason || 'Impresora no respondió'}`, 'error', 8000);
+    }
   } catch (err) {
     showToast('Error de conexión', 'error');
   }
@@ -827,7 +863,11 @@ async function imprimirPrecuenta() {
   try {
     const res = await fetch(`/api/pedidos/${pedidoExistente.id}/precuenta`, { method: 'POST' });
     const data = await res.json();
-    showToast(data.ok ? 'Pre-cuenta impresa' : 'Error al imprimir pre-cuenta', data.ok ? 'success' : 'warning');
+    if (data.ok) {
+      showToast('Pre-cuenta impresa', 'success');
+    } else {
+      showToast(`🖨️ Error de impresora: ${data.reason || 'No se pudo imprimir pre-cuenta'}`, 'error', 8000);
+    }
   } catch (err) {
     showToast('Error de conexión', 'error');
   }
@@ -1295,10 +1335,11 @@ function closeDetallePagadoModal() {
 async function reimprimirTicketPagado(id) {
   try {
     const res = await fetch(`/api/pedidos/${id}/reimprimir`, { method: 'POST' });
-    if (res.ok) {
-      showToast('Reimprimiendo ticket...', 'success');
+    const data = await res.json();
+    if (data.ok) {
+      showToast('Ticket reimpreso correctamente', 'success');
     } else {
-      showToast('Error al reimprimir', 'error');
+      showToast(`🖨️ Error al reimprimir: ${data.reason || 'Impresora no respondió'}`, 'error', 8000);
     }
   } catch (e) {
     showToast('Error de conexión', 'error');
@@ -2727,21 +2768,121 @@ function renderDividirPartes() {
   container.innerHTML = html;
 }
 
-async function cobrarCuotaDivididaModal(cuotaIndex, montoCuota) {
+let cuotaDivididaActual = {
+  index: 1,
+  monto: 0,
+  montoMax: 0,
+  metodo: 'efectivo'
+};
+
+function cobrarCuotaDivididaModal(cuotaIndex, montoCuota) {
   if (!posMesaData?.pedido_activo_id || !pedidoExistente) return;
   const totalBruto = pedidoExistente.items.reduce((s, i) => s + i.cantidad * (i.precio_unitario + (i.precio_adicional || 0)), 0);
   const totalPagado = (pedidoExistente.pagos || []).reduce((s, p) => s + p.monto, 0);
   const pendiente = Math.max(0, totalBruto - totalPagado);
   const montoACobrar = Math.min(montoCuota, pendiente);
 
-  const metodoPrompt = prompt(`Cobro Comensal #${cuotaIndex} (S/${montoACobrar.toFixed(2)})\n\nIngresa método de pago (efectivo, yape, plin, tarjeta):`, 'yape');
-  if (!metodoPrompt) return;
-  const metodo = metodoPrompt.toLowerCase().trim();
+  cuotaDivididaActual = {
+    index: cuotaIndex,
+    monto: montoACobrar,
+    montoMax: pendiente,
+    metodo: 'efectivo'
+  };
 
-  let ref = null;
-  if (metodo === 'yape' || metodo === 'plin' || metodo === 'tarjeta') {
-    ref = prompt(`Código de aprobación / referencia para ${metodo.toUpperCase()}:`, '');
+  const modal = document.getElementById('modalCobrarCuotaDividida');
+  if (!modal) return;
+
+  document.getElementById('cobrarCuotaTitulo').textContent = `💳 Cobrar Comensal #${cuotaIndex}`;
+  document.getElementById('cobrarCuotaMontoDisplay').textContent = `S/ ${montoACobrar.toFixed(2)}`;
+  document.getElementById('cobrarCuotaSubinfo').textContent = `Cuota ${cuotaIndex} de ${dividirNumPartes} · Saldo pendiente: S/ ${pendiente.toFixed(2)}`;
+  document.getElementById('cobrarCuotaPersona').value = `Comensal #${cuotaIndex}`;
+  document.getElementById('cuotaReferencia').value = '';
+  document.getElementById('cuotaMontoRecibido').value = '';
+  document.getElementById('cuotaCambioCalculado').textContent = 'S/ 0.00';
+  document.getElementById('cuotaCheckImprimir').checked = true;
+
+  const btnConfirmar = document.getElementById('btnConfirmarCobrarCuota');
+  if (btnConfirmar) {
+    btnConfirmar.textContent = `✅ Cobrar S/ ${montoACobrar.toFixed(2)}`;
   }
+
+  renderCuotaMetodosPago();
+  modal.classList.add('active');
+}
+
+function closeModalCobrarCuotaDividida() {
+  const modal = document.getElementById('modalCobrarCuotaDividida');
+  if (modal) modal.classList.remove('active');
+}
+
+function renderCuotaMetodosPago() {
+  const container = document.getElementById('cuotaMetodosPago');
+  if (!container) return;
+  const metodos = typeof metodosVisibles === 'function' ? metodosVisibles() : [
+    { key: 'efectivo', label: 'Efectivo', icono: '💵' },
+    { key: 'yape', label: 'Yape', icono: '📱' },
+    { key: 'tarjeta', label: 'Tarjeta', icono: '💳' },
+    { key: 'plin', label: 'Plin', icono: '📱' }
+  ];
+
+  if (!metodos.some(m => m.key === cuotaDivididaActual.metodo)) {
+    cuotaDivididaActual.metodo = metodos[0]?.key || 'efectivo';
+  }
+
+  container.innerHTML = metodos.map(m => {
+    const isSel = m.key === cuotaDivididaActual.metodo;
+    return `
+      <button type="button" class="btn btn-sm ${isSel ? 'btn-primary' : 'btn-outline'}" onclick="selectMetodoCuota('${m.key}')" style="padding:7px 4px; font-size:0.8rem; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:2px;">
+        <span style="font-size:1.1rem;">${m.icono || '💳'}</span>
+        <span>${m.label || m.key}</span>
+      </button>
+    `;
+  }).join('');
+
+  const rowEf = document.getElementById('cuotaEfectivoRow');
+  const rowRef = document.getElementById('cuotaReferenciaRow');
+  if (rowEf) rowEf.style.display = cuotaDivididaActual.metodo === 'efectivo' ? 'block' : 'none';
+  if (rowRef) rowRef.style.display = cuotaDivididaActual.metodo !== 'efectivo' ? 'block' : 'none';
+
+  calcularVueltoCuota();
+}
+
+function selectMetodoCuota(metodo) {
+  cuotaDivididaActual.metodo = metodo;
+  renderCuotaMetodosPago();
+}
+
+function setMontoRecibidoCuota(valor) {
+  const input = document.getElementById('cuotaMontoRecibido');
+  if (!input) return;
+  if (valor === 'exacto') {
+    input.value = cuotaDivididaActual.monto.toFixed(2);
+  } else {
+    input.value = Number(valor).toFixed(2);
+  }
+  calcularVueltoCuota();
+}
+
+function calcularVueltoCuota() {
+  const subtotal = cuotaDivididaActual.monto;
+  const recibido = parseFloat(document.getElementById('cuotaMontoRecibido')?.value) || 0;
+  const cambioEl = document.getElementById('cuotaCambioCalculado');
+  if (cambioEl) {
+    if (recibido > subtotal && subtotal > 0) {
+      cambioEl.textContent = `S/ ${(recibido - subtotal).toFixed(2)}`;
+    } else {
+      cambioEl.textContent = 'S/ 0.00';
+    }
+  }
+}
+
+async function confirmarCobroCuotaDividida() {
+  if (!posMesaData?.pedido_activo_id || !pedidoExistente) return;
+  const { index, monto, metodo } = cuotaDivididaActual;
+  const persona = document.getElementById('cobrarCuotaPersona')?.value?.trim() || `Comensal #${index}`;
+  const ref = document.getElementById('cuotaReferencia')?.value?.trim() || null;
+  const recibido = parseFloat(document.getElementById('cuotaMontoRecibido')?.value) || monto;
+  const imprimirTicket = document.getElementById('cuotaCheckImprimir')?.checked ?? true;
 
   try {
     const res = await fetch(`/api/pedidos/${posMesaData.pedido_activo_id}/pagar-dividido`, {
@@ -2749,20 +2890,22 @@ async function cobrarCuotaDivididaModal(cuotaIndex, montoCuota) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         metodo: metodo || 'efectivo',
-        monto: montoACobrar,
+        monto: monto,
+        monto_recibido: recibido,
         usuario_id: currentUser ? currentUser.id : null,
         referencia: ref,
         tipo_division: 'partes',
-        persona: `Comensal #${cuotaIndex}`,
-        cuota_info: `Cuota ${cuotaIndex} de ${dividirNumPartes}`,
-        imprimir_ticket: true
+        persona: persona,
+        cuota_info: `Cuota ${index} de ${dividirNumPartes}`,
+        imprimir_ticket: imprimirTicket
       })
     });
 
     const data = await res.json();
     if (!res.ok) return showToast(data.error || 'Error al cobrar cuota', 'error');
 
-    showToast(`✅ Cuota #${cuotaIndex} pagada (S/${montoACobrar.toFixed(2)})`, 'success');
+    showToast(`✅ Cuota #${index} pagada (S/${monto.toFixed(2)})`, 'success');
+    closeModalCobrarCuotaDividida();
 
     if (data.completado) {
       showToast('🎉 ¡Cuenta 100% pagada!', 'success');
@@ -2883,16 +3026,20 @@ function renderListaStockRapido() {
 async function toggleControlarStockRapido(prodId, activo) {
   const p = productos.find(x => x.id === prodId);
   if (!p) return;
+  const prevVal = p.controlar_stock;
   p.controlar_stock = activo ? 1 : 0;
   renderListaStockRapido();
 
   try {
-    await fetch(`/api/productos/${prodId}/stock`, {
+    const res = await fetch(`/api/productos/${prodId}/stock`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ controlar_stock: activo ? 1 : 0 })
     });
+    if (!res.ok) throw new Error('Error en servidor');
   } catch (e) {
+    p.controlar_stock = prevVal;
+    renderListaStockRapido();
     showToast('Error al actualizar stock', 'error');
   }
 }
@@ -2900,17 +3047,21 @@ async function toggleControlarStockRapido(prodId, activo) {
 async function cambiarStockRapido(prodId, delta) {
   const p = productos.find(x => x.id === prodId);
   if (!p) return;
+  const prevStock = p.stock_actual;
   const nuevoStock = Math.max(0, (p.stock_actual || 0) + delta);
   p.stock_actual = nuevoStock;
   renderListaStockRapido();
 
   try {
-    await fetch(`/api/productos/${prodId}/stock`, {
+    const res = await fetch(`/api/productos/${prodId}/stock`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stock_actual: nuevoStock, controlar_stock: 1 })
     });
+    if (!res.ok) throw new Error('Error en servidor');
   } catch (e) {
+    p.stock_actual = prevStock;
+    renderListaStockRapido();
     showToast('Error al actualizar stock', 'error');
   }
 }
@@ -2918,17 +3069,21 @@ async function cambiarStockRapido(prodId, delta) {
 async function fijarStockRapido(prodId, valor) {
   const p = productos.find(x => x.id === prodId);
   if (!p) return;
+  const prevStock = p.stock_actual;
   const nuevoStock = Math.max(0, parseInt(valor, 10) || 0);
   p.stock_actual = nuevoStock;
   renderListaStockRapido();
 
   try {
-    await fetch(`/api/productos/${prodId}/stock`, {
+    const res = await fetch(`/api/productos/${prodId}/stock`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stock_actual: nuevoStock, controlar_stock: 1 })
     });
+    if (!res.ok) throw new Error('Error en servidor');
   } catch (e) {
+    p.stock_actual = prevStock;
+    renderListaStockRapido();
     showToast('Error al fijar stock', 'error');
   }
 }
@@ -2936,18 +3091,24 @@ async function fijarStockRapido(prodId, valor) {
 async function agotarStockRapido(prodId) {
   const p = productos.find(x => x.id === prodId);
   if (!p) return;
+  const prevStock = p.stock_actual;
+  const prevControl = p.controlar_stock;
   p.stock_actual = 0;
   p.controlar_stock = 1;
   renderListaStockRapido();
 
   try {
-    await fetch(`/api/productos/${prodId}/stock`, {
+    const res = await fetch(`/api/productos/${prodId}/stock`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stock_actual: 0, controlar_stock: 1 })
     });
+    if (!res.ok) throw new Error('Error en servidor');
     showToast(`🚫 "${p.nombre}" marcado como AGOTADO`, 'info');
   } catch (e) {
+    p.stock_actual = prevStock;
+    p.controlar_stock = prevControl;
+    renderListaStockRapido();
     showToast('Error al agotar stock', 'error');
   }
 }

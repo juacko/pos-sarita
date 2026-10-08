@@ -35,6 +35,7 @@ class AdminReporteController {
         cantidad: reporte.pedidos.length,
         desglose: desglosePagos.desglose,
         cancelados: reporte.cancelados,
+        ventas_por_hora: reporte.ventasPorHora || [],
         rango: { inicio, fin, corte, fuente: fuenteRango }
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -58,6 +59,12 @@ class AdminReporteController {
       }
       
       res.json(adminReporteRepo.obtenerDetalleReportePedidos(inicio, fin));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  }
+
+  obtenerDashboard(req, res) {
+    try {
+      res.json(adminReporteRepo.obtenerDashboard());
     } catch (e) { res.status(500).json({ error: e.message }); }
   }
 }

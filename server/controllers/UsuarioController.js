@@ -55,6 +55,16 @@ class UsuarioController {
       res.status(500).json({ error: err.message });
     }
   }
+
+  me(req, res) {
+    if (!req.usuario) {
+      return res.status(401).json({ error: 'No autenticado', code: 'UNAUTHORIZED' });
+    }
+    res.json({
+      ok: true,
+      usuario: req.usuario
+    });
+  }
 }
 
 module.exports = new UsuarioController();

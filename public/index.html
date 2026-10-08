@@ -713,6 +713,76 @@
     </div>
   </div>
 
+  <!-- MODAL COBRAR CUOTA DIVIDIDA (PARTES IGUALES) -->
+  <div id="modalCobrarCuotaDividida" class="modal-overlay" style="z-index: 10050;" onclick="if(event.target===this)closeModalCobrarCuotaDividida()">
+    <div class="modal" style="max-width: 440px;">
+      <div class="modal-header" style="padding:14px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h2 id="cobrarCuotaTitulo" style="font-family:var(--font-display);font-size:1.15rem;margin:0;">💳 Cobrar Cuota</h2>
+        <button class="modal-close" onclick="closeModalCobrarCuotaDividida()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:14px 18px;">
+        <!-- Monto a cobrar -->
+        <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:12px; text-align:center; margin-bottom:12px;">
+          <span style="font-size:0.75rem; color:#166534; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Monto a Cobrar</span>
+          <div id="cobrarCuotaMontoDisplay" style="font-size:1.85rem; font-weight:800; color:#15803D; font-family:var(--font-display); line-height:1.2;">S/ 0.00</div>
+          <div id="cobrarCuotaSubinfo" style="font-size:0.8rem; color:#166534; margin-top:3px;">Cuota 1 de 2</div>
+        </div>
+
+        <!-- Nombre del Comensal -->
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Nombre Comensal</label>
+          <input type="text" id="cobrarCuotaPersona" class="form-control" placeholder="Ej: Juan / Comensal 1" style="height:36px; font-size:0.88rem;">
+        </div>
+
+        <!-- Selector de Métodos de Pago con botones táctiles -->
+        <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:4px;">Método de Pago</label>
+        <div id="cuotaMetodosPago" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px;"></div>
+
+        <!-- Fila de Efectivo: Monto recibido, chips rápidos y vuelto -->
+        <div id="cuotaEfectivoRow" style="display:none; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:10px; margin-bottom:10px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Monto recibido</label>
+              <input type="number" inputmode="decimal" id="cuotaMontoRecibido" class="form-control" step="0.5" placeholder="0.00" oninput="calcularVueltoCuota()" style="height:36px; font-size:0.95rem; font-weight:700;">
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">Vuelto / Cambio</label>
+              <div id="cuotaCambioCalculado" style="font-size:1.15rem; font-weight:800; color:var(--success); line-height:36px;">S/ 0.00</div>
+            </div>
+          </div>
+          <!-- Billetes rápidos -->
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="setMontoRecibidoCuota('exacto')" style="padding:2px 8px; font-size:0.72rem; font-weight:600;">Exacto</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setMontoRecibidoCuota(10)" style="padding:2px 8px; font-size:0.72rem; font-weight:600;">S/10</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setMontoRecibidoCuota(20)" style="padding:2px 8px; font-size:0.72rem; font-weight:600;">S/20</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setMontoRecibidoCuota(50)" style="padding:2px 8px; font-size:0.72rem; font-weight:600;">S/50</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="setMontoRecibidoCuota(100)" style="padding:2px 8px; font-size:0.72rem; font-weight:600;">S/100</button>
+          </div>
+        </div>
+
+        <!-- Fila de Referencia (si es Yape/Plin/Tarjeta) -->
+        <div id="cuotaReferenciaRow" style="display:none; margin-bottom:10px;">
+          <label style="display:block; font-size:0.75rem; font-weight:700; color:var(--text-muted); margin-bottom:3px;">N° Operación / Referencia (opcional)</label>
+          <input type="text" id="cuotaReferencia" class="form-control" placeholder="Ej: 893452" style="height:36px; font-size:0.88rem;">
+        </div>
+
+        <!-- Checkbox de Impresión -->
+        <div style="margin-top:6px;">
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; cursor:pointer;">
+            <input type="checkbox" id="cuotaCheckImprimir" checked style="width:16px; height:16px;">
+            <span>Imprimir ticket individual de esta cuota</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:12px 18px; border-top:1px solid var(--border); display:flex; justify-content:space-between; gap:8px;">
+        <button class="btn btn-outline" onclick="closeModalCobrarCuotaDividida()">Volver</button>
+        <button class="btn btn-success" id="btnConfirmarCobrarCuota" onclick="confirmarCobroCuotaDividida()" style="font-weight:800; padding:10px 18px;">
+          ✅ Confirmar Pago
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL CAJA RÁPIDA (POS) -->
   <div id="modalCajaRapida" class="modal-overlay" onclick="if(event.target===this)closeModalCajaRapida()">
     <div class="modal" style="max-width:460px;">

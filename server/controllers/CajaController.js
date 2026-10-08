@@ -17,14 +17,20 @@ class CajaController {
   abrirSesion(req, res, io) {
     const { usuario_id, fondo_inicial, notas } = req.body;
     try {
-      const activa = this.cajaRepo.obtenerSesionActiva();
-      if (activa) return res.status(400).json({ error: 'Ya existe una sesión de caja abierta' });
-
-      const nueva = this.cajaRepo.abrirSesion(usuario_id || req.usuario?.id, fondo_inicial, notas);
+      const nueva = this.cajaRepo.transaction(() => {
+        const activa = this.cajaRepo.obtenerSesionActiva();
+        if (activa) {
+          const err = new Error('Ya existe una sesión de caja abierta');
+          err.status = 400;
+          throw err;
+        }
+        return this.cajaRepo.abrirSesion(usuario_id || req.usuario?.id, fondo_inicial, notas);
+      });
       if (io) io.emit('caja:updated', nueva);
       res.json(nueva);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      const status = err.status || 500;
+      res.status(status).json({ error: err.message });
     }
   }
 

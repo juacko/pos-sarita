@@ -111,4 +111,30 @@ describe('Auth & Role API Integration Tests', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.ejecutadoPor).toBe('Admin');
   });
+
+  it('GET /api/usuarios/me valida la sesión activa o la rechaza si el token no existe', async () => {
+    const loginRes = await request(app).post('/api/usuarios/login').send({ pin: '1111' });
+    const token = loginRes.body.token;
+
+    // Ruta /me simulada con requireAuth(testDb)
+    app.get('/api/usuarios/me', requireAuth(testDb), (req, res) => {
+      res.json({ ok: true, usuario: req.usuario });
+    });
+
+    const resOk = await request(app)
+      .get('/api/usuarios/me')
+      .set('x-session-token', token);
+
+    expect(resOk.status).toBe(200);
+    expect(resOk.body.ok).toBe(true);
+    expect(resOk.body.usuario.id).toBe(2);
+
+    // Con token inválido
+    const resFail = await request(app)
+      .get('/api/usuarios/me')
+      .set('x-session-token', 'token-inexistente');
+
+    expect(resFail.status).toBe(401);
+    expect(resFail.body.code).toBe('UNAUTHORIZED');
+  });
 });

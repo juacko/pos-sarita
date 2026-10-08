@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 class AdminPedidoRepository {
   constructor(database = defaultDb) {
@@ -65,8 +66,8 @@ class AdminPedidoRepository {
         pedido_activo_id = NULL, ocupado_desde = NULL, version = version + 1, updated_at = datetime('now')
       WHERE id = ?
     `).run(mesaId);
-    this.db.prepare("INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle) VALUES (?, 'PEDIDO_ANULADO', ?, ?)")
-      .run(mesaId, usuario_id || null, detalle);
+    this.db.prepare("INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle, uuid) VALUES (?, 'PEDIDO_ANULADO', ?, ?, ?)")
+      .run(mesaId, usuario_id || null, detalle, generateUUID());
     return this.db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaId);
   }
 
@@ -91,8 +92,8 @@ class AdminPedidoRepository {
   }
 
   registrarPago(pedidoId, monto, metodo, propinaMonto, referencia, notas, usuario_id) {
-    const r = this.db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(pedidoId, monto, metodo, propinaMonto, referencia || null, notas || null, usuario_id || null);
+    const r = this.db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id, uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(pedidoId, monto, metodo, propinaMonto, referencia || null, notas || null, usuario_id || null, generateUUID());
     return r.lastInsertRowid;
   }
 
@@ -102,9 +103,9 @@ class AdminPedidoRepository {
 
   registrarLogPago(pedido_id, pago_id, accion, motivo, detalle, usuario_id) {
     this.db.prepare(`
-      INSERT INTO pagos_log (pedido_id, pago_id, accion, motivo, detalle, usuario_id)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(pedido_id, pago_id || null, accion, motivo || null, detalle || null, usuario_id || null);
+      INSERT INTO pagos_log (pedido_id, pago_id, accion, motivo, detalle, usuario_id, uuid)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(pedido_id, pago_id || null, accion, motivo || null, detalle || null, usuario_id || null, generateUUID());
   }
 
   obtenerPago(pagoId, pedidoId) {
@@ -137,23 +138,24 @@ class AdminPedidoRepository {
   registrarEgresoDevolucion(pedidoId, metodoPago, monto, motivo, usuario_id) {
     const metodo = ['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'].includes(metodoPago) ? metodoPago : 'otros';
     this.db.prepare(`
-      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas)
-      VALUES ('EGRESO', ?, ?, ?, ?, ?, ?)
+      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas, uuid)
+      VALUES ('EGRESO', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       `Devolución Pedido #${pedidoId}`,
       monto,
       metodo,
       null,
       usuario_id || null,
-      motivo ? `Devolución: ${motivo}` : null
+      motivo ? `Devolución: ${motivo}` : null,
+      generateUUID()
     );
   }
 
   registrarEgresoGenerico(pedidoId, totalDevuelto, usuario_id, motivo) {
     this.db.prepare(`
-      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas)
-      VALUES ('EGRESO', ?, ?, 'efectivo', ?, ?, ?)
-    `).run(`Eliminación Pedido #${pedidoId}`, totalDevuelto, null, usuario_id || null, `Eliminación: ${motivo}`);
+      INSERT INTO caja_movimientos (tipo, concepto, monto, metodo_pago, persona, usuario_id, notas, uuid)
+      VALUES ('EGRESO', ?, ?, 'efectivo', ?, ?, ?, ?)
+    `).run(`Eliminación Pedido #${pedidoId}`, totalDevuelto, null, usuario_id || null, `Eliminación: ${motivo}`, generateUUID());
   }
 }
 

@@ -97,15 +97,21 @@ class MesaController {
       if (existe) return res.status(409).json({ error: `Ya existe una mesa con el número ${numeroF}` });
 
       let areaF = area_id != null ? area_id : null;
+      let areaObj = null;
       if (areaF != null) {
-        const area = this.mesaRepo.obtenerAreaSalon(areaF);
-        if (!area) return res.status(400).json({ error: 'Área de salón inválida' });
+        areaObj = this.mesaRepo.obtenerAreaSalon(areaF);
+        if (!areaObj) return res.status(400).json({ error: 'Área de salón inválida' });
       }
 
       const estadosValidos = ['LIBRE', 'OCUPADO', 'RESERVADO', 'CERRANDO', 'INACTIVO'];
       const estadoF = estado && estadosValidos.includes(estado) ? estado : 'LIBRE';
 
-      const mesa = this.mesaRepo.crearMesa(numeroF, (nombre || '').trim() || null, capacidad || 4, areaF, estadoF);
+      let nombreF = (nombre || '').trim() || null;
+      if (!nombreF && areaObj && areaObj.nombre && areaObj.nombre.toLowerCase() !== 'salón principal' && areaObj.nombre.toLowerCase() !== 'salon principal') {
+        nombreF = `${areaObj.nombre} ${numeroF}`;
+      }
+
+      const mesa = this.mesaRepo.crearMesa(numeroF, nombreF, capacidad || 4, areaF, estadoF);
       if (io) io.emit('mesa:updated', mesa);
       res.status(201).json(mesa);
     } catch (err) {
@@ -113,7 +119,7 @@ class MesaController {
     }
   }
 
-  crearMesaVirtual(req, res) {
+  crearMesaVirtual(req, res, io) {
     try {
       const { tipo } = req.body;
       if (!['DELIVERY', 'PARA_LLEVAR'].includes(tipo)) {
@@ -127,6 +133,7 @@ class MesaController {
       const nombre = tipo === 'DELIVERY' ? 'Delivery' : 'Para Llevar';
       
       const mesa = this.mesaRepo.crearMesaVirtual(maxNum.n + 1, nombre, area.id);
+      if (io) io.emit('mesa:updated', mesa);
       res.status(201).json(mesa);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -161,7 +168,7 @@ class MesaController {
     }
   }
 
-  tomarMesa(req, res, io) {
+  async tomarMesa(req, res, io) {
     const mesaId = parseInt(req.params.id);
     const { mesero_id } = req.body;
 
@@ -174,9 +181,9 @@ class MesaController {
       return res.status(400).json({ error: 'Mesero no encontrado o inactivo' });
     }
 
-    const lockAcquired = acquireTableLock(mesaId, mesero_id).catch(e => e);
+    const lockAcquired = await acquireTableLock(mesaId, mesero_id).catch(e => e);
     if (lockAcquired instanceof Error) {
-      return res.status(409).json({ error: lockAcquired.error, code: lockAcquired.code });
+      return res.status(409).json({ error: lockAcquired.message || lockAcquired.error, code: lockAcquired.code });
     }
 
     try {
@@ -206,13 +213,13 @@ class MesaController {
     }
   }
 
-  liberarMesa(req, res, io) {
+  async liberarMesa(req, res, io) {
     const mesaId = parseInt(req.params.id);
     const effectiveUserId = req.body?.mesero_id || req.usuario?.id || 1;
 
-    const lockAcquired = acquireTableLock(mesaId, effectiveUserId).catch(e => e);
+    const lockAcquired = await acquireTableLock(mesaId, effectiveUserId).catch(e => e);
     if (lockAcquired instanceof Error) {
-      return res.status(409).json({ error: lockAcquired.error, code: lockAcquired.code });
+      return res.status(409).json({ error: lockAcquired.message || lockAcquired.error, code: lockAcquired.code });
     }
 
     try {
@@ -231,6 +238,11 @@ class MesaController {
 
         if (mesa.estado !== 'OCUPADO' && mesa.estado !== 'CERRANDO' && mesa.estado !== 'RESERVADO') {
           throw { status: 409, error: `No se puede liberar una mesa en estado ${mesa.estado}` };
+        }
+
+        const saldoPendiente = this.mesaRepo.tieneSaldoPendiente(mesaId);
+        if (saldoPendiente) {
+          throw { status: 409, error: `No se puede liberar la mesa: tiene un saldo pendiente de S/${saldoPendiente.pendiente.toFixed(2)} por cobrar` };
         }
 
         const pedidoActivo = this.mesaRepo.tienePedidoActivo(mesaId);
@@ -257,7 +269,7 @@ class MesaController {
     }
   }
 
-  reservarMesa(req, res, io) {
+  async reservarMesa(req, res, io) {
     const mesaId = parseInt(req.params.id);
     const { mesero_id, cliente_nombre, hora } = req.body;
 
@@ -265,9 +277,9 @@ class MesaController {
       return res.status(400).json({ error: 'mesero_id y cliente_nombre son requeridos' });
     }
 
-    const lockAcquired = acquireTableLock(mesaId, mesero_id).catch(e => e);
+    const lockAcquired = await acquireTableLock(mesaId, mesero_id).catch(e => e);
     if (lockAcquired instanceof Error) {
-      return res.status(409).json({ error: lockAcquired.error, code: lockAcquired.code });
+      return res.status(409).json({ error: lockAcquired.message || lockAcquired.error, code: lockAcquired.code });
     }
 
     try {
@@ -299,15 +311,15 @@ class MesaController {
     }
   }
 
-  cancelarReserva(req, res, io) {
+  async cancelarReserva(req, res, io) {
     const mesaId = parseInt(req.params.id);
     const { mesero_id } = req.body;
 
     if (!mesero_id) return res.status(400).json({ error: 'mesero_id es requerido' });
 
-    const lockAcquired = acquireTableLock(mesaId, mesero_id).catch(e => e);
+    const lockAcquired = await acquireTableLock(mesaId, mesero_id).catch(e => e);
     if (lockAcquired instanceof Error) {
-      return res.status(409).json({ error: lockAcquired.error, code: lockAcquired.code });
+      return res.status(409).json({ error: lockAcquired.message || lockAcquired.error, code: lockAcquired.code });
     }
 
     try {
@@ -345,7 +357,7 @@ class MesaController {
     }
   }
 
-  transferirMesa(req, res, io) {
+  async transferirMesa(req, res, io) {
     const mesaId = parseInt(req.params.id);
     const { mesero_id, nuevo_mesero_id } = req.body;
 
@@ -358,9 +370,9 @@ class MesaController {
       return res.status(400).json({ error: 'Nuevo mesero no encontrado o inactivo' });
     }
 
-    const lockAcquired = acquireTableLock(mesaId, mesero_id).catch(e => e);
+    const lockAcquired = await acquireTableLock(mesaId, mesero_id).catch(e => e);
     if (lockAcquired instanceof Error) {
-      return res.status(409).json({ error: lockAcquired.error, code: lockAcquired.code });
+      return res.status(409).json({ error: lockAcquired.message || lockAcquired.error, code: lockAcquired.code });
     }
 
     try {
@@ -373,7 +385,10 @@ class MesaController {
           throw { status: 403, error: 'No autorizado para transferir esta mesa' };
         }
 
-        this.mesaRepo.updateMesaTransferir(mesaId, nuevo_mesero_id, nuevoMesero.nombre);
+        const changes = this.mesaRepo.updateMesaTransferir(mesaId, nuevo_mesero_id, nuevoMesero.nombre, mesa.version);
+        if (changes === 0) {
+          throw { status: 409, error: 'Conflicto: la mesa fue modificada por otro usuario', code: 'VERSION_CONFLICT' };
+        }
         this.mesaRepo.insertLog(mesaId, 'TRANSFERIDA', mesero_id, `Transferida a ${nuevoMesero.nombre}`);
 
         return this.mesaRepo.obtenerMesaPorId(mesaId);
@@ -383,7 +398,7 @@ class MesaController {
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
-      res.status(status).json({ error: err.error || err.message });
+      res.status(status).json({ error: err.error || err.message, code: err.code });
     } finally {
       releaseTableLock(mesaId);
     }
@@ -391,7 +406,7 @@ class MesaController {
 
   inactivarMesa(req, res, io) {
     const mesaId = parseInt(req.params.id);
-    const { mesero_id } = req.body;
+    const { mesero_id, version } = req.body;
 
     const usuario = this.mesaRepo.obtenerUsuario(mesero_id);
     if (!usuario || usuario.rol !== 'admin') {
@@ -399,7 +414,10 @@ class MesaController {
     }
 
     try {
-      const mesa = this.mesaRepo.inactivarMesa(mesaId);
+      const mesa = this.mesaRepo.inactivarMesa(mesaId, version);
+      if (!mesa) {
+        return res.status(409).json({ error: 'Conflicto: la mesa fue modificada por otro usuario', code: 'VERSION_CONFLICT' });
+      }
       if (io) io.emit('mesa:updated', mesa);
       res.json(mesa);
     } catch (err) {

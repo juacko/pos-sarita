@@ -11,11 +11,10 @@ function acquireTableLock(tableId, meseroId) {
       if (Date.now() - existing.timestamp > LOCK_TIMEOUT_MS) {
         LOCKS.delete(tableId);
       } else {
-        return reject({
-          error: 'Mesa siendo modificada por otro usuario',
-          code: 'LOCKED',
-          holder: existing.meseroId
-        });
+        const err = new Error('Mesa siendo modificada por otro usuario');
+        err.code = 'LOCKED';
+        err.holder = existing.meseroId;
+        return reject(err);
       }
     }
     LOCKS.set(tableId, { meseroId, timestamp: Date.now() });

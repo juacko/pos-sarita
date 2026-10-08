@@ -52,7 +52,27 @@ try {
     }
     if ($written -ne $bytes.Length) { throw "Solo se escribieron $written de $($bytes.Length) bytes" }
     [RawPrinter]::EndPagePrinter($h) | Out-Null
-    Write-Output "OK:$written"
+
+    $isOffline = $false
+    $offlineReason = ""
+    try {
+      $wmi = Get-CimInstance -ClassName Win32_Printer -Filter "Name = '$($Printer -replace "'", "''")'" -ErrorAction SilentlyContinue
+      if ($wmi) {
+        if ($wmi.WorkOffline -eq $true) {
+          $isOffline = $true
+          $offlineReason = "Impresora '$Printer' desconectada (cable USB desconectado)"
+        } elseif ($wmi.PrinterState -eq 2 -or $wmi.ExtendedPrinterStatus -eq 9) {
+          $isOffline = $true
+          $offlineReason = "Impresora '$Printer' en estado de error o sin papel"
+        }
+      }
+    } catch {}
+
+    if ($isOffline) {
+      Write-Output ("OFFLINE:" + $written + ":" + $offlineReason)
+    } else {
+      Write-Output ("OK:" + $written)
+    }
   } finally {
     [RawPrinter]::EndDocPrinter($h) | Out-Null
   }

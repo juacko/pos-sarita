@@ -4,20 +4,12 @@ const printers = require('../printers');
 const pagos = require('../metodos-pago');
 const stockService = require('../services/StockService');
 const pagoService = require('../services/PagoService');
+const { generateUUID } = require('../sync/utils');
 
 class PedidoController {
-  constructor(pedidoRepo = defaultPedidoRepo) {
+  constructor(pedidoRepo = defaultPedidoRepo, database = db) {
     this.pedidoRepo = pedidoRepo;
-  }
-
-  obtenerPedido(req, res) {
-    try {
-      const pedido = this.pedidoRepo.obtenerPorId(req.params.id);
-      if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
-      res.json(pedido);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+    this.db = database;
   }
 
   actualizarEstadoItemsMasivo(req, res, io) {
@@ -46,33 +38,6 @@ class PedidoController {
       }
 
       res.json({ ok: true, items, pedido: pedidoActualizado });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
-
-  actualizarEstadoItem(req, res, io) {
-    const { idItem } = req.params;
-    const { estado } = req.body;
-    const validStates = ['PENDIENTE', 'COCINANDO', 'LISTO', 'ENTREGADO', 'CANCELADO'];
-
-    if (!validStates.includes(estado)) {
-      return res.status(400).json({ error: 'Estado inválido' });
-    }
-
-    try {
-      const item = this.pedidoRepo.actualizarEstadoItem(idItem, estado);
-      if (item) {
-        this.pedidoRepo.recalcularEstadoGlobalPedido(item.pedido_id);
-        const pedidoActualizado = this.pedidoRepo.obtenerPorId(item.pedido_id);
-
-        if (io) {
-          io.emit('pedido:actualizado', pedidoActualizado);
-          io.emit('item:actualizado', item);
-        }
-      }
-
-      res.json(item);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -129,9 +94,10 @@ class PedidoController {
     try {
       const { estado, mesa_id } = req.query;
       let sql = `
-        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre
+        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre
         FROM pedidos p
         JOIN mesas m ON m.id = p.mesa_id
+        LEFT JOIN areas a ON a.id = m.area_id
       `;
       const wheres = [];
       const params = [];
@@ -176,23 +142,30 @@ class PedidoController {
           throw { status: 409, error: `La mesa ya tiene un pedido activo (#${pedidoActivo.id}). Usa ese pedido o anúlalo antes de crear otro` };
         }
 
+        if (mesa.pedido_activo_id) {
+          const previo = db.prepare('SELECT estado FROM pedidos WHERE id = ?').get(mesa.pedido_activo_id);
+          if (previo && previo.estado === 'CERRADO') {
+            throw { status: 409, error: 'La mesa tiene una cuenta pagada. Debe liberar la mesa antes de abrir un nuevo pedido' };
+          }
+        }
+
         affectedStockProducts = this.validarYDescontarStock(items);
 
         const mesero = mesero_id ? db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(mesero_id) : null;
 
         const result = db.prepare(`
-          INSERT INTO pedidos (mesa_id, mesa_numero, mesero_id, mesero_nombre, estado, nota, cliente_nombre, cliente_telefono, cliente_direccion, hora_recogida)
-          VALUES (?, ?, ?, ?, 'ABIERTO', ?, ?, ?, ?, ?)
+          INSERT INTO pedidos (mesa_id, mesa_numero, mesero_id, mesero_nombre, estado, nota, cliente_nombre, cliente_telefono, cliente_direccion, hora_recogida, uuid)
+          VALUES (?, ?, ?, ?, 'ABIERTO', ?, ?, ?, ?, ?, ?)
         `).run(mesa_id, mesa.numero || mesa.nombre, mesero_id || null, mesero?.nombre || null, nota || null,
-          cliente_nombre || null, cliente_telefono || null, cliente_direccion || null, hora_recogida || null);
+          cliente_nombre || null, cliente_telefono || null, cliente_direccion || null, hora_recogida || null, generateUUID());
 
         const pedidoId = result.lastInsertRowid;
         let total = 0;
 
         const insertItem = db.prepare(`
           INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
-            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion, uuid)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (const item of items) {
@@ -205,7 +178,7 @@ class PedidoController {
             item.variante_id || null, item.variante_nombre || null,
             JSON.stringify(item.modificadores || []),
             JSON.stringify(item.agregados || []),
-            item.detalle || '', destino
+            item.detalle || '', destino, generateUUID()
           );
           total += item.cantidad * (precioBase + precioAdic);
         }
@@ -217,9 +190,7 @@ class PedidoController {
             UPDATE mesas SET estado = 'OCUPADO', mesero_id = ?, mesero_nombre = ?, pedido_activo_id = ?, ocupado_desde = datetime('now'), updated_at = datetime('now') WHERE id = ?
           `).run(mesero_id || null, mesero?.nombre || null, pedidoId, mesa_id);
         } else {
-          const previo = db.prepare('SELECT estado FROM pedidos WHERE id = ?').get(mesa.pedido_activo_id);
-          const retomar = previo && previo.estado === 'CERRADO';
-          db.prepare(`UPDATE mesas SET pedido_activo_id = ?, ${retomar ? 'ocupado_desde = datetime(\'now\'), ' : ''}updated_at = datetime('now') WHERE id = ?`)
+          db.prepare(`UPDATE mesas SET pedido_activo_id = ?, updated_at = datetime('now') WHERE id = ?`)
             .run(pedidoId, mesa_id);
         }
 
@@ -228,18 +199,30 @@ class PedidoController {
 
       const itemsData = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(pedido.id);
       const mesaData = db.prepare(`
-        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
       `).get(mesa_id);
 
       io.emit('pedido:nuevo', { pedido, items: itemsData });
-      if (itemsData.some(i => i.destino_impresion === 'cocina' || (!i.destino_impresion && i.categoria_id && i.categoria_id !== 2))) io.emit('kds:ring_cocina');
-        if (itemsData.some(i => i.destino_impresion === 'barra' || (!i.destino_impresion && i.categoria_id === 2))) io.emit('kds:ring_barra');
+      if (itemsData.some(i => i.destino_impresion === 'cocina' || !i.destino_impresion)) io.emit('kds:ring_cocina');
+      if (itemsData.some(i => i.destino_impresion === 'barra')) io.emit('kds:ring_barra');
       io.emit('mesa:updated', mesaData);
       this.emitirStockActualizado(affectedStockProducts, io);
 
-      printers.printComanda(pedido, itemsData, mesaData);
-
       res.status(201).json({ pedido, items: itemsData });
+
+      // Impresión en segundo plano (no bloqueante para la UI del mesero)
+      setImmediate(() => {
+        try {
+          const printResultCrear = printers.printComanda(pedido, itemsData, mesaData);
+          if (printResultCrear && !printResultCrear.ok && printResultCrear.reason !== 'paperless') {
+            const motivo = printResultCrear.reason === 'disabled' ? 'Impresora deshabilitada en configuración' : printResultCrear.reason;
+            io.emit('printer:error', { impresora: 'comanda', motivo });
+          }
+        } catch (err) {
+          console.error('[PRINT ERROR BACKGROUND]', err);
+          io.emit('printer:error', { impresora: 'comanda', motivo: err.message });
+        }
+      });
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
@@ -261,17 +244,18 @@ class PedidoController {
         const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
         if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
         if (pedido.estado === 'CANCELADO') throw { status: 409, error: 'El pedido está cancelado' };
+        if (pedido.estado === 'CERRADO') throw { status: 409, error: 'Este pedido ya fue pagado y cerrado. Debe liberar la mesa para iniciar una nueva orden' };
 
         const mesa = db.prepare(`
-          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+          SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
         `).get(pedido.mesa_id);
 
         affectedStockProducts = this.validarYDescontarStock(items);
 
         const insertItem = db.prepare(`
           INSERT INTO pedido_items (pedido_id, producto_id, producto_nombre, cantidad, precio_unitario,
-            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            precio_adicional, notas, variante_id, variante_nombre, modificadores_json, agregados_json, detalle, destino_impresion, uuid)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         let total = 0;
@@ -286,7 +270,7 @@ class PedidoController {
             item.variante_id || null, item.variante_nombre || null,
             JSON.stringify(item.modificadores || []),
             JSON.stringify(item.agregados || []),
-            item.detalle || '', destino
+            item.detalle || '', destino, generateUUID()
           );
           insertedItemIds.push(Number(insRes.lastInsertRowid));
           total += item.cantidad * (precioBase + precioAdic);
@@ -300,6 +284,9 @@ class PedidoController {
             .run(req.params.id);
         }
 
+        db.prepare("UPDATE mesas SET estado = 'OCUPADO', pedido_activo_id = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(req.params.id, mesa.id);
+
         const itemsData = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(req.params.id);
         const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
 
@@ -310,16 +297,33 @@ class PedidoController {
         const nuevosItems = itemsData.filter(i => insertedItemIds.includes(i.id));
 
         io.emit('pedido:actualizado', pedidoActualizado);
-        if (nuevosItems.some(i => i.destino_impresion === 'cocina' || (!i.destino_impresion && i.categoria_id && i.categoria_id !== 2))) io.emit('kds:ring_cocina');
-        if (nuevosItems.some(i => i.destino_impresion === 'barra' || (!i.destino_impresion && i.categoria_id === 2))) io.emit('kds:ring_barra');
+        this.emitPedidoYMesa(pedidoActualizado.id, mesa.id, io);
+        if (nuevosItems.some(i => i.destino_impresion === 'cocina' || !i.destino_impresion)) io.emit('kds:ring_cocina');
+        if (nuevosItems.some(i => i.destino_impresion === 'barra')) io.emit('kds:ring_barra');
 
-        printers.printComanda(pedidoActualizado, nuevosItems.length ? nuevosItems : itemsData, mesa);
-
-        return { pedido: pedidoActualizado, items: itemsData };
+        return { pedido: pedidoActualizado, items: itemsData, mesa, nuevosItems };
       })();
 
       this.emitirStockActualizado(affectedStockProducts, io);
-      res.json(result);
+      res.json({ pedido: result.pedido, items: result.items });
+
+      // Impresión en segundo plano (no bloqueante para la UI del mesero)
+      setImmediate(() => {
+        try {
+          const printResultAgregar = printers.printComanda(
+            result.pedido,
+            result.nuevosItems.length ? result.nuevosItems : result.items,
+            result.mesa
+          );
+          if (printResultAgregar && !printResultAgregar.ok && printResultAgregar.reason !== 'paperless') {
+            const motivo = printResultAgregar.reason === 'disabled' ? 'Impresora deshabilitada en configuración' : printResultAgregar.reason;
+            io.emit('printer:error', { impresora: 'comanda', motivo });
+          }
+        } catch (err) {
+          console.error('[PRINT ERROR BACKGROUND]', err);
+          io.emit('printer:error', { impresora: 'comanda', motivo: err.message });
+        }
+      });
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
@@ -385,11 +389,11 @@ class PedidoController {
         
         db.prepare(`
           INSERT INTO pedido_items 
-          (pedido_id, producto_id, producto_nombre, variante_id, variante_nombre, cantidad, precio_unitario, precio_adicional, notas, detalle, destino_impresion, estado, modificadores_json, agregados_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (pedido_id, producto_id, producto_nombre, variante_id, variante_nombre, cantidad, precio_unitario, precio_adicional, notas, detalle, destino_impresion, estado, modificadores_json, agregados_json, uuid)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           item.pedido_id, item.producto_id, item.producto_nombre, item.variante_id, item.variante_nombre,
-          qSeparar, item.precio_unitario, item.precio_adicional, item.notas, item.detalle, item.destino_impresion, item.estado, item.modificadores_json, item.agregados_json
+          qSeparar, item.precio_unitario, item.precio_adicional, item.notas, item.detalle, item.destino_impresion, item.estado, item.modificadores_json, item.agregados_json, generateUUID()
         );
         
         this.pedidoRepo.recalcularTotalPedido(req.params.id);
@@ -484,23 +488,21 @@ class PedidoController {
         }
 
         db.prepare(`
-          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
-          VALUES (?, 'ITEMS_MOVIDOS', ?, ?)
-        `).run(mesaOrigen.id, mesero_id || null, `${itemsAMover.length} producto(s) movidos a Mesa ${mesaDestino.nombre || mesaDestino.numero}`);
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle, uuid)
+          VALUES (?, 'ITEMS_MOVIDOS', ?, ?, ?)
+        `).run(mesaOrigen.id, mesero_id || null, `${itemsAMover.length} producto(s) movidos a Mesa ${mesaDestino.nombre || mesaDestino.numero}`, generateUUID());
         db.prepare(`
-          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
-          VALUES (?, 'ITEMS_RECIBIDOS', ?, ?)
-        `).run(mesaDestino.id, mesero_id || null, `${itemsAMover.length} producto(s) recibidos de Mesa ${mesaOrigen.nombre || mesaOrigen.numero}`);
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle, uuid)
+          VALUES (?, 'ITEMS_RECIBIDOS', ?, ?, ?)
+        `).run(mesaDestino.id, mesero_id || null, `${itemsAMover.length} producto(s) recibidos de Mesa ${mesaOrigen.nombre || mesaOrigen.numero}`, generateUUID());
 
         this.emitPedidoYMesa(ordenOrigen.id, mesaOrigen.id, io);
         this.emitPedidoYMesa(ordenDestino.id, mesaDestino.id, io);
 
         const itemsDestino = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(ordenDestino.id);
         const mesaDestinoFull = db.prepare(`
-          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+          SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
         `).get(mesaDestino.id);
-        if (itemsDestino.length) printers.printComanda(ordenDestino, itemsDestino, mesaDestinoFull);
-
         return {
           ok: true,
           pedido_origen: ordenOrigenFinal,
@@ -508,11 +510,36 @@ class PedidoController {
           mesa_origen: db.prepare('SELECT * FROM mesas WHERE id = ?').get(mesaOrigen.id),
           mesa_destino: mesaDestinoFull,
           pedido_cancelado: pedidoCancelado,
-          items_movidos: itemsAMover.length
+          items_movidos: itemsAMover.length,
+          itemsDestino,
+          mesaDestinoFull
         };
       })();
 
-      res.json(result);
+      res.json({
+        ok: true,
+        pedido_origen: result.pedido_origen,
+        pedido_destino: result.pedido_destino,
+        mesa_origen: result.mesa_origen,
+        mesa_destino: result.mesa_destino,
+        pedido_cancelado: result.pedido_cancelado,
+        items_movidos: result.items_movidos
+      });
+
+      // Impresión en segundo plano
+      if (result.itemsDestino && result.itemsDestino.length) {
+        setImmediate(() => {
+          try {
+            const printResultMover = printers.printComanda(result.pedido_destino, result.itemsDestino, result.mesaDestinoFull);
+            if (printResultMover && !printResultMover.ok && printResultMover.reason !== 'disabled' && printResultMover.reason !== 'paperless') {
+              io.emit('printer:error', { impresora: 'comanda', motivo: printResultMover.reason });
+            }
+          } catch (err) {
+            console.error('[PRINT ERROR BACKGROUND]', err);
+            io.emit('printer:error', { impresora: 'comanda', motivo: err.message });
+          }
+        });
+      }
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
@@ -567,22 +594,27 @@ class PedidoController {
         }
 
         db.prepare(`
-          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
-          VALUES (?, 'MESA_UNIDA', ?, ?)
-        `).run(mesaOrigen.id, mesero_id || null, `Orden unida a Mesa ${mesaDestino.nombre || mesaDestino.numero}`);
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle, uuid)
+          VALUES (?, 'MESA_UNIDA', ?, ?, ?)
+        `).run(mesaOrigen.id, mesero_id || null, `Orden unida a Mesa ${mesaDestino.nombre || mesaDestino.numero}`, generateUUID());
         db.prepare(`
-          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
-          VALUES (?, 'PEDIDO_UNIDO', ?, ?)
-        `).run(mesaDestino.id, mesero_id || null, `Recibió ${itemsAMover.length} producto(s) de Mesa ${mesaOrigen.nombre || mesaOrigen.numero}`);
+          INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle, uuid)
+          VALUES (?, 'PEDIDO_UNIDO', ?, ?, ?)
+        `).run(mesaDestino.id, mesero_id || null, `Recibió ${itemsAMover.length} producto(s) de Mesa ${mesaOrigen.nombre || mesaOrigen.numero}`, generateUUID());
 
         this.emitPedidoYMesa(ordenOrigen.id, mesaOrigen.id, io);
         this.emitPedidoYMesa(ordenDestino.id, mesaDestino.id, io);
 
         const itemsDestino = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(ordenDestino.id);
         const mesaDestinoFull = db.prepare(`
-          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+          SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
         `).get(mesaDestino.id);
-        if (itemsDestino.length) printers.printComanda(ordenDestino, itemsDestino, mesaDestinoFull);
+        if (itemsDestino.length) {
+          const printResultUnir = printers.printComanda(ordenDestino, itemsDestino, mesaDestinoFull);
+          if (printResultUnir && !printResultUnir.ok && printResultUnir.reason !== 'disabled' && printResultUnir.reason !== 'paperless') {
+            io.emit('printer:error', { impresora: 'comanda', motivo: printResultUnir.reason });
+          }
+        }
 
         return {
           ok: true,
@@ -810,7 +842,7 @@ class PedidoController {
 
   pagarPedido(req, res, io) {
     try {
-      const { metodo, monto, usuario_id, referencia, notas, propina, imprimir_ticket = false } = req.body;
+      const { metodo, monto, monto_recibido, usuario_id, referencia, notas, propina, imprimir_ticket = false } = req.body;
       if (!metodo || !pagos.esMetodoValido(metodo)) {
         return res.status(400).json({ error: 'Método de pago inválido o no habilitado' });
       }
@@ -836,8 +868,8 @@ class PedidoController {
         const pendiente = resumen.pendiente;
         if (metodo === 'regalo') {
           const pagoMonto = pendiente;
-          db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            .run(req.params.id, pagoMonto, 'regalo', 0, referencia || null, notas || 'Regalo/Obsequio', usuario_id || null);
+          db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id, uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(req.params.id, pagoMonto, 'regalo', 0, referencia || null, notas || 'Regalo/Obsequio', usuario_id || null, generateUUID());
           const pagadoTotal = pagadoAnterior + pagoMonto;
           const fullyPaid = pagadoTotal >= totalFinal - 0.01;
           if (fullyPaid) {
@@ -854,8 +886,8 @@ class PedidoController {
           if (valeRow.monto_restante < monto - 0.01) throw { status: 400, error: `El vale solo tiene S/${valeRow.monto_restante.toFixed(2)} disponibles` };
 
           db.prepare('UPDATE vales SET monto_restante = monto_restante - ? WHERE id = ?').run(monto, valeRow.id);
-          db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            .run(req.params.id, monto, 'vale', 0, referencia, notas || `Vale ${referencia}`, usuario_id || null);
+          db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id, uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(req.params.id, monto, 'vale', 0, referencia, notas || `Vale ${referencia}`, usuario_id || null, generateUUID());
           const pagadoTotal = pagadoAnterior + monto;
           const fullyPaid = pagadoTotal >= totalFinal - 0.01;
           if (fullyPaid) {
@@ -865,16 +897,19 @@ class PedidoController {
           return { pedido, cambio: 0, pagadoTotal, pendiente: Math.max(0, totalFinal - pagadoTotal), fullyPaid };
         }
 
-        if (monto > pendiente + 0.01) {
+        // Para efectivo: el monto cobrado es min(monto, pendiente), el cambio se calcula con monto_recibido
+        const montoCobrar = metodo === 'efectivo' ? Math.min(monto, pendiente) : monto;
+        if (metodo !== 'efectivo' && monto > pendiente + 0.01) {
           throw { status: 400, error: `El monto (S/${monto.toFixed(2)}) excede el pendiente (S/${pendiente.toFixed(2)})` };
         }
 
         const propinaMonto = parseFloat(propina) || 0;
-        db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(req.params.id, monto, metodo, propinaMonto, referencia || null, notas || null, usuario_id || null);
+        db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id, uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(req.params.id, montoCobrar, metodo, propinaMonto, referencia || null, notas || null, usuario_id || null, generateUUID());
 
-        const pagadoTotal = pagadoAnterior + monto;
-        const cambio = metodo === 'efectivo' ? Math.max(0, monto - pendiente) : 0;
+        const pagadoTotal = pagadoAnterior + montoCobrar;
+        const efectivoRecibido = metodo === 'efectivo' ? (parseFloat(monto_recibido) || monto) : 0;
+        const cambio = metodo === 'efectivo' ? Math.max(0, efectivoRecibido - montoCobrar) : 0;
         const fullyPaid = pagadoTotal >= totalFinal - 0.01;
 
         if (fullyPaid) {
@@ -887,7 +922,7 @@ class PedidoController {
 
       const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
       const mesaData = db.prepare(`
-        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
       `).get(pedidoActualizado.mesa_id);
 
       if (result.fullyPaid && mesaData?.es_virtual && mesaData.pedido_activo_id == pedidoActualizado.id) {
@@ -902,11 +937,6 @@ class PedidoController {
       io.emit('pedido:actualizado', pedidoActualizado);
       io.emit('mesa:updated', mesaData);
 
-      if (result.fullyPaid && imprimir_ticket) {
-        const items = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(req.params.id);
-        printers.printTicket(pedidoActualizado, items, mesaData);
-      }
-
       res.json({
         pedido: pedidoActualizado,
         pago,
@@ -915,6 +945,22 @@ class PedidoController {
         pendiente: result.pendiente,
         completado: result.fullyPaid
       });
+
+      if (result.fullyPaid && imprimir_ticket) {
+        setImmediate(() => {
+          try {
+            const items = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(req.params.id);
+            const printResultTicket = printers.printTicket(pedidoActualizado, items, mesaData);
+            if (printResultTicket && !printResultTicket.ok && printResultTicket.reason !== 'paperless') {
+              const motivo = printResultTicket.reason === 'disabled' ? 'Impresora deshabilitada en configuración' : printResultTicket.reason;
+              io.emit('printer:error', { impresora: 'caja', motivo });
+            }
+          } catch (err) {
+            console.error('[PRINT TICKET ERROR BACKGROUND]', err);
+            io.emit('printer:error', { impresora: 'caja', motivo: err.message });
+          }
+        });
+      }
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
@@ -989,8 +1035,8 @@ class PedidoController {
         }
 
         const propinaMonto = parseFloat(propina) || 0;
-        db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(req.params.id, montoNum, metodo, propinaMonto, referencia || null, notasPago, usuario_id || null);
+        db.prepare('INSERT INTO pagos (pedido_id, monto, metodo, propina, referencia, notas, usuario_id, uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(req.params.id, montoNum, metodo, propinaMonto, referencia || null, notasPago, usuario_id || null, generateUUID());
 
         const pagadoTotal = pagadoAnterior + montoNum;
         const fullyPaid = pagadoTotal >= totalFinal - 0.01;
@@ -1016,7 +1062,7 @@ class PedidoController {
 
       const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
       const mesaData = db.prepare(`
-        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
       `).get(pedidoActualizado.mesa_id);
 
       if (result.fullyPaid && mesaData?.es_virtual && mesaData.pedido_activo_id == pedidoActualizado.id) {
@@ -1032,22 +1078,6 @@ class PedidoController {
       io.emit('mesa:updated', mesaData);
       io.emit('caja:updated');
 
-      if (imprimir_ticket) {
-        const pagoInfo = {
-          metodo,
-          monto: montoNum,
-          referencia: referencia || null,
-          cambio: result.cambio
-        };
-        const infoDividido = {
-          persona: persona || null,
-          cuotaInfo: cuota_info || (tipo_division === 'partes' ? 'Cuota individual' : null),
-          totalMesa: result.totalFinal,
-          saldoPendiente: result.pendiente
-        };
-        printers.printTicketDividido(pedidoActualizado, items_pagados || [], pagoInfo, mesaData, infoDividido);
-      }
-
       res.json({
         ok: true,
         pedido: pedidoActualizado,
@@ -1057,6 +1087,33 @@ class PedidoController {
         pendiente: result.pendiente,
         completado: result.fullyPaid
       });
+
+      if (imprimir_ticket) {
+        setImmediate(() => {
+          try {
+            const pagoInfo = {
+              metodo,
+              monto: montoNum,
+              referencia: referencia || null,
+              cambio: result.cambio
+            };
+            const infoDividido = {
+              persona: persona || null,
+              cuotaInfo: cuota_info || (tipo_division === 'partes' ? 'Cuota individual' : null),
+              totalMesa: result.totalFinal,
+              saldoPendiente: result.pendiente
+            };
+            const printResultDividido = printers.printTicketDividido(pedidoActualizado, items_pagados || [], pagoInfo, mesaData, infoDividido);
+            if (printResultDividido && !printResultDividido.ok && printResultDividido.reason !== 'paperless') {
+              const motivo = printResultDividido.reason === 'disabled' ? 'Impresora deshabilitada en configuración' : printResultDividido.reason;
+              io.emit('printer:error', { impresora: 'caja', motivo });
+            }
+          } catch (err) {
+            console.error('[PRINT TICKET DIVIDIDO ERROR BACKGROUND]', err);
+            io.emit('printer:error', { impresora: 'caja', motivo: err.message });
+          }
+        });
+      }
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message, code: err.code });
@@ -1077,7 +1134,7 @@ class PedidoController {
 
       const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
       const mesaData = pedido ? db.prepare(`
-        SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+        SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
       `).get(pedido.mesa_id) : null;
 
       io.emit('pedido:actualizado', pedido);
@@ -1125,7 +1182,7 @@ class PedidoController {
 
         const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(item.pedido_id);
         const mesaData = pedidoActualizado ? db.prepare(`
-          SELECT m.*, a.tipo as area_tipo FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
+          SELECT m.*, a.tipo as area_tipo, a.nombre as area_nombre FROM mesas m LEFT JOIN areas a ON a.id = m.area_id WHERE m.id = ?
         `).get(pedidoActualizado.mesa_id) : null;
 
         io.emit('pedido:actualizado', pedidoActualizado);
@@ -1139,10 +1196,10 @@ class PedidoController {
     }
   }
 
-  reimprimirTicket(req, res) {
+  reimprimirTicket(req, res, io) {
     try {
       const pedido = db.prepare(`
-        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo
+        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre
         FROM pedidos p JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
         WHERE p.id = ?
@@ -1153,7 +1210,12 @@ class PedidoController {
       const items = db.prepare('SELECT * FROM pedido_items WHERE pedido_id = ?').all(pedido.id);
       pedido.descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(pedido.id);
       pedido.pagos = db.prepare('SELECT * FROM pagos WHERE pedido_id = ?').all(pedido.id);
-      const result = printers.printTicket(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre, area_tipo: pedido.area_tipo });
+      const result = printers.printTicket(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre, area_tipo: pedido.area_tipo, area_nombre: pedido.area_nombre });
+
+      if (result && !result.ok && result.reason !== 'paperless') {
+        const motivo = result.reason === 'disabled' ? 'Impresora deshabilitada en configuración' : result.reason;
+        if (io) io.emit('printer:error', { impresora: 'caja', motivo });
+      }
 
       res.json(result);
     } catch (err) {
@@ -1161,10 +1223,10 @@ class PedidoController {
     }
   }
 
-  imprimirPrecuenta(req, res) {
+  imprimirPrecuenta(req, res, io) {
     try {
       const pedido = db.prepare(`
-        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo
+        SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre
         FROM pedidos p JOIN mesas m ON m.id = p.mesa_id
         LEFT JOIN areas a ON a.id = m.area_id
         WHERE p.id = ?
@@ -1175,7 +1237,12 @@ class PedidoController {
       const items = db.prepare("SELECT * FROM pedido_items WHERE pedido_id = ? AND estado != 'CANCELADO'").all(pedido.id);
       pedido.descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(pedido.id);
 
-      const result = printers.printPrecuenta(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre, area_tipo: pedido.area_tipo });
+      const result = printers.printPrecuenta(pedido, items, { numero: pedido.mesa_numero, nombre: pedido.mesa_nombre, area_tipo: pedido.area_tipo, area_nombre: pedido.area_nombre });
+
+      if (result && !result.ok && result.reason !== 'paperless') {
+        const motivo = result.reason === 'disabled' ? 'Impresora deshabilitada en configuración' : result.reason;
+        if (io) io.emit('printer:error', { impresora: 'caja', motivo });
+      }
 
       res.json(result);
     } catch (err) {
@@ -1199,18 +1266,22 @@ class PedidoController {
         return res.status(400).json({ error: 'El porcentaje no puede ser mayor a 100' });
       }
 
-      const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
-      if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
-      if (pedido.estado === 'CERRADO') throw { status: 409, error: 'El pedido ya está cerrado' };
+      const result = db.transaction(() => {
+        const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+        if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
+        if (pedido.estado === 'CERRADO') throw { status: 409, error: 'El pedido ya está cerrado' };
 
-      db.prepare('INSERT INTO descuentos (pedido_id, tipo, valor, motivo, usuario_id) VALUES (?, ?, ?, ?, ?)')
-        .run(req.params.id, tipo, valor, motivo.trim(), usuario_id || null);
+        db.prepare('INSERT INTO descuentos (pedido_id, tipo, valor, motivo, usuario_id, uuid) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(req.params.id, tipo, valor, motivo.trim(), usuario_id || null, generateUUID());
 
-      const descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(req.params.id);
-      io.emit('pedido:actualizado', db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id));
+        const descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(req.params.id);
+        const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+        return { descuentos, pedidoActualizado };
+      })();
 
+      if (io) io.emit('pedido:actualizado', result.pedidoActualizado);
       const resumen_pago = pagoService.obtenerResumenPago(req.params.id);
-      res.json({ ok: true, descuentos, resumen_pago });
+      res.json({ ok: true, descuentos: result.descuentos, resumen_pago });
     } catch (err) {
       const status = err.status || 500;
       res.status(status).json({ error: err.error || err.message });
@@ -1219,18 +1290,23 @@ class PedidoController {
 
   eliminarDescuento(req, res, io) {
     try {
-      const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
-      if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
-      if (pedido.estado === 'CERRADO') return res.status(409).json({ error: 'El pedido ya está cerrado' });
+      const result = db.transaction(() => {
+        const pedido = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+        if (!pedido) throw { status: 404, error: 'Pedido no encontrado' };
+        if (pedido.estado === 'CERRADO') throw { status: 409, error: 'El pedido ya está cerrado' };
 
-      db.prepare('DELETE FROM descuentos WHERE id = ? AND pedido_id = ?').run(req.params.descId, req.params.id);
-      io.emit('pedido:actualizado', db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id));
-      
-      const descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(req.params.id);
+        db.prepare('DELETE FROM descuentos WHERE id = ? AND pedido_id = ?').run(req.params.descId, req.params.id);
+        const descuentos = db.prepare('SELECT * FROM descuentos WHERE pedido_id = ?').all(req.params.id);
+        const pedidoActualizado = db.prepare('SELECT * FROM pedidos WHERE id = ?').get(req.params.id);
+        return { descuentos, pedidoActualizado };
+      })();
+
+      if (io) io.emit('pedido:actualizado', result.pedidoActualizado);
       const resumen_pago = pagoService.obtenerResumenPago(req.params.id);
-      res.json({ ok: true, descuentos, resumen_pago });
+      res.json({ ok: true, descuentos: result.descuentos, resumen_pago });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      const status = err.status || 500;
+      res.status(status).json({ error: err.error || err.message });
     }
   }
 }

@@ -24,6 +24,15 @@
         const res = await fetch('/api/printers/detect');
 
         if (!res.ok) {
+          if (res.status === 401) {
+            document.getElementById('loadingMsg').innerHTML = `
+              <h2>🔒 Autenticación Requerida</h2>
+              <p style="margin: 12px 0; color: #4B5563;">Debes iniciar sesión con tu PIN para configurar o probar impresoras.</p>
+              <a href="/admin.html" class="btn btn-primary" style="display:inline-block;margin-top:8px;">Iniciar Sesión en Admin</a>
+              <a href="/" class="btn btn-outline" style="display:inline-block;margin-top:8px;margin-left:8px;">Ir al POS</a>
+            `;
+            return;
+          }
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || 'Error del servidor al detectar impresoras');
         }

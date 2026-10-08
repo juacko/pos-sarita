@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 /**
  * Repositorio de acceso a datos para Pedidos y PedidoItems.
@@ -24,9 +25,10 @@ class PedidoRepository {
 
   obtenerPedidoCompletoPorId(id) {
     const pedido = this.db.prepare(`
-      SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre
+      SELECT p.*, m.numero as mesa_numero, m.nombre as mesa_nombre, a.tipo as area_tipo, a.nombre as area_nombre
       FROM pedidos p
       JOIN mesas m ON m.id = p.mesa_id
+      LEFT JOIN areas a ON a.id = m.area_id
       WHERE p.id = ?
     `).get(id);
 
@@ -196,13 +198,14 @@ class PedidoRepository {
     if (!ordenDestino) {
       const mesero = mesero_id ? this.db.prepare('SELECT id, nombre FROM usuarios WHERE id = ?').get(mesero_id) : null;
       const r = this.db.prepare(`
-        INSERT INTO pedidos (mesa_id, mesa_numero, mesero_id, mesero_nombre, estado, total, nota, cliente_nombre, cliente_telefono, cliente_direccion, hora_recogida)
-        VALUES (?, ?, ?, ?, 'ABIERTO', 0, ?, ?, ?, ?, ?)
+        INSERT INTO pedidos (mesa_id, mesa_numero, mesero_id, mesero_nombre, estado, total, nota, cliente_nombre, cliente_telefono, cliente_direccion, hora_recogida, uuid)
+        VALUES (?, ?, ?, ?, 'ABIERTO', 0, ?, ?, ?, ?, ?, ?)
       `).run(
         mesaDestino.id, mesaDestino.numero || mesaDestino.nombre,
         mesero?.id || null, mesero?.nombre || null,
         origen.nota || null, origen.cliente_nombre || null, origen.cliente_telefono || null,
-        origen.cliente_direccion || null, origen.hora_recogida || null
+        origen.cliente_direccion || null, origen.hora_recogida || null,
+        generateUUID()
       );
       ordenDestino = this.db.prepare('SELECT * FROM pedidos WHERE id = ?').get(r.lastInsertRowid);
 

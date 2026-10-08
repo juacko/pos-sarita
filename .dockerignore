@@ -1,0 +1,43 @@
+# Dependencias
+node_modules/
+
+# Base de datos local (se genera al arrancar)
+data/
+database.sqlite
+
+# Git y docs
+.git/
+.gitignore
+*.md
+docs/
+
+# Tests (no necesarios en producción)
+tests/
+vitest.config.mjs
+
+# SSL (se monta como volumen si se necesita)
+ssl/
+
+# Archivos temporales de impresión
+prints/
+
+# Entorno
+.env
+.env.*
+
+# Archivos obsoletos
+CAJA
+COCINA2
+test*.js
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore

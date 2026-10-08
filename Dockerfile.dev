@@ -1,0 +1,23 @@
+# ─── Dockerfile para desarrollo con hot reload ───
+FROM node:20-slim
+
+WORKDIR /app
+
+# better-sqlite3 necesita compilar binarios nativos
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm ci && npm cache clean --force
+
+# El código se monta como volumen (bind mount) para hot reload
+# No se copia aquí — viene del docker-compose.override.yml
+
+RUN mkdir -p data prints
+
+EXPOSE 3000
+
+CMD ["node", "--watch", "server/index.js"]

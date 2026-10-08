@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 class ConfigRepository {
   constructor(database = defaultDb) {
@@ -15,9 +16,9 @@ class ConfigRepository {
 
   actualizar(clave, valorStr) {
     this.db.prepare(`
-      INSERT INTO configuracion (clave, valor, updated_at) VALUES (?, ?, datetime('now'))
+      INSERT INTO configuracion (clave, valor, updated_at, uuid) VALUES (?, ?, datetime('now'), ?)
       ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, updated_at = datetime('now')
-    `).run(clave, valorStr);
+    `).run(clave, valorStr, generateUUID());
   }
 }
 

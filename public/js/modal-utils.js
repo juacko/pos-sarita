@@ -3,10 +3,44 @@
  * Reemplaza los popups nativos confirm(), prompt() y alert() del navegador por modales estilizados.
  */
 
-// Interceptor global de fetch para enviar el header x-session-token si hay usuario en localStorage
+// Interceptor global de fetch para enviar el header x-session-token y manejar expiración de sesión (401)
 (function() {
   const originalFetch = window.fetch;
-  window.fetch = function(url, options = {}) {
+
+  function manejarSesionExpirada() {
+    // Evitar múltiples llamadas simultáneas
+    if (window._isHandlingSessionExpiration) return;
+    window._isHandlingSessionExpiration = true;
+
+    localStorage.removeItem('posUser');
+
+    // 1. Si existe pantalla de login en la misma página (index.html, mesero.html)
+    const loginScreen = document.getElementById('loginScreen');
+    const appContent = document.getElementById('appContent');
+    const loginError = document.getElementById('loginError');
+
+    if (loginScreen && appContent) {
+      appContent.style.display = 'none';
+      loginScreen.style.display = 'flex';
+      if (loginError) {
+        loginError.textContent = 'Tu sesión ha expirado. Ingresa tu PIN nuevamente.';
+      }
+      if (typeof clearPin === 'function') clearPin();
+      setTimeout(() => { window._isHandlingSessionExpiration = false; }, 2000);
+      return;
+    }
+
+    // 2. Si estamos en admin.html u otra pantalla sin login integrado, redirigir a index.html
+    const pathname = window.location.pathname || '';
+    if (pathname.includes('admin') || pathname.includes('cocina') || pathname.includes('barra')) {
+      alert('Tu sesión ha expirado. Serás redirigido para iniciar sesión.');
+      window.location.href = '/?expired=1';
+    } else {
+      setTimeout(() => { window._isHandlingSessionExpiration = false; }, 2000);
+    }
+  }
+
+  window.fetch = async function(url, options = {}) {
     try {
       const savedUser = localStorage.getItem('posUser');
       if (savedUser) {
@@ -32,7 +66,16 @@
         }
       }
     } catch (e) {}
-    return originalFetch.call(this, url, options);
+
+    const response = await originalFetch.call(this, url, options);
+
+    // Si recibimos 401 Unauthorized y la llamada NO es el intento de login en sí
+    const urlStr = typeof url === 'string' ? url : (url?.url || '');
+    if (response.status === 401 && !urlStr.includes('/api/usuarios/login')) {
+      manejarSesionExpirada();
+    }
+
+    return response;
   };
 })();
 
@@ -240,7 +283,18 @@ window.mostrarModalPostPago = function({ pedidoId, mesaId, mesaNumero, configPos
   if (modoMesa !== 'preguntar' && modoTicket !== 'preguntar') {
     const acciones = [];
     if (modoTicket === 'si' && pedidoId) {
-      acciones.push(fetch(`/api/pedidos/${pedidoId}/reimprimir`, { method: 'POST' }).catch(console.error));
+      acciones.push(
+        fetch(`/api/pedidos/${pedidoId}/reimprimir`, { method: 'POST' })
+          .then(r => r.json())
+          .then(data => {
+            if (!data.ok && typeof showToast === 'function') {
+              showToast(`🖨️ Error al imprimir ticket: ${data.reason || 'Impresora no respondió'}`, 'error', 8000);
+            }
+          })
+          .catch(() => {
+            if (typeof showToast === 'function') showToast('Error de conexión al imprimir ticket', 'error', 6000);
+          })
+      );
     }
     if (modoMesa === 'si' && mesaId) {
       acciones.push(fetch(`/api/mesas/${mesaId}/liberar`, {
@@ -310,7 +364,18 @@ window.mostrarModalPostPago = function({ pedidoId, mesaId, mesaNumero, configPos
 
     const promesas = [];
     if (doTicket && pedidoId) {
-      promesas.push(fetch(`/api/pedidos/${pedidoId}/reimprimir`, { method: 'POST' }).catch(console.error));
+      promesas.push(
+        fetch(`/api/pedidos/${pedidoId}/reimprimir`, { method: 'POST' })
+          .then(r => r.json())
+          .then(data => {
+            if (!data.ok && typeof showToast === 'function') {
+              showToast(`🖨️ Error al imprimir ticket: ${data.reason || 'Impresora no respondió'}`, 'error', 8000);
+            }
+          })
+          .catch(() => {
+            if (typeof showToast === 'function') showToast('Error de conexión al imprimir ticket', 'error', 6000);
+          })
+      );
     }
     if (doMesa && mesaId) {
       promesas.push(fetch(`/api/mesas/${mesaId}/liberar`, {

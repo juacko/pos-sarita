@@ -60,16 +60,64 @@ function logout() {
   clearPin();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('expired') === '1') {
+    localStorage.removeItem('posUser');
+    currentUser = null;
+    const loginError = document.getElementById('loginError');
+    if (loginError) loginError.textContent = 'Tu sesión ha expirado. Ingresa tu PIN nuevamente.';
+    if (window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    return;
+  }
+
   const saved = localStorage.getItem('posUser');
   if (saved) {
     try {
       currentUser = JSON.parse(saved);
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('appContent').style.display = 'block';
+      window.currentUser = currentUser;
+
+      // Restaurar interfaz inmediatamente para evitar parpadeo y pedir PIN
+      const loginScreen = document.getElementById('loginScreen');
+      const appContent = document.getElementById('appContent');
+      if (loginScreen) loginScreen.style.display = 'none';
+      if (appContent) appContent.style.display = 'block';
       updateUserInfo();
+      // initApp() es ejecutado de forma unificada por mesas.js al cargar el DOM
+
+      // Validar con el backend en segundo plano que la sesión sigue activa
+      fetch('/api/usuarios/me')
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            currentUser = { ...currentUser, ...data.usuario };
+            window.currentUser = currentUser;
+            updateUserInfo();
+          } else if (res.status === 401) {
+            // Sesión expirada o token inválido en el servidor
+            currentUser = null;
+            window.currentUser = null;
+            localStorage.removeItem('posUser');
+            if (loginScreen) loginScreen.style.display = 'flex';
+            if (appContent) appContent.style.display = 'none';
+            const loginError = document.getElementById('loginError');
+            if (loginError) loginError.textContent = 'Tu sesión ha expirado. Ingresa tu PIN nuevamente.';
+            clearPin();
+          }
+        })
+        .catch(() => {
+          // En caso de corte momentáneo de red/offline, no desloguear abruptamente
+        });
     } catch (e) {
       localStorage.removeItem('posUser');
+      currentUser = null;
+      window.currentUser = null;
+      const loginScreen = document.getElementById('loginScreen');
+      const appContent = document.getElementById('appContent');
+      if (loginScreen) loginScreen.style.display = 'flex';
+      if (appContent) appContent.style.display = 'none';
     }
   }
 

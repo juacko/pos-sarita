@@ -1,4 +1,5 @@
 const defaultDb = require('../db');
+const { generateUUID } = require('../sync/utils');
 
 class MesaRepository {
   constructor(db = defaultDb) {
@@ -19,7 +20,7 @@ class MesaRepository {
             WHERE p.mesa_id = m.id AND p.estado = 'CERRADO'
             AND (SELECT COALESCE(SUM(pg.monto), 0) FROM pagos pg WHERE pg.pedido_id = p.id) >= p.total - 0.01
             AND p.id = m.pedido_activo_id
-          ) THEN 1 ELSE 0 END as pedido_pagado,
+          ) THEN 1 ELSE 0 END as es_pedido_pagado,
           (SELECT CASE 
             WHEN EXISTS (
               SELECT 1 FROM pedidos p
@@ -31,7 +32,14 @@ class MesaRepository {
           (CASE WHEN m.estado = 'OCUPADO' AND NOT EXISTS (
             SELECT 1 FROM pedidos p WHERE p.mesa_id = m.id AND p.estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')
           ) THEN CAST((julianday('now') - julianday(COALESCE(m.ocupado_desde, m.updated_at))) * 1440 AS INTEGER)
-          ELSE NULL END) as minutos_sin_pedido
+          ELSE NULL END) as minutos_sin_pedido,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado != 'CANCELADO'), 0) as items_totales,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado = 'LISTO'), 0) as items_listos,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado IN ('PENDIENTE', 'COCINANDO')), 0) as items_pendientes,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado != 'CANCELADO' AND (destino_impresion = 'cocina' OR destino_impresion IS NULL OR destino_impresion = '')), 0) as items_cocina_totales,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado = 'LISTO' AND (destino_impresion = 'cocina' OR destino_impresion IS NULL OR destino_impresion = '')), 0) as items_cocina_listos,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado != 'CANCELADO' AND destino_impresion = 'barra'), 0) as items_barra_totales,
+          COALESCE((SELECT SUM(cantidad) FROM pedido_items WHERE pedido_id = m.pedido_activo_id AND estado = 'LISTO' AND destino_impresion = 'barra'), 0) as items_barra_listos
           FROM mesas m LEFT JOIN areas a ON a.id = m.area_id
           ORDER BY COALESCE(a.orden, 99), a.id, m.numero
       `).all();
@@ -74,7 +82,7 @@ class MesaRepository {
   }
 
   crearArea(nombre, tipo, orden) {
-    const r = this.db.prepare('INSERT INTO areas (nombre, tipo, orden) VALUES (?, ?, ?)').run(nombre, tipo, orden);
+    const r = this.db.prepare('INSERT INTO areas (nombre, tipo, orden, uuid) VALUES (?, ?, ?, ?)').run(nombre, tipo, orden, generateUUID());
     return this.obtenerAreaPorId(r.lastInsertRowid);
   }
 
@@ -122,13 +130,18 @@ class MesaRepository {
   }
 
   crearMesa(numero, nombre, capacidad, area_id, estado) {
-    const r = this.db.prepare('INSERT INTO mesas (numero, nombre, capacidad, area_id, es_virtual, estado) VALUES (?, ?, ?, ?, 0, ?)')
-      .run(numero, nombre, capacidad, area_id, estado);
+    const r = this.db.prepare('INSERT INTO mesas (numero, nombre, capacidad, area_id, es_virtual, estado, uuid) VALUES (?, ?, ?, ?, 0, ?, ?)')
+      .run(numero, nombre, capacidad, area_id, estado, generateUUID());
     return this.obtenerMesaPorId(r.lastInsertRowid);
   }
 
   obtenerMesaPorId(id) {
-    return this.db.prepare('SELECT * FROM mesas WHERE id = ?').get(id);
+    return this.db.prepare(`
+      SELECT m.*, a.nombre as area_nombre, a.tipo as area_tipo
+      FROM mesas m
+      LEFT JOIN areas a ON a.id = m.area_id
+      WHERE m.id = ?
+    `).get(id);
   }
 
   obtenerAreaPorTipo(tipo) {
@@ -140,8 +153,8 @@ class MesaRepository {
   }
 
   crearMesaVirtual(numero, nombre, area_id) {
-    const r = this.db.prepare("INSERT INTO mesas (numero, nombre, estado, es_virtual, area_id) VALUES (?, ?, 'LIBRE', 1, ?)")
-      .run(numero, nombre, area_id);
+    const r = this.db.prepare("INSERT INTO mesas (numero, nombre, estado, es_virtual, area_id, uuid) VALUES (?, ?, 'LIBRE', 1, ?, ?)")
+      .run(numero, nombre, area_id, generateUUID());
     return this.obtenerMesaPorId(r.lastInsertRowid);
   }
 
@@ -160,19 +173,56 @@ class MesaRepository {
 
   tienePedidoActivo(mesaId) {
     return this.db.prepare(
-      "SELECT id FROM pedidos WHERE mesa_id = ? AND estado IN ('ABIERTO','EN_PREPARACION','LISTO')"
+      "SELECT id FROM pedidos WHERE mesa_id = ? AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')"
     ).get(mesaId);
+  }
+
+  tieneSaldoPendiente(mesaId) {
+    const mesa = this.obtenerMesaPorId(mesaId);
+    if (!mesa) return null;
+
+    let row = null;
+    if (mesa.pedido_activo_id) {
+      row = this.db.prepare(`
+        SELECT p.id, p.total, p.estado,
+               COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.pedido_id = p.id), 0) as pagado,
+               COALESCE((SELECT SUM(CASE WHEN d.tipo = 'porcentaje' THEN (p.total * d.valor / 100) ELSE d.valor END) FROM descuentos d WHERE d.pedido_id = p.id), 0) as descuento
+        FROM pedidos p
+        WHERE p.id = ? AND p.estado != 'CANCELADO'
+      `).get(mesa.pedido_activo_id);
+    }
+    if (!row) {
+      row = this.db.prepare(`
+        SELECT p.id, p.total, p.estado,
+               COALESCE((SELECT SUM(pg.monto) FROM pagos pg WHERE pg.pedido_id = p.id), 0) as pagado,
+               COALESCE((SELECT SUM(CASE WHEN d.tipo = 'porcentaje' THEN (p.total * d.valor / 100) ELSE d.valor END) FROM descuentos d WHERE d.pedido_id = p.id), 0) as descuento
+        FROM pedidos p
+        WHERE p.mesa_id = ? AND p.estado != 'CANCELADO'
+        ORDER BY p.id DESC LIMIT 1
+      `).get(mesaId);
+    }
+    if (!row) return null;
+    const pendiente = Math.max(0, row.total - row.descuento - row.pagado);
+    return pendiente > 0.01 ? { pedido_id: row.id, total: row.total, pagado: row.pagado, pendiente } : null;
   }
 
   contarPedidosActivos(mesaId) {
     return this.db.prepare("SELECT COUNT(*) as c FROM pedidos WHERE mesa_id = ? AND estado IN ('ABIERTO','EN_PREPARACION','LISTO','ENTREGADO')").get(mesaId).c;
   }
 
-  inactivarMesa(id) {
-    this.db.prepare(`
-      UPDATE mesas SET estado = 'INACTIVO', version = version + 1, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
+  inactivarMesa(id, version = null) {
+    if (version !== null && version !== undefined) {
+      const info = this.db.prepare(`
+        UPDATE mesas SET estado = 'INACTIVO', version = version + 1, updated_at = datetime('now')
+        WHERE id = ? AND version = ?
+      `).run(id, version);
+      if (info.changes === 0) return null;
+    } else {
+      this.db.prepare(`
+        UPDATE mesas SET estado = 'INACTIVO', version = version + 1, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(id);
+    }
     return this.obtenerMesaPorId(id);
   }
 
@@ -212,9 +262,9 @@ class MesaRepository {
 
   insertLog(mesaId, accion, mesero_id, detalle) {
     this.db.prepare(`
-      INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle)
-      VALUES (?, ?, ?, ?)
-    `).run(mesaId, accion, mesero_id, detalle);
+      INSERT INTO logs_mesas (mesa_id, accion, mesero_id, detalle, uuid)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(mesaId, accion, mesero_id, detalle, generateUUID());
   }
 
   updateMesaLiberar(mesaId, version) {
@@ -245,8 +295,19 @@ class MesaRepository {
     return info.changes;
   }
 
-  updateMesaTransferir(mesaId, nuevo_mesero_id, nuevo_mesero_nombre) {
-    this.db.prepare(`
+  updateMesaTransferir(mesaId, nuevo_mesero_id, nuevo_mesero_nombre, version = null) {
+    if (version !== null && version !== undefined) {
+      const info = this.db.prepare(`
+        UPDATE mesas SET
+          mesero_id = ?,
+          mesero_nombre = ?,
+          version = version + 1,
+          updated_at = datetime('now')
+        WHERE id = ? AND version = ?
+      `).run(nuevo_mesero_id, nuevo_mesero_nombre, mesaId, version);
+      return info.changes;
+    }
+    const info = this.db.prepare(`
       UPDATE mesas SET
         mesero_id = ?,
         mesero_nombre = ?,
@@ -254,6 +315,7 @@ class MesaRepository {
         updated_at = datetime('now')
       WHERE id = ?
     `).run(nuevo_mesero_id, nuevo_mesero_nombre, mesaId);
+    return info.changes;
   }
 }
 

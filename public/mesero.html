@@ -11,6 +11,13 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1e3a5f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
   <script src="/js/modal-utils.js"></script>
   <style>
     * {
@@ -22,6 +29,12 @@
       padding: 0;
       min-height: 100%;
       background: #f0f2f5;
+    }
+
+    #appContent {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
     }
 
     /* === LOGIN === */
@@ -111,12 +124,14 @@
       background: linear-gradient(135deg, #16294a 0%, #1e3a5f 55%, #2d5a87 100%);
       color: white;
       padding: 12px 16px;
+      padding-top: calc(12px + env(safe-area-inset-top, 0px));
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-shrink: 0;
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 1000;
       box-shadow: 0 2px 12px rgba(22, 41, 74, 0.25);
     }
 
@@ -165,10 +180,79 @@
       background: rgba(255, 255, 255, 0.3);
     }
 
+    /* === MENU MAS OPCIONES (3 PUNTOS) === */
+    .mesero-menu-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .mesero-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.1);
+      min-width: 200px;
+      overflow: hidden;
+      z-index: 2000;
+      display: none;
+      flex-direction: column;
+      border: 1px solid #E5E7EB;
+      animation: menuFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes menuFadeIn {
+      from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .mesero-dropdown-menu.show {
+      display: flex;
+    }
+
+    .mesero-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      color: #1F2937;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      background: none;
+      border: none;
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .mesero-menu-item:hover, .mesero-menu-item:active {
+      background: #F3F4F6;
+    }
+
+    .mesero-menu-item.danger {
+      color: #DC2626;
+      border-top: 1px solid #F3F4F6;
+    }
+
+    .mesero-menu-item.danger:hover, .mesero-menu-item.danger:active {
+      background: #FEF2F2;
+    }
+
+    .mesero-menu-item .menu-icon {
+      font-size: 1.15rem;
+      width: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     /* === TABLE GRID === */
     #mesasView {
-      height: calc(100vh - 56px);
-      overflow-y: auto;
+      min-height: calc(100vh - 56px);
+      min-height: calc(100dvh - 56px);
     }
 
     .mesas-grid-mesero {
@@ -251,8 +335,22 @@
     }
 
     .mesa-card-mesero .num {
-      font-size: 1.9rem;
+      font-size: 1.6rem;
       font-weight: 800;
+      line-height: 1.15;
+      margin-top: 2px;
+      text-align: center;
+      word-break: break-word;
+      padding: 0 4px;
+    }
+
+    .mesa-card-mesero .num.long-title {
+      font-size: 1.25rem;
+    }
+
+    .mesa-card-mesero .mesa-nombre-sub {
+      font-size: 0.75rem;
+      color: #6B7280;
       line-height: 1.1;
       margin-top: 2px;
     }
@@ -356,16 +454,23 @@
 
     .toast-mesero {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 99999;
-      padding: 12px 18px;
-      border-radius: 10px;
+      padding: 7px 16px;
+      border-radius: 20px;
       color: #fff;
       font-weight: 600;
-      font-size: 0.85rem;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
-      animation: toastIn .25s ease;
+      font-size: 0.78rem;
+      letter-spacing: 0.01em;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      animation: toastIn .22s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .toast-mesero.ok {
@@ -384,12 +489,12 @@
     @keyframes toastIn {
       from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translate(-50%, 8px);
       }
 
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translate(-50%, 0);
       }
     }
 
@@ -405,6 +510,7 @@
     .pos-header {
       background: white;
       padding: 10px 16px;
+      padding-top: calc(10px + env(safe-area-inset-top, 0px));
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -573,12 +679,12 @@
     .cart-bar {
       background: white;
       border-top: 2px solid #E5E7EB;
-      padding: 8px 16px 14px;
+      padding: 8px 16px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
       position: sticky;
       bottom: 0;
       z-index: 100;
       box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
-      flex-shrink: 0;
     }
 
     .cart-bar .cart-summary {
@@ -1135,16 +1241,37 @@
     <div class="header-mesero">
       <h1>🍽️ Mesero</h1>
       <div class="header-mesero-info">
-        <span id="userBadge"></span>
         <a href="/cocina.html" target="_blank" class="btn-icon" title="Pantalla cocina">👨‍🍳</a>
         <a href="/barra.html" target="_blank" class="btn-icon" title="Pantalla barra">🍹</a>
-        <a id="adminLink" href="/admin.html" target="_blank" class="btn-icon" title="Admin" style="display:none;">⚙️</a>
-        <button class="btn-icon" onclick="logout()" title="Salir">✕</button>
+        <span id="userBadge"></span>
+
+        <!-- Menú de más opciones (3 puntos) -->
+        <div class="mesero-menu-container" id="meseroMenuContainer">
+          <button class="btn-icon" id="btnMeseroMore" onclick="toggleMenuMesero(event)" title="Más opciones">⋮</button>
+          <div class="mesero-dropdown-menu" id="meseroDropdownMenu">
+            <button class="mesero-menu-item" id="btnInstallPWA" onclick="instalarPWA(); toggleMenuMesero();" style="display:none;">
+              <span class="menu-icon">📲</span>
+              <span>Instalar App</span>
+            </button>
+            <button class="mesero-menu-item" id="btnFullscreenMesas" onclick="togglePantallaCompleta(); toggleMenuMesero();">
+              <span class="menu-icon">⛶</span>
+              <span>Pantalla completa</span>
+            </button>
+            <a id="adminLink" href="/admin.html" target="_blank" class="mesero-menu-item" style="display:none;" onclick="toggleMenuMesero();">
+              <span class="menu-icon">⚙️</span>
+              <span>Configuración Admin</span>
+            </a>
+            <button class="mesero-menu-item danger" onclick="toggleMenuMesero(); logout();">
+              <span class="menu-icon">✕</span>
+              <span>Cerrar sesión</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- MESAS VIEW -->
-    <div id="mesasView" style="padding-bottom: 90px;">
+    <div id="mesasView" style="padding-bottom: calc(30px + env(safe-area-inset-bottom, 0px));">
       <div style="padding:12px 16px 4px;display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:0.85rem;color:#6B7280;">
           <span id="mesasCount">0</span> mesas · <span id="ocupadasCount">0</span> ocupadas
@@ -1170,7 +1297,7 @@
           <div class="table-name" id="posTableName">Mesa 1</div>
           <div class="table-status" id="posTableStatus">OCUPADO</div>
         </div>
-        <div style="width:40px;"></div>
+        <button class="back-btn" onclick="togglePantallaCompleta()" title="Pantalla Completa" style="font-size:1.1rem;">⛶</button>
       </div>
       <div id="posClienteBar" class="pos-cliente-bar" style="display:none; flex-shrink:0;"></div>
 
@@ -1196,9 +1323,9 @@
 
       <!-- BARRA DE ACCIONES INFERIOR (Solo visible en Resumen) -->
       <div id="mesaActionBar"
-        style="padding:10px 14px 14px 14px; background:white; border-top:1px solid #E2E8F0; display:none; flex-direction:column; gap:8px; position:sticky; bottom:0; z-index:90; box-shadow:0 -4px 12px rgba(0,0,0,0.08); flex-shrink:0;">
+        style="padding:10px 14px; padding-bottom:calc(12px + env(safe-area-inset-bottom, 0px)); background:white; border-top:1px solid #E2E8F0; display:none; flex-direction:column; gap:8px; position:sticky; bottom:0; z-index:90; box-shadow:0 -4px 12px rgba(0,0,0,0.08); flex-shrink:0;">
         
-        <button class="btn btn-primary"
+        <button id="btnActionAgregarProductos" class="btn btn-primary"
           style="width:100%; background:#10B981; border-color:#10B981; padding:12px; font-size:1.05rem; font-weight:800; border-radius:12px; box-shadow:0 4px 6px -1px rgba(16, 185, 129, 0.25);"
           onclick="mostrarCatalogo(true)">➕ Agregar productos</button>
 

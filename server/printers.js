@@ -216,6 +216,19 @@ function tipoLabel(areaTipo) {
   return areaTipo === 'DELIVERY' ? 'DELIVERY' : areaTipo === 'PARA_LLEVAR' ? 'PARA LLEVAR' : 'SALON';
 }
 
+function formatMesaDisplayLabel(mesa) {
+  if (!mesa) return '';
+  if (mesa.area_tipo === 'DELIVERY') return 'DELIVERY';
+  if (mesa.area_tipo === 'PARA_LLEVAR') return 'PARA LLEVAR';
+  if (mesa.nombre && mesa.nombre.trim() && !/^Mesa \d+$/i.test(mesa.nombre.trim())) {
+    return mesa.nombre.trim();
+  }
+  if (mesa.area_nombre && mesa.area_nombre.toLowerCase() !== 'salón principal' && mesa.area_nombre.toLowerCase() !== 'salon principal') {
+    return `${mesa.area_nombre} ${mesa.numero || ''}`.trim();
+  }
+  return mesa.nombre ? mesa.nombre.trim() : `Mesa ${mesa.numero || ''}`.trim();
+}
+
 // Solo delivery y para llevar necesitan datos del cliente en el ticket
 function clienteRelevante(mesa) {
   const tipo = mesa && mesa.area_tipo;
@@ -269,11 +282,11 @@ function headerLines(pedido, mesa, extraTitle) {
     lines.push(sepLine('=', 'caja'));
   }
   lines.push(blankLine());
-  const mesaNum = mesa && (mesa.numero || mesa.nombre);
+  const mesaLabel = formatMesaDisplayLabel(mesa);
   const ahora = new Date();
   const hora = ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
   const fecha = ahora.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  lines.push(twoCol(`MESA: ${mesaNum || ''}`, `HORA: ${hora}`, cols));
+  lines.push(twoCol(`MESA: ${mesaLabel}`, `HORA: ${hora}`, cols));
   lines.push(twoCol(`PEDIDO: #${pedido.id}`, `FECHA: ${fecha}`, cols));
   if (pedido.mesero_nombre) lines.push({ text: `MESERO: ${pedido.mesero_nombre}`, align: 'L' });
   return lines;
@@ -415,7 +428,7 @@ function generateComandaText(pedido, items, mesa) {
   lines.push(bigText('COMANDA'));
   lines.push(sepLine('=', 'cocina'));
   lines.push(blankLine());
-  lines.push({ text: `MESA: ${mesa && (mesa.numero || mesa.nombre)}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
+  lines.push({ text: `MESA: ${formatMesaDisplayLabel(mesa)}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
   lines.push(twoCol(`TIPO: ${tipoLabel(mesa && mesa.area_tipo)}`, `HORA: ${hora}`, 48));
   if (clienteRelevante(mesa) && pedido.cliente_nombre) {
     lines.push({ text: `Cliente: ${pedido.cliente_nombre}`, align: 'L' });
@@ -471,17 +484,42 @@ function printRawEscPos(buffer, printerName) {
     console.log("[PRINTER DEBUG] Ejecutando CMD:", cmd);
     const output = execSync(cmd, { timeout: 20000, stdio: 'pipe', encoding: 'utf8' });
 
-    fs.unlinkSync(tmpFile);
-
-    if (/^OK:/.test(output.trim())) {
+    const trimmed = output.trim();
+    if (/^OK:/.test(trimmed)) {
       console.log(`[PRINTER ${printerName}] Impreso en "${printerDisplayName}"`);
       return { ok: true };
     }
-    throw new Error('Salida inesperada: ' + output.trim());
+
+    if (/^OFFLINE:/.test(trimmed)) {
+      const parts = trimmed.split(':');
+      const motivoDetalle = parts.slice(2).join(':') || `Impresora '${printerDisplayName}' desconectada`;
+      console.warn(`[PRINTER ${printerName}] Encolado en Windows pero impresora offline:`, motivoDetalle);
+      return {
+        ok: false,
+        encolado: true,
+        reason: `${motivoDetalle} (en cola, imprimirá al conectar)`
+      };
+    }
+
+    throw new Error('Salida inesperada: ' + trimmed);
   } catch (err) {
     try { fs.unlinkSync(tmpFile); } catch (e) {}
 
     console.error(`[PRINTER ${printerName}] Error raw:`, err.message);
+
+    let cleanReason = `Error en impresora '${printerDisplayName}'`;
+    if (err.message.includes("desconectada")) {
+      cleanReason = `Impresora '${printerDisplayName}' desconectada (cable USB desconectado)`;
+    } else if (err.message.includes("estado de error") || err.message.includes("sin papel")) {
+      cleanReason = `Impresora '${printerDisplayName}' en estado de error o sin papel`;
+    } else if (err.message.includes("OpenPrinter fallo") || err.message.includes("1801")) {
+      cleanReason = `Impresora '${printerDisplayName}' no encontrada o no disponible en Windows`;
+    } else if (err.message.includes("WritePrinter fallo")) {
+      cleanReason = `Error al escribir en la cola de '${printerDisplayName}'`;
+    } else {
+      const match = err.message.match(/Impresora '[^']+' [^\r\n]+/);
+      if (match) cleanReason = match[0].trim();
+    }
 
     const fallbackDir = path.join(__dirname, '..', 'prints');
     if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
@@ -489,7 +527,7 @@ function printRawEscPos(buffer, printerName) {
     fs.writeFileSync(path.join(fallbackDir, filename), buffer);
     console.log(`[PRINTER ${printerName}] Guardado en prints/${filename}`);
 
-    return { ok: false, reason: err.message };
+    return { ok: false, reason: cleanReason };
   }
 }
 
@@ -513,7 +551,7 @@ function generateComandaBarraText(pedido, items, mesa) {
   lines.push(bigText('BARRA'));
   lines.push(sepLine('=', 'barra'));
   lines.push(blankLine());
-  lines.push({ text: `MESA: ${mesa && (mesa.numero || mesa.nombre)}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
+  lines.push({ text: `MESA: ${formatMesaDisplayLabel(mesa)}`, align: 'L', bold: true, size: SZ_DOUBLE_W });
   lines.push(twoCol(`TIPO: ${tipoLabel(mesa && mesa.area_tipo)}`, `HORA: ${hora}`, 48));
   if (clienteRelevante(mesa) && pedido.cliente_nombre) {
     lines.push({ text: `Cliente: ${pedido.cliente_nombre}`, align: 'L' });
@@ -574,14 +612,24 @@ function printComanda(pedido, items, mesa) {
   const itemsCocina = items.filter(i => ['cocina', 'ambos'].includes(i.destino_impresion || 'cocina'));
   const itemsBarra  = items.filter(i => ['barra',  'ambos'].includes(i.destino_impresion || 'cocina'));
 
-  const results = [];
+  const errors = [];
   if (itemsCocina.length && cfg.cocina !== false) {
-    results.push(printRawEscPos(generateComandaText(pedido, itemsCocina, mesa), 'cocina'));
+    const resCocina = printRawEscPos(generateComandaText(pedido, itemsCocina, mesa), 'cocina');
+    if (resCocina && !resCocina.ok && resCocina.reason !== 'disabled') {
+      errors.push(`Cocina (${resCocina.reason})`);
+    }
   }
   if (itemsBarra.length && cfg.barra !== false) {
-    results.push(printRawEscPos(generateComandaBarraText(pedido, itemsBarra, mesa), 'barra'));
+    const resBarra = printRawEscPos(generateComandaBarraText(pedido, itemsBarra, mesa), 'barra');
+    if (resBarra && !resBarra.ok && resBarra.reason !== 'disabled') {
+      errors.push(`Barra (${resBarra.reason})`);
+    }
   }
-  return results[0] || { ok: true };
+
+  if (errors.length > 0) {
+    return { ok: false, reason: errors.join(', ') };
+  }
+  return { ok: true };
 }
 
 function generateResumenMovimientosText(fecha, movimientos, totales) {

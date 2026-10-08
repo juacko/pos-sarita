@@ -1,4 +1,5 @@
 const Database = require('better-sqlite3');
+const crypto = require('crypto');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'pos.db');
@@ -184,7 +185,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     codigo TEXT UNIQUE NOT NULL,
     monto_inicial REAL NOT NULL,
-    monto_restante REAL NOT NULL,
+    monto_restante REAL NOT NULL CHECK(monto_restante >= 0),
     cliente_nombre TEXT,
     activo INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -253,6 +254,13 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME NOT NULL,
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS sync_meta (
+    tabla TEXT PRIMARY KEY,
+    last_push_at DATETIME,
+    last_pull_at DATETIME,
+    last_push_id INTEGER DEFAULT 0
   );
 `);
 
@@ -356,7 +364,8 @@ migrarTipoPastaCombos();
 function rebuildSinCheck(nombre, createSql) {
   const info = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(nombre);
   if (!info || !info.sql) return;
-  if (!/CHECK\s*\(/i.test(info.sql)) return;
+  // Solo reconstruir si la tabla aún conserva el CHECK restrictivo en método/método_pago
+  if (!/metodo(_pago)?\s+TEXT[^,]+CHECK/i.test(info.sql)) return;
   try {
     db.exec('PRAGMA foreign_keys = OFF');
     db.exec(`ALTER TABLE ${nombre} RENAME TO ${nombre}_old`);
@@ -399,6 +408,34 @@ rebuildSinCheck('caja_movimientos', `
   )
 `);
 
+function asegurarCheckVales() {
+  const info = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='vales'").get();
+  if (!info || !info.sql) return;
+  if (/CHECK\s*\(\s*monto_restante\s*>=\s*0\s*\)/i.test(info.sql)) return;
+  try {
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('ALTER TABLE vales RENAME TO vales_old');
+    db.exec(`
+      CREATE TABLE vales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT UNIQUE NOT NULL,
+        monto_inicial REAL NOT NULL,
+        monto_restante REAL NOT NULL CHECK(monto_restante >= 0),
+        cliente_nombre TEXT,
+        activo INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    db.exec('INSERT INTO vales SELECT * FROM vales_old');
+    db.exec('DROP TABLE vales_old');
+    db.exec('PRAGMA foreign_keys = ON');
+  } catch (e) {
+    db.exec('PRAGMA foreign_keys = ON');
+    console.error('Error al migrar vales con CHECK:', e.message);
+  }
+}
+asegurarCheckVales();
+
 // Tras renombrar, SQLite reescribe las FK de otras tablas hacia <nombre>_old;
 // reparar cualquier referencia colgante (p.ej. pagos_log.pago_id -> pagos_old).
 function repararFksHuerfanas(nombreViejo) {
@@ -417,6 +454,85 @@ function repararFksHuerfanas(nombreViejo) {
   }
 }
 repararFksHuerfanas('pagos_old');
+
+// ─── Migración: columnas de sincronización (uuid, sync_status) ───
+function migrateSync() {
+  // Tablas transaccionales: necesitan uuid + sync_status + synced_at
+  const transaccionales = [
+    'pedidos', 'pedido_items', 'pagos', 'descuentos',
+    'caja_sesiones', 'caja_movimientos', 'pagos_log', 'logs_mesas'
+  ];
+
+  // Tablas de catálogo: solo necesitan uuid + updated_at
+  const catalogo = [
+    'usuarios', 'areas', 'mesas', 'categorias', 'productos',
+    'variantes', 'modificadores', 'opciones_mod', 'agregados', 'vales'
+  ];
+
+  const getCols = (tabla) =>
+    db.prepare(`SELECT name FROM pragma_table_info('${tabla}')`).all().map(c => c.name);
+
+  // Agregar columnas a tablas transaccionales
+  for (const tabla of transaccionales) {
+    const cols = getCols(tabla);
+    if (!cols.includes('uuid'))
+      db.exec(`ALTER TABLE ${tabla} ADD COLUMN uuid TEXT`);
+    if (!cols.includes('sync_status'))
+      db.exec(`ALTER TABLE ${tabla} ADD COLUMN sync_status TEXT DEFAULT 'pending'`);
+    if (!cols.includes('synced_at'))
+      db.exec(`ALTER TABLE ${tabla} ADD COLUMN synced_at DATETIME`);
+  }
+
+  // Agregar columna uuid a tablas de catálogo
+  for (const tabla of catalogo) {
+    const cols = getCols(tabla);
+    if (!cols.includes('uuid'))
+      db.exec(`ALTER TABLE ${tabla} ADD COLUMN uuid TEXT`);
+    // updated_at: algunas tablas ya la tienen (mesas), agregar a las que no
+    if (!cols.includes('updated_at'))
+      db.exec(`ALTER TABLE ${tabla} ADD COLUMN updated_at DATETIME`);
+  }
+
+  // configuracion ya tiene updated_at pero necesita uuid
+  const confCols = getCols('configuracion');
+  if (!confCols.includes('uuid'))
+    db.exec('ALTER TABLE configuracion ADD COLUMN uuid TEXT');
+
+  // Crear índices para columnas de sync
+  const allSyncTables = [...transaccionales, ...catalogo, 'configuracion'];
+  for (const tabla of allSyncTables) {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${tabla}_uuid ON ${tabla}(uuid)`);
+  }
+
+  // Índice para búsqueda rápida de registros pendientes de sincronización
+  for (const tabla of transaccionales) {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${tabla}_sync_status ON ${tabla}(sync_status)`);
+  }
+
+  // Backfill: generar UUID para registros existentes que no tengan uno
+  backfillUuids([...allSyncTables]);
+}
+
+function backfillUuids(tablas) {
+  const backfill = db.transaction(() => {
+    for (const tabla of tablas) {
+      // Determinar la columna PK de la tabla
+      const pkCol = tabla === 'configuracion' ? 'clave' : 'id';
+
+      const sinUuid = db.prepare(`SELECT ${pkCol} FROM ${tabla} WHERE uuid IS NULL`).all();
+      if (sinUuid.length === 0) continue;
+
+      const update = db.prepare(`UPDATE ${tabla} SET uuid = ? WHERE ${pkCol} = ?`);
+      for (const row of sinUuid) {
+        update.run(crypto.randomUUID(), row[pkCol]);
+      }
+      console.log(`[SYNC] Backfill: ${sinUuid.length} UUIDs generados para ${tabla}`);
+    }
+  });
+  backfill();
+}
+
+migrateSync();
 
 const insertInitialData = db.transaction(() => {
   const count = db.prepare('SELECT COUNT(*) as c FROM usuarios').get();
@@ -491,7 +607,7 @@ const insertInitialData = db.transaction(() => {
 
   // Configuración por defecto
   const configDefaults = {
-    hora_corte: '23:00',
+    hora_corte: '23:59',
     modal_pago: JSON.stringify({
       mostrar_descuento: true,
       mostrar_vale: true,
@@ -511,6 +627,22 @@ const insertInitialData = db.transaction(() => {
   }
 });
 
-insertInitialData();
+// ─── Índices para optimizar consultas frecuentes y reportes ───
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido_id ON pedido_items(pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_pedido_items_pedido_estado ON pedido_items(pedido_id, estado);
+  CREATE INDEX IF NOT EXISTS idx_pagos_pedido_id ON pagos(pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_pagos_created_at ON pagos(created_at);
+  CREATE INDEX IF NOT EXISTS idx_pedidos_mesa_estado ON pedidos(mesa_id, estado);
+  CREATE INDEX IF NOT EXISTS idx_pedidos_created_at ON pedidos(created_at);
+  CREATE INDEX IF NOT EXISTS idx_descuentos_pedido_id ON descuentos(pedido_id);
+  CREATE INDEX IF NOT EXISTS idx_caja_sesiones_estado ON caja_sesiones(estado);
+  CREATE INDEX IF NOT EXISTS idx_caja_movimientos_created_at ON caja_movimientos(created_at);
+  CREATE INDEX IF NOT EXISTS idx_mesas_area_id ON mesas(area_id);
+  CREATE INDEX IF NOT EXISTS idx_variantes_producto_id ON variantes(producto_id);
+  CREATE INDEX IF NOT EXISTS idx_modificadores_producto_id ON modificadores(producto_id);
+  CREATE INDEX IF NOT EXISTS idx_opciones_mod_modificador_id ON opciones_mod(modificador_id);
+  CREATE INDEX IF NOT EXISTS idx_agregados_producto_id ON agregados(producto_id);
+`);
 
 module.exports = db;

@@ -145,7 +145,8 @@ class AdminCajaController {
 
   abrirCaja(req, res) {
     try {
-      const { usuario_id, fondo_inicial, notas } = req.body;
+      const { fondo_inicial, notas } = req.body;
+      const usuario_id = req.usuario?.id || req.body.usuario_id;
       if (!usuario_id) return res.status(400).json({ error: 'usuario_id requerido' });
 
       const rolCheck = adminPedidoRepo.verificarRolAdminCajero(usuario_id);
@@ -177,7 +178,8 @@ class AdminCajaController {
 
   cerrarCaja(req, res) {
     try {
-      const { efectivo_contado, notas, usuario_id } = req.body;
+      const { efectivo_contado, notas } = req.body;
+      const usuario_id = req.usuario?.id || req.body.usuario_id;
       if (!usuario_id) return res.status(400).json({ error: 'usuario_id requerido' });
       const rolCheck = adminPedidoRepo.verificarRolAdminCajero(usuario_id);
       if (rolCheck.error) return res.status(403).json({ error: rolCheck.error });

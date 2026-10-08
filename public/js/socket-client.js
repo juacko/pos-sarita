@@ -24,6 +24,23 @@ socket.on('mesa:updated', () => {
   }
 });
 
+socket.on('pedido:actualizado', (pedido) => {
+  if (typeof loadMesas === 'function') loadMesas();
+  if (typeof pedidoExistente !== 'undefined' && pedidoExistente && pedido && pedido.id === pedidoExistente.id) {
+    if (typeof verPedidoExistente === 'function' && typeof posMesaId !== 'undefined' && posMesaId) {
+      verPedidoExistente(posMesaId);
+    }
+  }
+});
+
+socket.on('pedido:items_updated', (data) => {
+  if (typeof pedidoExistente !== 'undefined' && pedidoExistente && data && data.pedidoId == pedidoExistente.id) {
+    if (typeof verPedidoExistente === 'function' && typeof posMesaId !== 'undefined' && posMesaId) {
+      verPedidoExistente(posMesaId);
+    }
+  }
+});
+
 socket.on('stock:actualizado', (data) => {
   if (typeof productos !== 'undefined' && Array.isArray(productos)) {
     const p = productos.find(x => x.id === data.producto_id);

@@ -1,4 +1,9 @@
-let currentUser = null;
+let currentUser = window.currentUser || (() => {
+  try {
+    const s = localStorage.getItem('posUser');
+    return s ? JSON.parse(s) : null;
+  } catch (e) { return null; }
+})();
 let selectedMesa = null;
 let pedidoActual = [];
 let allMesas = [];
@@ -9,6 +14,19 @@ let clienteModalTipo = null;
 let clienteModalAccion = null;
 let mesaPendiente = null;
 let canalesOcultos = localStorage.getItem('canalesAdminOculto') === '1';
+let configAvancePlatos = 'resumen';
+
+async function loadConfigAvancePlatos() {
+  try {
+    const res = await fetch('/api/configuracion/avance_platos');
+    if (res.ok) {
+      const val = await res.json();
+      configAvancePlatos = val || 'resumen';
+    }
+  } catch (e) {
+    configAvancePlatos = 'resumen';
+  }
+}
 
 function toggleCanales() {
   canalesOcultos = !canalesOcultos;
@@ -20,7 +38,8 @@ function toggleCanales() {
 }
 
 async function initApp() {
-  await loadAreas();
+  if (!currentUser) return;
+  await Promise.all([loadAreas(), loadConfigAvancePlatos()]);
   await loadMesas();
   await loadUsuarios();
   await loadEstadoCajaHeader();
@@ -31,12 +50,10 @@ async function initApp() {
   const loginScreen = document.getElementById('loginScreen');
   const appContent = document.getElementById('appContent');
 
-  if (currentUser) {
-    loginScreen.style.display = 'none';
-    appContent.style.display = 'block';
-    updateUserInfo();
-    loadEstadoCajaHeader();
-  }
+  if (loginScreen) loginScreen.style.display = 'none';
+  if (appContent) appContent.style.display = 'block';
+  updateUserInfo();
+  loadEstadoCajaHeader();
 }
 
 function leerMesaDesdeURL() {
@@ -60,6 +77,7 @@ async function abrirMesaPendiente() {
 
 async function loadMesas() {
   try {
+    await loadConfigAvancePlatos();
     const res = await fetch('/api/mesas');
     allMesas = await res.json();
     renderCanales(allMesas);
@@ -197,11 +215,12 @@ function createMesaCard(mesa) {
   let extraInfo = '';
   let infoFooter = '';
 
+  let pendiente = 0;
   if (mesa.pedido_total != null && (mesa.estado === 'OCUPADO' || mesa.estado === 'CERRANDO')) {
     const total = mesa.pedido_total;
     const pagado = mesa.pedido_pagado || 0;
     const descuento = mesa.pedido_descuento || 0;
-    const pendiente = Math.max(0, total - descuento - pagado);
+    pendiente = Math.max(0, total - descuento - pagado);
 
     extraInfo = `<div class="mesa-total">S/${total.toFixed(2)}</div>`;
     if (estadoEfectivo === 'PAGADO') {
@@ -225,21 +244,65 @@ function createMesaCard(mesa) {
     pagoInfo = `<div class="mesa-sinpedido">⏱ sin pedido · ${timeSince(new Date(mesa.pagado_desde + 'Z'))}</div>`;
   }
 
-  const sinPedido = !esPagado && mesa.estado === 'OCUPADO' && !mesa.tiene_pedido_activo && mesa.minutos_sin_pedido != null;
+  const sinPedido = !esPagado && mesa.estado === 'OCUPADO' && !mesa.tiene_pedido_activo && mesa.minutos_sin_pedido != null && pendiente <= 0.01;
   let sinPedidoInfo = '';
   if (sinPedido) {
     sinPedidoInfo = `<div class="mesa-sinpedido">⏱ ${mesa.minutos_sin_pedido} min sin pedido</div>`;
   }
 
-  const puedeLiberar = (sinPedido || esPagado || mesa.estado === 'RESERVADO')
+  let avanceBadgeHtml = '';
+  if (enAtencion && !esPagado && configAvancePlatos !== 'oculto' && mesa.items_totales > 0) {
+    const listos = mesa.items_listos || 0;
+    const totales = mesa.items_totales;
+    const todosListos = listos >= totales;
+    const bg = todosListos ? '#10B981' : (listos > 0 ? '#0D9488' : '#F59E0B');
+    const shadow = todosListos ? 'box-shadow:0 0 8px rgba(16,185,129,0.6);animation:pulse 1.5s infinite;' : '';
+    const icon = todosListos ? '✅' : (listos > 0 ? '🔔' : '⏳');
+
+    let badgeTexto = `${icon} ${listos}/${totales} listos`;
+
+    if (configAvancePlatos === 'detallado') {
+      const desglose = [];
+      if (mesa.items_barra_totales > 0) {
+        desglose.push(`🍹${mesa.items_barra_listos || 0}/${mesa.items_barra_totales}`);
+      }
+      if (mesa.items_cocina_totales > 0) {
+        desglose.push(`🍳${mesa.items_cocina_listos || 0}/${mesa.items_cocina_totales}`);
+      }
+      if (desglose.length > 0) {
+        badgeTexto += ` (${desglose.join(' · ')})`;
+      }
+    }
+
+    const tooltip = `Avance: ${listos} de ${totales} platos listos${mesa.items_barra_totales ? ` | Barra: ${mesa.items_barra_listos || 0}/${mesa.items_barra_totales}` : ''}${mesa.items_cocina_totales ? ` | Cocina: ${mesa.items_cocina_listos || 0}/${mesa.items_cocina_totales}` : ''}`;
+    avanceBadgeHtml = `<div title="${tooltip}" style="background:${bg};color:white;font-size:0.75rem;font-weight:700;padding:3px 8px;border-radius:12px;display:inline-flex;align-items:center;gap:4px;margin-top:4px;${shadow}">${badgeTexto}</div>`;
+  }
+
+  const puedeLiberar = (sinPedido || (esPagado && pendiente <= 0.01) || mesa.estado === 'RESERVADO')
+    && pendiente <= 0.01
     && (currentUser?.rol === 'admin' || currentUser?.id === mesa.mesero_id);
+
+  const esSalonPrincipal = !mesa.area_nombre || mesa.area_nombre.toLowerCase() === 'salón principal' || mesa.area_nombre.toLowerCase() === 'salon principal';
+  let displayTitulo = mesa.numero;
+  let displaySub = mesa.nombre || `Mesa ${mesa.numero}`;
+
+  if (mesa.nombre && mesa.nombre.trim() && !/^Mesa \d+$/i.test(mesa.nombre.trim())) {
+    displayTitulo = mesa.nombre.trim();
+    displaySub = `Mesa ${mesa.numero}`;
+  } else if (!esSalonPrincipal && mesa.area_nombre) {
+    displayTitulo = `${mesa.area_nombre} ${mesa.numero}`;
+    displaySub = `Mesa ${mesa.numero}`;
+  }
+
+  const isLong = String(displayTitulo).length > 6;
 
   card.innerHTML = `
     <div class="info-top">${extraInfo}</div>
     <div class="info-mid">
-      <div class="mesa-numero">${mesa.numero}</div>
-      <div class="mesa-nombre">${mesa.nombre || `Mesa ${mesa.numero}`}</div>
+      <div class="mesa-numero" style="${isLong ? 'font-size:1.25rem;' : ''}">${displayTitulo}</div>
+      <div class="mesa-nombre">${displaySub}</div>
       <div class="mesa-status">${statusText}</div>
+      ${avanceBadgeHtml}
       <div class="mesa-mesero">${mesa.mesero_nombre ? `Mesero: ${mesa.mesero_nombre}` : ''}</div>
       ${ocupadoInfo}
     </div>
@@ -308,6 +371,8 @@ function openMesaModal(mesa) {
       </div>
     `;
   } else if (mesa.estado === 'OCUPADO') {
+    const pendiente = mesa.pedido_total != null ? Math.max(0, mesa.pedido_total - (mesa.pedido_pagado || 0) - (mesa.pedido_descuento || 0)) : 0;
+    const puedeLiberarDirecto = !mesa.tiene_pedido_activo && pendiente <= 0.01;
     html = `
       <p><strong>Mesero:</strong> ${mesa.mesero_nombre || 'N/A'}</p>
       <p><strong>Desde:</strong> ${mesa.ocupado_desde ? new Date(mesa.ocupado_desde + 'Z').toLocaleString('es-MX') : 'N/A'}</p>
@@ -315,9 +380,10 @@ function openMesaModal(mesa) {
       <button class="btn btn-success btn-block" onclick="closeMesaModal(); verPedidoExistente(${mesa.id})">
         💰 Ver Pedido / Cobrar
       </button>
+      ${puedeLiberarDirecto ? `
       <button class="btn btn-danger btn-block" onclick="liberarMesa(${mesa.id})" style="margin-top:4px;">
         Liberar Mesa
-      </button>
+      </button>` : ''}
     `;
   } else if (mesa.estado === 'RESERVADO') {
     const tienePedido = !!mesa.pedido_activo_id;
@@ -433,9 +499,16 @@ async function confirmarAccionMesa() {
 async function liberarMesa(mesaId) {  if (!currentUser) return showToast('Debe iniciar sesión', 'error');
 
   const mesa = (await fetch('/api/mesas').then(r => r.json()).catch(() => [])).find(m => m.id === mesaId);
-  if (mesa && mesa.tiene_pedido_activo) {
-    showToast('La mesa tiene un pedido activo. Ábrelo y usa "Anular pedido" o cobra antes de liberar.', 'warning');
-    return;
+  if (mesa) {
+    if (mesa.tiene_pedido_activo) {
+      showToast('La mesa tiene un pedido activo. Ábrelo y usa "Anular pedido" o cobra antes de liberar.', 'warning');
+      return;
+    }
+    const pendiente = mesa.pedido_total != null ? Math.max(0, mesa.pedido_total - (mesa.pedido_pagado || 0) - (mesa.pedido_descuento || 0)) : 0;
+    if (pendiente > 0.01) {
+      showToast(`La mesa tiene un saldo pendiente de S/${pendiente.toFixed(2)}. Debe cobrarse o anularse antes de liberar.`, 'warning');
+      return;
+    }
   }
 
   const ok = await customConfirm({
@@ -702,6 +775,16 @@ async function guardarCliente() {
       }
     }
 
+    if (typeof pedidoExistente !== 'undefined' && pedidoExistente) {
+      pedidoExistente.cliente_nombre = nombre;
+      pedidoExistente.cliente_telefono = telefono;
+      pedidoExistente.cliente_direccion = clienteModalTipo === 'DELIVERY' ? direccion : '';
+      pedidoExistente.hora_recogida = clienteModalTipo === 'PARA_LLEVAR' ? hora : '';
+      if (typeof renderPedidoViewCliente === 'function') {
+        renderPedidoViewCliente();
+      }
+    }
+
     closeClienteModal();
     renderPosClienteBar();
   }
@@ -713,7 +796,7 @@ function closeClienteModal() {
   clienteModalAccion = null;
 }
 
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', duration = 3000) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
 
@@ -726,7 +809,14 @@ function showToast(message, type = 'success') {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s';
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, duration);
+}
+
+// Listener de errores de impresora
+if (typeof socket !== 'undefined') {
+  socket.on('printer:error', ({ impresora, motivo }) => {
+    showToast(`🖨️ Error de impresora (${impresora}): ${motivo || 'Sin conexión'}`, 'error', 8000);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -963,5 +1053,14 @@ async function imprimirCorteXRapido() {
 if (typeof socket !== 'undefined' && socket) {
   socket.on('caja:updated', () => {
     loadEstadoCajaHeader();
+  });
+}
+
+// ---- PWA SERVICE WORKER ----
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('PWA ServiceWorker registrado:', reg.scope))
+      .catch(err => console.log('ServiceWorker no disponible:', err));
   });
 }

@@ -53,6 +53,83 @@ class ProductoController {
       res.status(500).json({ error: err.message });
     }
   }
+
+  crearProducto(req, res) {
+    const { nombre, precio, categoria_id, controlar_stock, stock_actual, stock_minimo } = req.body;
+    if (!nombre || precio == null) {
+      return res.status(400).json({ error: 'nombre y precio son requeridos' });
+    }
+    try {
+      const producto = this.productoRepo.crear(
+        nombre,
+        precio,
+        categoria_id,
+        controlar_stock,
+        Math.max(0, parseInt(stock_actual, 10) || 0),
+        Math.max(0, parseInt(stock_minimo, 10) || 3)
+      );
+      res.status(201).json(producto);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  actualizarProducto(req, res, io) {
+    const { nombre, precio, categoria_id, controlar_stock, stock_actual, stock_minimo } = req.body;
+    try {
+      const act = this.productoRepo.actualizar(
+        req.params.id,
+        nombre,
+        precio,
+        categoria_id,
+        controlar_stock,
+        stock_actual,
+        stock_minimo
+      );
+      if (io) {
+        io.emit('stock:actualizado', {
+          producto_id: act.id,
+          controlar_stock: act.controlar_stock,
+          stock_actual: act.stock_actual,
+          stock_minimo: act.stock_minimo
+        });
+      }
+      res.json(act);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  eliminarProducto(req, res) {
+    try {
+      this.productoRepo.eliminar(req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  actualizarStockBatch(req, res, io) {
+    const { items } = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'items debe ser un array' });
+
+    try {
+      const results = this.productoRepo.actualizarStockBatch(items);
+      if (io) {
+        for (const act of results) {
+          io.emit('stock:actualizado', {
+            producto_id: act.id,
+            controlar_stock: act.controlar_stock,
+            stock_actual: act.stock_actual,
+            stock_minimo: act.stock_minimo
+          });
+        }
+      }
+      res.json({ ok: true, actualizados: results.length });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
 }
 
 module.exports = new ProductoController();
